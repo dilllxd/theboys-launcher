@@ -997,8 +997,11 @@ func performUpdateCleanup(oldExe, newExe string) {
 		}
 	}
 
-	// Start the launcher normally after cleanup
-	exec.Command(oldExe).Start()
+	// Use rundll32 to start the launcher (Windows-specific and more reliable)
+	_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", oldExe).Start()
+
+	// Exit this cleanup process
+	os.Exit(0)
 }
 
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
