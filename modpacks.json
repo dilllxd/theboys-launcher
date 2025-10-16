@@ -7,10 +7,10 @@
     "description": "Official WinterPack release."
   },
   {
-    "id": "winterpack-dev",
-    "displayName": "WinterPack (Dev Preview)",
-    "packUrl": "https://raw.githubusercontent.com/dilllxd/winterpack-modpack/main/pack.toml",
-    "instanceName": "WinterPackDev",
+    "id": "examplepack",
+    "displayName": "examplepack (Dev Preview)",
+    "packUrl": "https://raw.githubusercontent.com/dilllxd/examplepack-modpack/main/pack.toml",
+    "instanceName": "examplepack",
     "description": "Development preview slot for staging new modpacks."
   }
 ]

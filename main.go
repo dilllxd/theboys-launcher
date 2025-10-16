@@ -1,19 +1,22 @@
-// WinterPack.exe — portable Minecraft bootstrapper for Windows
+// TheBoysLauncher.exe - portable Minecraft bootstrapper for Windows
 // - Self-updates from GitHub Releases (latest tag, no downgrades)
 // - Fully portable: writes only beside the EXE (no AppData)
-// - Downloads Prism Launcher (portable) — prefers MinGW w64 on amd64
+// - Downloads Prism Launcher (portable) - prefers MinGW w64 on amd64
 // - Downloads Java 21 (Temurin JRE) dynamically (Adoptium API w/ GitHub fallback)
 // - Downloads packwiz bootstrap dynamically (GitHub assets discovery)
 // - Creates instance beside the EXE, writes instance.cfg (name/RAM/Java)
 // - Runs packwiz from the *instance root* (detects MultiMC/Prism mode)
 // - Console output + logs/latest.log (rotates to logs/previous.log)
-// - Keeps console open on error (press Enter), disable with WINTERPACK_NOPAUSE=1
-// - Optional cache-bust for PACK_URL: set WINTERPACK_CACHEBUST=1
+// - Keeps console open on error (press Enter), disable with THEBOYS_NOPAUSE=1
+// - Optional cache-bust for the modpack URL: set THEBOYS_CACHEBUST=1
+// - Default launch opens an interactive TUI for modpack selection; use --cli for unattended console mode
+// - Supports multiple modpacks via modpacks.json (falls back to built-in defaults)
 //
 // Build (set your version!):
-//   go build -ldflags="-s -w -X main.version=v1.0.3" -o WinterPack.exe
+//   go build -ldflags="-s -w -X main.version=v1.0.3" -o TheBoysLauncher.exe
 //
-// Usage for players: put WinterPack.exe in any writable folder and run it.
+// Usage for players: put TheBoysLauncher.exe in any writable folder and run it.
+// Optional CLI: TheBoysLauncher.exe --cli [--modpack <id>] or --list-modpacks.
 
 package main
 
@@ -22,8 +25,10 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,20 +46,38 @@ import (
 	"unsafe"
 
 	"github.com/BurntSushi/toml"
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // -------------------- CONFIG: EDIT THESE --------------------
 
 const (
-	// Use Raw (recommended for byte-stable text)
-	PACK_URL      = "https://raw.githubusercontent.com/dilllxd/winterpack-modpack/main/pack.toml"
-	INSTANCE_NAME = "WinterPack"
-
 	// Self-update source (GitHub Releases of this EXE)
-	UPDATE_OWNER = "dilllxd"             // GitHub username/org
-	UPDATE_REPO  = "winterpack-launcher" // repo that hosts releases for this EXE
-	UPDATE_ASSET = "WinterPack.exe"      // asset name in releases to download
+	UPDATE_OWNER      = "dilllxd"
+	UPDATE_REPO       = "theboys-launcher"
+	UPDATE_ASSET      = "TheBoysLauncher.exe"
+	remoteModpacksURL = "https://raw.githubusercontent.com/dilllxd/theboys-launcher/refs/heads/main/modpacks.json"
+
+	launcherName      = "TheBoys Launcher"
+	launcherShortName = "TheBoys"
+	launcherExeName   = "TheBoysLauncher.exe"
+
+	envCacheBust = "THEBOYS_CACHEBUST"
+	envNoPause   = "THEBOYS_NOPAUSE"
 )
+
+type Modpack struct {
+	ID           string `json:"id"`
+	DisplayName  string `json:"displayName"`
+	PackURL      string `json:"packUrl"`
+	InstanceName string `json:"instanceName"`
+	Description  string `json:"description"`
+	Default      bool   `json:"default,omitempty"`
+}
+
+var defaultModpackID string
 
 // Optional: show MessageBox popups (false = log to console/file)
 var interactive = false
@@ -65,11 +88,248 @@ var version = "dev"
 // global writer used by log/fail and for piping subprocess output
 var out io.Writer = os.Stdout
 
+var (
+	sectionStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true)
+	stepBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#bd93f9")).Bold(true)
+	stepTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#f8f8f2"))
+	successBulletStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b")).Bold(true)
+	successTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b"))
+	warnBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb86c")).Bold(true)
+	warnTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb86c"))
+)
+
+func sectionLine(title string) string {
+	return sectionStyle.Render(strings.ToUpper(title))
+}
+
+func stepLine(msg string) string {
+	return fmt.Sprintf("%s %s", stepBulletStyle.Render("→"), stepTextStyle.Render(msg))
+}
+
+func successLine(msg string) string {
+	return fmt.Sprintf("%s %s", successBulletStyle.Render("✓"), successTextStyle.Render(msg))
+}
+
+func warnLine(msg string) string {
+	return fmt.Sprintf("%s %s", warnBulletStyle.Render("!"), warnTextStyle.Render(msg))
+}
+
+func modpackLabel(mp Modpack) string {
+	if name := strings.TrimSpace(mp.DisplayName); name != "" {
+		return name
+	}
+	return mp.ID
+}
+
+func slugifyID(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return "modpack"
+	}
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				b.WriteRune('-')
+				prevDash = true
+			}
+		}
+	}
+	result := strings.Trim(b.String(), "-")
+	if result == "" {
+		return "modpack"
+	}
+	return result
+}
+
+func versionFileNameFor(mp Modpack) string { return "." + slugifyID(mp.ID) + "-version" }
+func backupPrefixFor(mp Modpack) string    { return slugifyID(mp.ID) + "-backup-" }
+
 // -------------------- MAIN --------------------
 
+type launcherOptions struct {
+	useCLI       bool
+	modpackID    string
+	listModpacks bool
+}
+
+func parseOptions() launcherOptions {
+	opts := launcherOptions{}
+
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options]\n\nOptions:\n", filepath.Base(os.Args[0]))
+		flag.PrintDefaults()
+	}
+
+	flag.BoolVar(&opts.useCLI, "cli", false, "Run the launcher in plain console mode (skip the interactive TUI).")
+	flag.StringVar(&opts.modpackID, "modpack", "", "Select the modpack to launch by ID.")
+	flag.BoolVar(&opts.listModpacks, "list-modpacks", false, "List available modpacks and exit.")
+	flag.Parse()
+
+	return opts
+}
+
+func loadModpacks(root string) []Modpack {
+	remote, err := fetchRemoteModpacks(remoteModpacksURL, 5*time.Second)
+	if err != nil {
+		fail(fmt.Errorf("failed to fetch remote modpacks.json: %w", err))
+	}
+
+	if len(remote) == 0 {
+		fail(errors.New("remote modpacks.json returned no modpacks"))
+	}
+
+	normalized := normalizeModpacks(remote)
+	if len(normalized) == 0 {
+		fail(errors.New("remote modpacks.json did not contain any valid modpacks"))
+	}
+
+	logf("%s", successLine(fmt.Sprintf("Loaded %d modpack(s) from remote catalog", len(normalized))))
+	updateDefaultModpackID(normalized)
+	return normalized
+}
+
+func selectModpack(modpacks []Modpack, requestedID string) (Modpack, error) {
+	if len(modpacks) == 0 {
+		return Modpack{}, errors.New("no modpacks available")
+	}
+
+	if strings.TrimSpace(requestedID) == "" {
+		for _, mp := range modpacks {
+			if strings.EqualFold(mp.ID, defaultModpackID) {
+				return mp, nil
+			}
+		}
+		return modpacks[0], nil
+	}
+
+	id := strings.ToLower(strings.TrimSpace(requestedID))
+	for _, mp := range modpacks {
+		if strings.ToLower(mp.ID) == id {
+			return mp, nil
+		}
+	}
+
+	return Modpack{}, fmt.Errorf("unknown modpack %q. Use --list-modpacks to view available options.", requestedID)
+}
+
+func printModpackList(modpacks []Modpack) {
+	fmt.Fprintln(os.Stdout, "Available modpacks:")
+	currentDefault := strings.ToLower(defaultModpackID)
+	for _, mp := range modpacks {
+		label := mp.DisplayName
+		if strings.ToLower(mp.ID) == currentDefault {
+			label += " [default]"
+		}
+		desc := strings.TrimSpace(mp.Description)
+		if desc == "" {
+			desc = "(no description provided)"
+		}
+		fmt.Fprintf(os.Stdout, " - %s (%s)\n   %s\n", label, mp.ID, desc)
+	}
+}
+
+func updateDefaultModpackID(modpacks []Modpack) {
+	if len(modpacks) == 0 {
+		return
+	}
+	for _, mp := range modpacks {
+		if mp.Default {
+			defaultModpackID = mp.ID
+			return
+		}
+	}
+	defaultModpackID = modpacks[0].ID
+}
+
+func fetchRemoteModpacks(url string, timeout time.Duration) ([]Modpack, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var mods []Modpack
+	if err := json.Unmarshal(body, &mods); err != nil {
+		return nil, err
+	}
+
+	return normalizeModpacks(mods), nil
+}
+
+func normalizeModpacks(mods []Modpack) []Modpack {
+	if len(mods) == 0 {
+		return nil
+	}
+
+	normalized := make([]Modpack, 0, len(mods))
+	index := make(map[string]int, len(mods))
+
+	for _, raw := range mods {
+		id := strings.TrimSpace(raw.ID)
+		packURL := strings.TrimSpace(raw.PackURL)
+		instance := strings.TrimSpace(raw.InstanceName)
+
+		if id == "" || packURL == "" || instance == "" {
+			continue
+		}
+
+		display := strings.TrimSpace(raw.DisplayName)
+		if display == "" {
+			display = id
+		}
+
+		entry := Modpack{
+			ID:           id,
+			DisplayName:  display,
+			PackURL:      packURL,
+			InstanceName: instance,
+			Description:  strings.TrimSpace(raw.Description),
+			Default:      raw.Default,
+		}
+
+		key := strings.ToLower(id)
+		if idx, ok := index[key]; ok {
+			normalized[idx] = entry
+		} else {
+			index[key] = len(normalized)
+			normalized = append(normalized, entry)
+		}
+	}
+
+	return normalized
+}
+
 func main() {
+	runtime.LockOSThread()
+
+	opts := parseOptions()
+
 	if runtime.GOOS != "windows" {
-		msgBox("Windows only", "WinterPack", 0)
+		msgBox("Windows only", launcherShortName, 0)
 		return
 	}
 
@@ -80,8 +340,24 @@ func main() {
 	closeLog := setupLogging(root)
 	defer closeLog()
 
-	logf("=== WinterPack Launcher started %s ===", time.Now().Format(time.RFC1123))
-	logf("Version: %s", version)
+	logf("%s", sectionLine(launcherName))
+	logf("%s", stepLine(fmt.Sprintf("Session started %s", time.Now().Format(time.RFC1123))))
+	logf("%s", stepLine(fmt.Sprintf("Version: %s", version)))
+
+	modpacks := loadModpacks(root)
+	if len(modpacks) == 0 {
+		fail(errors.New("no modpacks configured"))
+	}
+
+	if opts.listModpacks {
+		printModpackList(modpacks)
+		return
+	}
+
+	selectedModpack, err := selectModpack(modpacks, opts.modpackID)
+	if err != nil {
+		fail(err)
+	}
 
 	// Set up signal handling for force-closing Prism and Minecraft on launcher exit
 	var prismProcess *os.Process
@@ -111,13 +387,30 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// Run the launcher logic directly
-	runLauncherLogic(root, exePath, &prismProcess)
+	if opts.useCLI {
+		logf("Launching (CLI) modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)
+		runLauncherLogic(root, exePath, selectedModpack, &prismProcess)
+		return
+	}
+
+	chosen, confirmed, err := runLauncherTUI(modpacks, selectedModpack)
+	if err != nil {
+		fail(err)
+	}
+	if !confirmed {
+		logf("No modpack selected; exiting.")
+		return
+	}
+
+	selectedModpack = chosen
+	logf("Launching modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)
+	runLauncherLogic(root, exePath, selectedModpack, &prismProcess)
 }
 
 // -------------------- Launcher Logic --------------------
 
-func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
+func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.Process) {
+	packName := modpackLabel(modpack)
 	// 1) Self-update (best-effort; skips downgrades)
 	if err := selfUpdate(root, exePath); err != nil {
 		logf("Update check failed: %v", err)
@@ -136,18 +429,21 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 		fail(fmt.Errorf("failed to create util directory: %w", err))
 	}
 
-	fmt.Fprintf(out, "Setting up prerequisites...\n")
+	logf("%s", sectionLine("Preparing Environment"))
 
-	// Prism Launcher
-	if err := ensurePrism(prismDir); err != nil {
+	logf("%s", stepLine("Ensuring Prism Launcher portable build"))
+	prismDownloaded, err := ensurePrism(prismDir)
+	if err != nil {
 		fail(err)
+	}
+	if prismDownloaded {
+		logf("%s", successLine("Prism Launcher downloaded"))
 	} else {
-		fmt.Fprintf(out, "✓ Prism Launcher ready\n")
+		logf("%s", successLine("Prism Launcher ready"))
 	}
 
-	// Java 21
 	if !exists(javaBin) {
-		fmt.Fprintf(out, "Setting up Java 21...\n")
+		logf("%s", stepLine("Installing Temurin JRE 21"))
 		jreURL, err := fetchJRE21ZipURL()
 		if err != nil {
 			fail(fmt.Errorf("failed to resolve Java 21 download: %w", err))
@@ -155,17 +451,16 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 		if err := downloadAndUnzipTo(jreURL, jreDir); err != nil {
 			fail(err)
 		}
-		// Flatten typical top-level folder so jre21\bin\java.exe exists
 		_ = flattenOneLevel(jreDir)
 		if !exists(javaBin) {
 			fail(errors.New("Java 21 installation looks incomplete (bin/java.exe not found)"))
 		}
-		fmt.Fprintf(out, "✓ Java 21 installed\n")
+		logf("%s", successLine("Java 21 installed"))
 	} else {
-		fmt.Fprintf(out, "✓ Java 21 already installed\n")
+		logf("%s", successLine("Java 21 already installed"))
 	}
 
-	// Packwiz bootstrap
+	logf("%s", stepLine("Ensuring packwiz bootstrap"))
 	if !exists(bootstrapExe) && !exists(bootstrapJar) {
 		pwURL, err := fetchPackwizBootstrapURL()
 		if err != nil {
@@ -178,83 +473,79 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 		if err := downloadTo(pwURL, target, 0755); err != nil {
 			fail(err)
 		}
-		fmt.Fprintf(out, "✓ Packwiz bootstrap installed\n")
+		logf("%s", successLine("Packwiz bootstrap installed"))
 	} else {
-		fmt.Fprintf(out, "✓ Packwiz bootstrap already installed\n")
+		logf("%s", successLine("Packwiz bootstrap already installed"))
 	}
 
 	// 3) Create proper MultiMC/Prism instance first
-	instDir := filepath.Join(prismDir, "instances", INSTANCE_NAME)
+	instDir := filepath.Join(prismDir, "instances", modpack.InstanceName)
 	mcDir := filepath.Join(instDir, "minecraft") // Use minecraft, not .minecraft
 	if err := os.MkdirAll(mcDir, 0755); err != nil {
 		fail(err)
 	}
 
-	// 4) Create proper MultiMC/Prism instance structure with Forge 1.20.1 (only if needed)
+	logf("%s", sectionLine("Instance Setup"))
+
 	instanceConfigFile := filepath.Join(instDir, "instance.cfg")
 	mmcPackFile := filepath.Join(instDir, "mmc-pack.json")
 
 	needsInstanceCreation := !exists(instanceConfigFile) || !exists(mmcPackFile)
 	if needsInstanceCreation {
-		logf("Creating MultiMC/Prism instance with Forge 1.20.1...")
-		if err := createMultiMCInstance(instDir, javaBin); err != nil {
+		logf("%s", stepLine("Creating Prism instance structure with Forge 1.20.1"))
+		if err := createMultiMCInstance(modpack, instDir, javaBin); err != nil {
 			fail(fmt.Errorf("failed to create MultiMC instance: %w", err))
 		}
+		logf("%s", successLine("Instance structure ready"))
 	} else {
-		logf("Instance already exists, skipping creation...")
+		logf("%s", successLine("Instance structure already present"))
 	}
 
-	// 5) Install Forge properly for the instance (only if needed)
-	// Check for Forge installation in MultiMC/Prism instance structure
 	forgeJar := filepath.Join(mcDir, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.4.0", "forge-1.20.1-47.4.0-universal.jar")
-
 	forgeInstalled := exists(forgeJar) && exists(mmcPackFile)
 
 	if !forgeInstalled {
-		logf("Installing Forge 1.20.1 for the instance...")
+		logf("%s", stepLine("Installing Forge 1.20.1"))
 		if err := installForgeForInstance(instDir, javaBin); err != nil {
 			fail(fmt.Errorf("failed to install Forge: %w", err))
 		}
+		logf("%s", successLine("Forge ready"))
 	} else {
-		logf("Forge already installed, skipping installation...")
+		logf("%s", successLine("Forge already installed"))
 	}
 
 	// 6) Check for modpack updates
-	logf("Checking for modpack updates...")
-	updateAvailable, localVersion, remoteVersion, err := checkModpackUpdate(instDir)
+	logf("%s", sectionLine("Modpack Sync"))
+	logf("%s", stepLine("Checking for modpack updates"))
+	updateAvailable, localVersion, remoteVersion, err := checkModpackUpdate(modpack, instDir)
 	if err != nil {
-		logf("Warning: Failed to check modpack updates: %v", err)
-		// Continue with packwiz anyway
-		updateAvailable = true // Assume update needed to be safe
+		logf("%s", warnLine(fmt.Sprintf("Failed to check modpack updates: %v", err)))
+		updateAvailable = true
 	}
 
-	// 7) Now run packwiz from within the instance to install/update the modpack
 	var action string
 	var backupPath string
 
 	if updateAvailable {
 		if localVersion == "" {
-			action = "Installing"
+			action = fmt.Sprintf("Installing %s version %s", packName, remoteVersion)
+			logf("%s", stepLine(action))
 		} else {
-			action = "Updating"
-			// Create backup before updating
-			logf("Creating backup before update...")
-			backupPath, err = createModpackBackup(mcDir)
+			action = fmt.Sprintf("Updating %s %s → %s", packName, localVersion, remoteVersion)
+			logf("%s", stepLine(action))
+			logf("%s", stepLine("Creating safety backup before update"))
+			backupPath, err = createModpackBackup(modpack, mcDir)
 			if err != nil {
-				logf("Warning: Backup creation failed: %v", err)
+				logf("%s", warnLine(fmt.Sprintf("Backup creation failed: %v", err)))
 			}
 		}
-		if localVersion == "" {
-			logf("%s modpack version %s with packwiz…", action, remoteVersion)
-		} else {
-			logf("%s modpack %s → %s with packwiz…", action, localVersion, remoteVersion)
-		}
 	} else {
-		logf("Modpack is up to date, verifying installation with packwiz…")
+		logf("%s", successLine("Modpack already up to date"))
+		logf("%s", stepLine("Verifying installation with packwiz"))
 	}
 
-	packURL := PACK_URL
-	if os.Getenv("WINTERPACK_CACHEBUST") == "1" {
+	packURL := modpack.PackURL
+	if os.Getenv(envCacheBust) == "1" {
 		sep := "?"
 		if strings.Contains(packURL, "?") {
 			sep = "&"
@@ -322,11 +613,11 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 	if err != nil {
 		// Update failed - attempt to restore from backup if we have one
 		if backupPath != "" {
-			logf("Packwiz update failed, attempting to restore from backup...")
-			if restoreErr := restoreModpackBackup(backupPath, mcDir); restoreErr != nil {
-				logf("Warning: Failed to restore backup: %v", restoreErr)
+			logf("%s", warnLine("Packwiz update failed, attempting to restore from backup"))
+			if restoreErr := restoreModpackBackup(modpack, backupPath, mcDir); restoreErr != nil {
+				logf("%s", warnLine(fmt.Sprintf("Failed to restore backup: %v", restoreErr)))
 			} else {
-				logf("Successfully restored previous modpack version")
+				logf("%s", successLine("Restored previous modpack state"))
 			}
 		}
 		fail(fmt.Errorf("packwiz update failed: %w", err))
@@ -334,23 +625,24 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 
 	// Post-update verification and version saving
 	if updateAvailable {
-		logf("Verifying installation was completed successfully...")
+		logf("%s", stepLine("Verifying installation"))
 
 		// Save the version that packwiz just installed
-		if err := saveLocalVersion(instDir, remoteVersion); err != nil {
-			logf("Warning: Failed to save local version: %v", err)
+		if err := saveLocalVersion(modpack, instDir, remoteVersion); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to save local version: %v", err)))
 		} else {
-			logf("✓ Installation completed successfully! Now running version %s", remoteVersion)
+			logf("%s", successLine(fmt.Sprintf("%s now running version %s", packName, remoteVersion)))
 		}
 	} else {
-		logf("✓ Installation verification completed")
+		logf("%s", successLine(fmt.Sprintf("%s installation verification completed", packName)))
 	}
 
-	// 8) Launch WinterPack instance directly
-	logf("Launching WinterPack instance...")
+	// 8) Launch selected instance directly
+	logf("%s", sectionLine("Launching"))
+	logf("%s", stepLine(fmt.Sprintf("Launching %s", packName)))
 
 	prismExe := filepath.Join(prismDir, "PrismLauncher.exe")
-	launch := exec.Command(prismExe, "--dir", ".", "--launch", INSTANCE_NAME)
+	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
 	launch.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
@@ -360,8 +652,8 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 
 	// Start the process and wait for it to complete (keeps console open)
 	if err := launch.Start(); err != nil {
-		logf("Failed to launch instance: %v", err)
-		logf("Falling back to GUI mode...")
+		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
+		logf("%s", stepLine("Opening Prism Launcher UI instead"))
 		launchFallback := exec.Command(prismExe, "--dir", ".")
 		launchFallback.Dir = prismDir
 		launchFallback.Env = append(os.Environ(),
@@ -370,22 +662,161 @@ func runLauncherLogic(root, exePath string, prismProcess **os.Process) {
 		)
 		launchFallback.Stdout, launchFallback.Stderr = out, out
 		if err := launchFallback.Start(); err != nil {
-			logf("Failed to launch GUI mode: %v", err)
+			logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
 			return
 		}
 		*prismProcess = launchFallback.Process
-		logf("WinterPack GUI launched (PID: %d)", launchFallback.Process.Pid)
+		logf("%s", successLine(fmt.Sprintf("Prism Launcher UI launched for %s (PID: %d)", packName, launchFallback.Process.Pid)))
 		// Wait for the GUI process to complete
 		launchFallback.Wait()
 	} else {
 		// Store the process reference for signal handling
 		*prismProcess = launch.Process
-		logf("WinterPack instance launched (PID: %d)", launch.Process.Pid)
+		logf("%s", successLine(fmt.Sprintf("%s launched (PID: %d)", packName, launch.Process.Pid)))
 		// Wait for the game process to complete
 		launch.Wait()
 	}
 
-	logf("Prism Launcher closed")
+	logf("%s", successLine(fmt.Sprintf("Prism Launcher closed for %s", packName)))
+}
+
+func runLauncherTUI(modpacks []Modpack, initial Modpack) (Modpack, bool, error) {
+	if len(modpacks) == 0 {
+		return Modpack{}, false, errors.New("no modpacks available")
+	}
+
+	if len(modpacks) == 1 {
+		return modpacks[0], true, nil
+	}
+
+	defaultIndex := 0
+	for i, mp := range modpacks {
+		if strings.EqualFold(mp.ID, initial.ID) {
+			defaultIndex = i
+			break
+		}
+	}
+
+	model := newTUIModel(modpacks, defaultIndex)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+	res, err := prog.Run()
+	if err != nil {
+		return Modpack{}, false, err
+	}
+
+	finalModel := res.(tuiModel)
+	return finalModel.selected, finalModel.confirmed, nil
+}
+
+type tuiModel struct {
+	list      list.Model
+	selected  Modpack
+	confirmed bool
+}
+
+func newTUIModel(modpacks []Modpack, defaultIndex int) tuiModel {
+	items := make([]list.Item, len(modpacks))
+	for i, mp := range modpacks {
+		items[i] = modpackListItem{modpack: mp}
+	}
+
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	delegate.SetSpacing(1)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#bfc7ff"))
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#14141f")).Background(lipgloss.Color("#8be9fd")).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#e2e2f9"))
+
+	l := list.New(items, delegate, 0, 0)
+	l.Title = fmt.Sprintf("%s Modpacks", launcherShortName)
+	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true).PaddingLeft(1)
+	l.SetShowStatusBar(false)
+	l.SetShowPagination(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
+	l.InfiniteScrolling = false
+	l.Select(defaultIndex)
+
+	return tuiModel{
+		list:     l,
+		selected: modpacks[defaultIndex],
+	}
+}
+
+func (m tuiModel) Init() tea.Cmd { return nil }
+
+func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			if item, ok := m.list.SelectedItem().(modpackListItem); ok {
+				m.selected = item.modpack
+			}
+			m.confirmed = true
+			return m, tea.Quit
+		}
+	case tea.WindowSizeMsg:
+		height := msg.Height - 5
+		if height < 5 {
+			height = 5
+		}
+		width := msg.Width - 6
+		if width < 40 {
+			width = 40
+		}
+		m.list.SetSize(width, height)
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	if item, ok := m.list.SelectedItem().(modpackListItem); ok {
+		m.selected = item.modpack
+	}
+	return m, cmd
+}
+
+func (m tuiModel) View() string {
+	frame := lipgloss.NewStyle().
+		Padding(1, 2).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#44475a")).
+		Render(m.list.View())
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#8be9fd")).
+		MarginTop(1).
+		Render("↑/↓ navigate   •   Enter launch   •   q quit")
+
+	return frame + "\n" + help
+}
+
+type modpackListItem struct {
+	modpack Modpack
+}
+
+func (i modpackListItem) Title() string {
+	title := strings.TrimSpace(i.modpack.DisplayName)
+	if title == "" {
+		title = i.modpack.ID
+	}
+	return title
+}
+
+func (i modpackListItem) Description() string {
+	desc := strings.TrimSpace(i.modpack.Description)
+	if desc == "" {
+		desc = "ID: " + i.modpack.ID
+	} else {
+		desc = fmt.Sprintf("%s — ID: %s", desc, i.modpack.ID)
+	}
+	return desc
+}
+
+func (i modpackListItem) FilterValue() string {
+	return strings.ToLower(i.modpack.ID + " " + i.modpack.DisplayName + " " + i.modpack.Description)
 }
 
 // -------------------- Logging --------------------
@@ -417,14 +848,14 @@ func setupLogging(root string) func() {
 
 func logf(format string, a ...any) {
 	if interactive {
-		msgBox(fmt.Sprintf(format, a...), "WinterPack", 0)
+		msgBox(fmt.Sprintf(format, a...), launcherShortName, 0)
 	} else {
 		fmt.Fprintf(out, format+"\n", a...)
 	}
 }
 
 func pauseIfWanted() {
-	if os.Getenv("WINTERPACK_NOPAUSE") == "1" {
+	if os.Getenv(envNoPause) == "1" {
 		return
 	}
 	fmt.Fprint(out, "\nPress Enter to exit…")
@@ -433,7 +864,7 @@ func pauseIfWanted() {
 
 func fail(err error) {
 	if interactive {
-		msgBox("Error: "+err.Error(), "WinterPack", 0)
+		msgBox("Error: "+err.Error(), launcherShortName, 0)
 	} else {
 		fmt.Fprintf(out, "Error: %v\n", err)
 	}
@@ -462,7 +893,7 @@ func selfUpdate(root, exePath string) error {
 
 	switch compareSemver(localTag, remoteTag) {
 	case 0:
-		logf("WinterPack up to date (%s).", version)
+		logf("%s up to date (%s).", launcherShortName, version)
 		return nil
 	case 1:
 		// local > remote → don't downgrade
@@ -472,7 +903,7 @@ func selfUpdate(root, exePath string) error {
 		// remote > local → proceed
 	}
 
-	logf("New WinterPack available: %s (current %s). Updating…", tag, version)
+	logf("New %s available: %s (current %s). Updating…", launcherShortName, tag, version)
 
 	tmpNew := exePath + ".new"
 	if err := downloadTo(assetURL, tmpNew, 0755); err != nil {
@@ -506,7 +937,7 @@ del "%%~f0"
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "WinterPack-Updater/1.0")
+	req.Header.Set("User-Agent", "TheBoys-Updater/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -641,7 +1072,7 @@ func download(url string) ([]byte, error) {
 
 func downloadWithProgress(url string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "WinterPack/1.0")
+	req.Header.Set("User-Agent", "TheBoys/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -719,22 +1150,22 @@ func unzipBytesTo(b []byte, dest string) error {
 
 // -------------------- Prism + Instance --------------------
 
-func ensurePrism(dir string) error {
+func ensurePrism(dir string) (bool, error) {
 	if exists(filepath.Join(dir, "PrismLauncher.exe")) {
-		return nil
+		return false, nil
 	}
 	url, err := fetchLatestPrismPortableURL()
 	if err != nil {
-		return err
+		return false, err
 	}
-	logf("Downloading Prism portable: %s", url)
+	logf("%s", stepLine(fmt.Sprintf("Downloading Prism portable build: %s", url)))
 	if err := downloadAndUnzipTo(url, dir); err != nil {
-		return err
+		return false, err
 	}
 	// Force portable mode
 	cfg := filepath.Join(dir, "prismlauncher.cfg")
 	_ = os.WriteFile(cfg, []byte("Portable=true\n"), 0644)
-	return nil
+	return true, nil
 }
 
 type prismRelease struct {
@@ -750,7 +1181,7 @@ type prismRelease struct {
 func fetchLatestPrismPortableURL() (string, error) {
 	api := "https://api.github.com/repos/PrismLauncher/PrismLauncher/releases/latest"
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "WinterPack-Prism/1.0")
+	req.Header.Set("User-Agent", "TheBoys-Prism/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -805,7 +1236,7 @@ func fetchJRE21ZipURL() (string, error) {
 	// 1) Adoptium API (v3)
 	adoptium := "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jre&os=windows"
 	req, _ := http.NewRequest("GET", adoptium, nil)
-	req.Header.Set("User-Agent", "WinterPack-Adoptium/1.0")
+	req.Header.Set("User-Agent", "TheBoys-Adoptium/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -834,7 +1265,7 @@ func fetchJRE21ZipURL() (string, error) {
 	// 2) Fallback to GitHub Releases: adoptium/temurin21-binaries
 	api := "https://api.github.com/repos/adoptium/temurin21-binaries/releases/latest"
 	req2, _ := http.NewRequest("GET", api, nil)
-	req2.Header.Set("User-Agent", "WinterPack-Adoptium/1.0")
+	req2.Header.Set("User-Agent", "TheBoys-Adoptium/1.0")
 	req2.Header.Set("Cache-Control", "no-cache")
 	req2.Header.Set("Pragma", "no-cache")
 	resp2, err2 := http.DefaultClient.Do(req2)
@@ -864,7 +1295,7 @@ func fetchJRE21ZipURL() (string, error) {
 func fetchPackwizBootstrapURL() (string, error) {
 	api := "https://api.github.com/repos/packwiz/packwiz-installer-bootstrap/releases/latest"
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "WinterPack-Packwiz/1.0")
+	req.Header.Set("User-Agent", "TheBoys-Packwiz/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -897,20 +1328,20 @@ func fetchPackwizBootstrapURL() (string, error) {
 
 // -------------------- MultiMC Instance Creation --------------------
 
-func createMultiMCInstance(instDir, javaExe string) error {
+func createMultiMCInstance(modpack Modpack, instDir, javaExe string) error {
 	minMB, maxMB := autoRAM()
 
 	// Create instance.cfg
 	instanceLines := []string{
 		"InstanceType=OneSix", // Use OneSix not Minecraft
-		"name=" + INSTANCE_NAME,
+		"name=" + modpack.InstanceName,
 		"iconKey=default",
 		"OverrideMemory=true",
 		fmt.Sprintf("MinMemAlloc=%d", minMB),
 		fmt.Sprintf("MaxMemAlloc=%d", maxMB),
 		"OverrideJava=true",
 		"JavaPath=" + javaExe,
-		"Notes=Managed by WinterPack launcher",
+		"Notes=Managed by " + launcherName,
 	}
 
 	// Create mmc-pack.json with proper components including LWJGL 3
@@ -947,7 +1378,7 @@ func createMultiMCInstance(instDir, javaExe string) error {
 						"uid":    "net.minecraft",
 					},
 				},
-				"uid": "net.minecraftforge",
+				"uid":     "net.minecraftforge",
 				"version": "47.4.0",
 			},
 		},
@@ -987,7 +1418,7 @@ func createMultiMCInstance(instDir, javaExe string) error {
 						"uid":    "net.minecraft",
 					},
 				},
-				"uid": "net.minecraftforge",
+				"uid":     "net.minecraftforge",
 				"version": "47.4.0",
 			},
 		},
@@ -1074,7 +1505,6 @@ func installForgeForInstance(instDir, javaBin string) error {
 	return nil
 }
 
-
 // -------------------- Modpack Version Checking --------------------
 
 // PackConfig represents the structure of a pack.toml file
@@ -1083,12 +1513,12 @@ type PackConfig struct {
 }
 
 // fetchRemotePackVersion fetches the remote pack.toml and extracts the version
-func fetchRemotePackVersion() (string, error) {
-	req, err := http.NewRequest("GET", PACK_URL, nil)
+func fetchRemotePackVersion(packURL string) (string, error) {
+	req, err := http.NewRequest("GET", packURL, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "WinterPack/1.0")
+	req.Header.Set("User-Agent", "TheBoys/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 
@@ -1099,7 +1529,7 @@ func fetchRemotePackVersion() (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, PACK_URL)
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, packURL)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -1120,12 +1550,12 @@ func fetchRemotePackVersion() (string, error) {
 }
 
 // getLocalPackVersion gets the version from our local version tracking file
-func getLocalPackVersion(instDir string) (string, error) {
-	versionFilePath := filepath.Join(instDir, ".winterpack-version")
+func getLocalPackVersion(mp Modpack, instDir string) (string, error) {
+	versionFilePath := filepath.Join(instDir, versionFileNameFor(mp))
 
 	// Check if our version file exists
 	if !exists(versionFilePath) {
-		logf("Debug: WinterPack version file not found at %s", versionFilePath)
+		logf("Debug: %s version file not found at %s", modpackLabel(mp), versionFilePath)
 		return "", nil // No version file exists
 	}
 
@@ -1135,61 +1565,64 @@ func getLocalPackVersion(instDir string) (string, error) {
 	}
 
 	version := strings.TrimSpace(string(body))
-	logf("Debug: Found local WinterPack version %s at %s", version, versionFilePath)
+	logf("Debug: Found local %s version %s at %s", modpackLabel(mp), version, versionFilePath)
 	return version, nil
 }
 
 // saveLocalVersion saves the current modpack version to our tracking file
-func saveLocalVersion(instDir, version string) error {
-	versionFilePath := filepath.Join(instDir, ".winterpack-version")
+func saveLocalVersion(mp Modpack, instDir, version string) error {
+	versionFilePath := filepath.Join(instDir, versionFileNameFor(mp))
 
 	if err := os.WriteFile(versionFilePath, []byte(version+"\n"), 0644); err != nil {
 		return fmt.Errorf("failed to save local version: %w", err)
 	}
 
-	logf("Debug: Saved local WinterPack version %s to %s", version, versionFilePath)
+	logf("Debug: Saved local %s version %s to %s", modpackLabel(mp), version, versionFilePath)
 	return nil
 }
 
 // checkModpackUpdate checks if there's a modpack update available
-func checkModpackUpdate(instDir string) (bool, string, string, error) {
-	remoteVersion, err := fetchRemotePackVersion()
+func checkModpackUpdate(modpack Modpack, instDir string) (bool, string, string, error) {
+	remoteVersion, err := fetchRemotePackVersion(modpack.PackURL)
 	if err != nil {
 		return false, "", "", fmt.Errorf("failed to fetch remote modpack version: %w", err)
 	}
 
-	localVersion, err := getLocalPackVersion(instDir)
+	localVersion, err := getLocalPackVersion(modpack, instDir)
 	if err != nil {
 		return false, "", "", fmt.Errorf("failed to get local modpack version: %w", err)
 	}
 
+	packName := modpackLabel(modpack)
+
 	// If no local version exists, we need to install
 	if localVersion == "" {
-		logf("No local modpack found, will install version %s", remoteVersion)
+		logf("No local %s found, will install version %s", packName, remoteVersion)
 		return true, "", remoteVersion, nil
 	}
 
 	// Compare versions
 	if localVersion != remoteVersion {
-		logf("Modpack update available: %s → %s", localVersion, remoteVersion)
+		logf("%s update available: %s → %s", packName, localVersion, remoteVersion)
 		return true, localVersion, remoteVersion, nil
 	}
 
-	logf("Modpack is up to date (%s)", localVersion)
+	logf("%s is up to date (%s)", packName, localVersion)
 	return false, localVersion, remoteVersion, nil
 }
 
 // -------------------- Modpack Backup & Restore --------------------
 
 // createModpackBackup creates a backup of the current modpack before updating
-func createModpackBackup(mcDir string) (string, error) {
+func createModpackBackup(mp Modpack, mcDir string) (string, error) {
+	packName := modpackLabel(mp)
 	// Clean up old backups (keep only the 3 most recent)
-	if err := cleanupOldBackups(mcDir, 3); err != nil {
-		logf("Warning: Failed to cleanup old backups: %v", err)
+	if err := cleanupOldBackups(mp, mcDir, 3); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to clean old backups: %v", err)))
 	}
 
 	timestamp := time.Now().Format("2006-01-02-15-04-05")
-	backupName := fmt.Sprintf("winterpack-backup-%s", timestamp)
+	backupName := backupPrefixFor(mp) + timestamp
 	rootDir := filepath.Dir(filepath.Dir(filepath.Dir(mcDir)))
 	backupPath := filepath.Join(rootDir, "util", "backups", backupName)
 
@@ -1201,7 +1634,7 @@ func createModpackBackup(mcDir string) (string, error) {
 	// Directories to backup
 	dirsToBackup := []string{"mods", "config", "resourcepacks", "shaderpacks"}
 
-	logf("Creating backup at %s...", backupName)
+	logf("%s", stepLine(fmt.Sprintf("Creating backup %s for %s", backupName, packName)))
 
 	var backedUpItems []string
 	for _, dir := range dirsToBackup {
@@ -1210,7 +1643,7 @@ func createModpackBackup(mcDir string) (string, error) {
 
 		if exists(srcPath) {
 			if err := copyDir(srcPath, dstPath); err != nil {
-				logf("Warning: Failed to backup %s: %v", dir, err)
+				logf("%s", warnLine(fmt.Sprintf("Failed to backup %s: %v", dir, err)))
 			} else {
 				backedUpItems = append(backedUpItems, dir)
 			}
@@ -1218,32 +1651,34 @@ func createModpackBackup(mcDir string) (string, error) {
 	}
 
 	// Backup our version file if it exists
-	versionFileSrc := filepath.Join(filepath.Dir(mcDir), ".winterpack-version")
-	versionFileDst := filepath.Join(backupPath, ".winterpack-version")
+	versionFile := versionFileNameFor(mp)
+	versionFileSrc := filepath.Join(filepath.Dir(mcDir), versionFile)
+	versionFileDst := filepath.Join(backupPath, versionFile)
 	if exists(versionFileSrc) {
 		if err := copyFile(versionFileSrc, versionFileDst); err != nil {
-			logf("Warning: Failed to backup version file: %v", err)
+			logf("%s", warnLine(fmt.Sprintf("Failed to backup version file: %v", err)))
 		} else {
-			backedUpItems = append(backedUpItems, ".winterpack-version")
+			backedUpItems = append(backedUpItems, versionFile)
 		}
 	}
 
 	if len(backedUpItems) == 0 {
-		logf("No modpack files found to backup")
+		logf("%s", warnLine(fmt.Sprintf("No files found to backup for %s", packName)))
 		return "", nil
 	}
 
-	logf("Backup created: %s (items: %s)", backupName, strings.Join(backedUpItems, ", "))
+	logf("%s", successLine(fmt.Sprintf("Backup created for %s: %s (items: %s)", packName, backupName, strings.Join(backedUpItems, ", "))))
 	return backupPath, nil
 }
 
 // restoreModpackBackup restores from a backup if the update fails
-func restoreModpackBackup(backupPath, mcDir string) error {
+func restoreModpackBackup(mp Modpack, backupPath, mcDir string) error {
 	if backupPath == "" || !exists(backupPath) {
 		return errors.New("no backup available to restore")
 	}
 
-	logf("Restoring from backup...")
+	packName := modpackLabel(mp)
+	logf("%s", stepLine(fmt.Sprintf("Restoring %s from backup", packName)))
 
 	// Remove current modpack directories
 	dirsToRemove := []string{"mods", "config", "resourcepacks", "shaderpacks"}
@@ -1251,7 +1686,7 @@ func restoreModpackBackup(backupPath, mcDir string) error {
 		dirPath := filepath.Join(mcDir, dir)
 		if exists(dirPath) {
 			if err := os.RemoveAll(dirPath); err != nil {
-				logf("Warning: Failed to remove %s during restore: %v", dir, err)
+				logf("%s", warnLine(fmt.Sprintf("Failed to remove %s during restore: %v", dir, err)))
 			}
 		}
 	}
@@ -1266,7 +1701,7 @@ func restoreModpackBackup(backupPath, mcDir string) error {
 
 		if exists(srcPath) {
 			if err := copyDir(srcPath, dstPath); err != nil {
-				logf("Warning: Failed to restore %s: %v", dir, err)
+				logf("%s", warnLine(fmt.Sprintf("Failed to restore %s: %v", dir, err)))
 			} else {
 				restoredItems = append(restoredItems, dir)
 			}
@@ -1274,13 +1709,14 @@ func restoreModpackBackup(backupPath, mcDir string) error {
 	}
 
 	// Restore our version file
-	versionFileSrc := filepath.Join(backupPath, ".winterpack-version")
-	versionFileDst := filepath.Join(filepath.Dir(mcDir), ".winterpack-version")
+	versionFile := versionFileNameFor(mp)
+	versionFileSrc := filepath.Join(backupPath, versionFile)
+	versionFileDst := filepath.Join(filepath.Dir(mcDir), versionFile)
 	if exists(versionFileSrc) {
 		if err := copyFile(versionFileSrc, versionFileDst); err != nil {
-			logf("Warning: Failed to restore version file: %v", err)
+			logf("%s", warnLine(fmt.Sprintf("Failed to restore version file: %v", err)))
 		} else {
-			restoredItems = append(restoredItems, ".winterpack-version")
+			restoredItems = append(restoredItems, versionFile)
 		}
 	}
 
@@ -1288,7 +1724,7 @@ func restoreModpackBackup(backupPath, mcDir string) error {
 		return errors.New("nothing to restore from backup")
 	}
 
-	logf("Restored: %s", strings.Join(restoredItems, ", "))
+	logf("%s", successLine(fmt.Sprintf("Restored %s: %s", packName, strings.Join(restoredItems, ", "))))
 	return nil
 }
 
@@ -1330,7 +1766,8 @@ func copyFile(src, dst string) error {
 }
 
 // cleanupOldBackups removes old backups, keeping only the most recent ones
-func cleanupOldBackups(mcDir string, keepCount int) error {
+func cleanupOldBackups(mp Modpack, mcDir string, keepCount int) error {
+	packName := modpackLabel(mp)
 	rootDir := filepath.Dir(filepath.Dir(filepath.Dir(mcDir)))
 	backupsDir := filepath.Join(rootDir, "util", "backups")
 	if !exists(backupsDir) {
@@ -1343,8 +1780,9 @@ func cleanupOldBackups(mcDir string, keepCount int) error {
 	}
 
 	var backupDirs []os.DirEntry
+	prefix := backupPrefixFor(mp)
 	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), "winterpack-backup-") {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
 			backupDirs = append(backupDirs, entry)
 		}
 	}
@@ -1363,9 +1801,9 @@ func cleanupOldBackups(mcDir string, keepCount int) error {
 	for _, entry := range toRemove {
 		removePath := filepath.Join(backupsDir, entry.Name())
 		if err := os.RemoveAll(removePath); err != nil {
-			logf("Warning: Failed to remove old backup %s: %v", entry.Name(), err)
+			logf("%s", warnLine(fmt.Sprintf("Failed to remove old %s backup %s: %v", packName, entry.Name(), err)))
 		} else {
-			logf("Removed old backup: %s", entry.Name())
+			logf("%s", successLine(fmt.Sprintf("Removed old %s backup: %s", packName, entry.Name())))
 		}
 	}
 
@@ -1653,7 +2091,7 @@ func tryDirectDownload(downloadURL, destPath string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "WinterPack/1.0")
+	req.Header.Set("User-Agent", "TheBoys/1.0")
 
 	client := &http.Client{
 		Timeout: 30 * time.Second,
@@ -1702,7 +2140,7 @@ func downloadCurseForgeFromPage(pageURL, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "WinterPack/1.0")
+	req.Header.Set("User-Agent", "TheBoys/1.0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -1794,14 +2232,14 @@ func parsePackwizManuals(s string) []manualItem {
 
 				// Filter out non-mod entries
 				if strings.Contains(name, "Current version") ||
-				   strings.Contains(name, "at link.infra") ||
-				   strings.Contains(name, "java.base") ||
-				   len(name) == 0 {
+					strings.Contains(name, "at link.infra") ||
+					strings.Contains(name, "java.base") ||
+					len(name) == 0 {
 					continue
 				}
 
 				// Look for the corresponding download URL in the next few lines
-				for j := i + 1; j < i + 10 && j < len(lines); j++ {
+				for j := i + 1; j < i+10 && j < len(lines); j++ {
 					nextLine := strings.TrimSpace(lines[j])
 					if strings.Contains(nextLine, "Please go to ") && strings.Contains(nextLine, "curseforge.com") {
 						// Extract URL and path
@@ -1864,7 +2302,7 @@ func assistManualFromPackwiz(items []manualItem) {
 			logf(" - %s\n   %s\n   Save as: %s", it.Name, it.URL, it.Path)
 		}
 
-		if yesNoBox("Some downloads failed. Open remaining pages in browser?", "WinterPack – Download Failed") == 6 {
+		if yesNoBox("Some downloads failed. Open remaining pages in browser?", launcherName+" - Download Failed") == 6 {
 			for _, it := range failedItems {
 				_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", it.URL).Start()
 			}
@@ -1890,7 +2328,7 @@ func assistManualFromPackwiz(items []manualItem) {
 				for _, it := range failedItems {
 					logf(" - %s -> %s", it.Name, it.Path)
 				}
-				if yesNoBox("Open the pages again?", "WinterPack") == 6 {
+				if yesNoBox("Open the pages again?", launcherName) == 6 {
 					for _, it := range failedItems {
 						_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", it.URL).Start()
 					}
