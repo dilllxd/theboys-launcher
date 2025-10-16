@@ -4,8 +4,7 @@
     "displayName": "WinterPack",
     "packUrl": "https://raw.githubusercontent.com/dilllxd/winterpack-modpack/main/pack.toml",
     "instanceName": "WinterPack",
-    "description": "Official WinterPack release.",
-    "default": true
+    "description": "Official WinterPack release."
   },
   {
     "id": "winterpack-dev",
