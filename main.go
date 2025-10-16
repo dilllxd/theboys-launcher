@@ -961,6 +961,7 @@ move /Y %s %s >nul
 echo Update applied successfully! Starting launcher...
 start "" %s
 del "%%~f0"
+exit
 `, launcherName, launcherShortName, tag,
 		filepath.Base(exePath), filepath.Base(tmpNew),
 		filepath.Base(exePath), filepath.Base(exePath),
