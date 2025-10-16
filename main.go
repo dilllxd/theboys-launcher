@@ -344,6 +344,12 @@ func main() {
 	logf("%s", stepLine(fmt.Sprintf("Session started %s", time.Now().Format(time.RFC1123))))
 	logf("%s", stepLine(fmt.Sprintf("Version: %s", version)))
 
+	// Check for launcher updates immediately on startup
+	logf("%s", sectionLine("Launcher Update Check"))
+	if err := selfUpdate(root, exePath); err != nil {
+		logf("Update check failed: %v", err)
+	}
+
 	modpacks := loadModpacks(root)
 	if len(modpacks) == 0 {
 		fail(errors.New("no modpacks configured"))
@@ -411,12 +417,17 @@ func main() {
 
 func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.Process) {
 	packName := modpackLabel(modpack)
-	// 1) Self-update (best-effort; skips downgrades)
-	if err := selfUpdate(root, exePath); err != nil {
-		logf("Update check failed: %v", err)
-	}
+	// Note: Update check already happened at startup in main()
 
-	// 2) Ensure prerequisites — organize directories cleanly
+	// 0) Read pack.toml to get correct Minecraft and modloader versions
+	logf("%s", stepLine("Reading modpack configuration"))
+	packInfo, err := fetchPackInfo(modpack.PackURL)
+	if err != nil {
+		fail(fmt.Errorf("failed to read modpack configuration: %w", err))
+	}
+	logf("%s", successLine(fmt.Sprintf("Detected: Minecraft %s with %s %s", packInfo.Minecraft, packInfo.ModLoader, packInfo.LoaderVersion)))
+
+	// 1) Ensure prerequisites — organize directories cleanly
 	prismDir := filepath.Join(root, "prism")
 	utilDir := filepath.Join(root, "util")
 	jreDir := filepath.Join(utilDir, "jre21")
@@ -492,8 +503,8 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 
 	needsInstanceCreation := !exists(instanceConfigFile) || !exists(mmcPackFile)
 	if needsInstanceCreation {
-		logf("%s", stepLine("Creating Prism instance structure with Forge 1.20.1"))
-		if err := createMultiMCInstance(modpack, instDir, javaBin); err != nil {
+		logf("%s", stepLine(fmt.Sprintf("Creating Prism instance structure with %s %s", packInfo.ModLoader, packInfo.LoaderVersion)))
+		if err := createMultiMCInstance(modpack, packInfo, instDir, javaBin); err != nil {
 			fail(fmt.Errorf("failed to create MultiMC instance: %w", err))
 		}
 		logf("%s", successLine("Instance structure ready"))
@@ -501,17 +512,24 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		logf("%s", successLine("Instance structure already present"))
 	}
 
-	forgeJar := filepath.Join(mcDir, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.4.0", "forge-1.20.1-47.4.0-universal.jar")
-	forgeInstalled := exists(forgeJar) && exists(mmcPackFile)
-
-	if !forgeInstalled {
-		logf("%s", stepLine("Installing Forge 1.20.1"))
-		if err := installForgeForInstance(instDir, javaBin); err != nil {
-			fail(fmt.Errorf("failed to install Forge: %w", err))
-		}
-		logf("%s", successLine("Forge ready"))
+	// Check if the modloader is already installed
+	var modloaderInstalled bool
+	if packInfo.ModLoader == "forge" {
+		forgeJar := filepath.Join(mcDir, "libraries", "net", "minecraftforge", "forge", fmt.Sprintf("%s-%s", packInfo.Minecraft, packInfo.LoaderVersion), fmt.Sprintf("forge-%s-%s-universal.jar", packInfo.Minecraft, packInfo.LoaderVersion))
+		modloaderInstalled = exists(forgeJar) && exists(mmcPackFile)
 	} else {
-		logf("%s", successLine("Forge already installed"))
+		// For other modloaders, check mmc-pack.json exists
+		modloaderInstalled = exists(mmcPackFile)
+	}
+
+	if !modloaderInstalled {
+		logf("%s", stepLine(fmt.Sprintf("Installing %s %s", packInfo.ModLoader, packInfo.LoaderVersion)))
+		if err := installModLoaderForInstance(instDir, javaBin, packInfo); err != nil {
+			fail(fmt.Errorf("failed to install %s: %w", packInfo.ModLoader, err))
+		}
+		logf("%s", successLine(fmt.Sprintf("%s ready", strings.Title(packInfo.ModLoader))))
+	} else {
+		logf("%s", successLine(fmt.Sprintf("%s already installed", strings.Title(packInfo.ModLoader))))
 	}
 
 	// 6) Check for modpack updates
@@ -903,24 +921,48 @@ func selfUpdate(root, exePath string) error {
 		// remote > local → proceed
 	}
 
-	logf("New %s available: %s (current %s). Updating…", launcherShortName, tag, version)
+	logf("New %s available: %s (current %s).", launcherShortName, tag, version)
+	logf("%s", stepLine("Downloading update..."))
 
 	tmpNew := exePath + ".new"
 	if err := downloadTo(assetURL, tmpNew, 0755); err != nil {
 		return err
 	}
 
+	logf("%s", successLine("Update downloaded successfully"))
+	logf("%s", stepLine("The launcher will now restart to apply the update"))
+	logf("Please wait while the launcher restarts with the new version...")
+	logf("")
+	logf("Restarting in 10 seconds...")
+
+	// Give users time to read the message before restarting
+	time.Sleep(10 * time.Second)
+
 	// Windows can't replace a running EXE. Use a tiny batch to swap.
 	updater := filepath.Join(root, "update_launcher.bat")
 	up := fmt.Sprintf(`@echo off
+title Updating %s...
+echo.
+echo ====================================
+echo   Updating %s to %s
+echo ====================================
+echo.
+echo Downloading update: COMPLETE
+echo Applying update: IN PROGRESS...
+echo.
+echo Please wait while the launcher restarts...
+echo.
+
 set EXE="%s"
 set NEW="%s"
 :loop
 tasklist /FI "IMAGENAME eq %s" | find /I "%s" >nul && (timeout /t 1 >nul & goto loop)
 move /Y %s %s >nul
+echo Update applied successfully! Starting launcher...
 start "" %s
 del "%%~f0"
-`, filepath.Base(exePath), filepath.Base(tmpNew),
+`, launcherName, launcherShortName, tag,
+		filepath.Base(exePath), filepath.Base(tmpNew),
 		filepath.Base(exePath), filepath.Base(exePath),
 		filepath.Base(tmpNew), filepath.Base(exePath),
 		filepath.Base(exePath))
@@ -1328,7 +1370,7 @@ func fetchPackwizBootstrapURL() (string, error) {
 
 // -------------------- MultiMC Instance Creation --------------------
 
-func createMultiMCInstance(modpack Modpack, instDir, javaExe string) error {
+func createMultiMCInstance(modpack Modpack, packInfo *PackInfo, instDir, javaExe string) error {
 	minMB, maxMB := autoRAM()
 
 	// Create instance.cfg
@@ -1344,84 +1386,100 @@ func createMultiMCInstance(modpack Modpack, instDir, javaExe string) error {
 		"Notes=Managed by " + launcherName,
 	}
 
-	// Create mmc-pack.json with proper components including LWJGL 3
+	// Build components dynamically based on pack info
+	components := []interface{}{
+		map[string]interface{}{
+			"cachedName":     "LWJGL 3",
+			"cachedVersion":  "3.3.1",
+			"cachedVolatile": true,
+			"dependencyOnly": true,
+			"uid":            "org.lwjgl3",
+			"version":        "3.3.1",
+		},
+		map[string]interface{}{
+			"cachedName":    "Minecraft",
+			"cachedVersion": packInfo.Minecraft,
+			"cachedRequires": []interface{}{
+				map[string]interface{}{
+					"suggests": "3.3.1",
+					"uid":      "org.lwjgl3",
+				},
+			},
+			"important": true,
+			"uid":       "net.minecraft",
+			"version":   packInfo.Minecraft,
+		},
+	}
+
+	// Add modloader component based on what's detected
+	var modloaderComponent map[string]interface{}
+	switch packInfo.ModLoader {
+	case "forge":
+		modloaderComponent = map[string]interface{}{
+			"cachedName":    "Forge",
+			"cachedVersion": packInfo.LoaderVersion,
+			"cachedRequires": []interface{}{
+				map[string]interface{}{
+					"equals": packInfo.Minecraft,
+					"uid":    "net.minecraft",
+				},
+			},
+			"uid":     "net.minecraftforge",
+			"version": packInfo.LoaderVersion,
+		}
+	case "fabric":
+		modloaderComponent = map[string]interface{}{
+			"cachedName":    "Fabric Loader",
+			"cachedVersion": packInfo.LoaderVersion,
+			"cachedRequires": []interface{}{
+				map[string]interface{}{
+					"equals": packInfo.Minecraft,
+					"uid":    "net.minecraft",
+				},
+			},
+			"uid":     "net.fabricmc.fabric-loader",
+			"version": packInfo.LoaderVersion,
+		}
+	case "quilt":
+		modloaderComponent = map[string]interface{}{
+			"cachedName":    "Quilt Loader",
+			"cachedVersion": packInfo.LoaderVersion,
+			"cachedRequires": []interface{}{
+				map[string]interface{}{
+					"equals": packInfo.Minecraft,
+					"uid":    "net.minecraft",
+				},
+			},
+			"uid":     "org.quiltmc.quilt-loader",
+			"version": packInfo.LoaderVersion,
+		}
+	case "neoforge":
+		modloaderComponent = map[string]interface{}{
+			"cachedName":    "NeoForge",
+			"cachedVersion": packInfo.LoaderVersion,
+			"cachedRequires": []interface{}{
+				map[string]interface{}{
+					"equals": packInfo.Minecraft,
+					"uid":    "net.minecraft",
+				},
+			},
+			"uid":     "net.neoforged.neoforge",
+			"version": packInfo.LoaderVersion,
+		}
+	}
+
+	components = append(components, modloaderComponent)
+
+	// Create mmc-pack.json with dynamic components
 	mmcPack := map[string]interface{}{
 		"formatVersion": 1,
-		"components": []interface{}{
-			map[string]interface{}{
-				"cachedName":     "LWJGL 3",
-				"cachedVersion":  "3.3.1",
-				"cachedVolatile": true,
-				"dependencyOnly": true,
-				"uid":            "org.lwjgl3",
-				"version":        "3.3.1",
-			},
-			map[string]interface{}{
-				"cachedName":    "Minecraft",
-				"cachedVersion": "1.20.1",
-				"cachedRequires": []interface{}{
-					map[string]interface{}{
-						"suggests": "3.3.1",
-						"uid":      "org.lwjgl3",
-					},
-				},
-				"important": true,
-				"uid":       "net.minecraft",
-				"version":   "1.20.1",
-			},
-			map[string]interface{}{
-				"cachedName":    "Forge",
-				"cachedVersion": "47.4.0", // Update to match working instance
-				"cachedRequires": []interface{}{
-					map[string]interface{}{
-						"equals": "1.20.1",
-						"uid":    "net.minecraft",
-					},
-				},
-				"uid":     "net.minecraftforge",
-				"version": "47.4.0",
-			},
-		},
+		"components": components,
 	}
 
 	// Create pack.json for MultiMC format with matching components
 	pack := map[string]interface{}{
 		"formatVersion": 3,
-		"components": []interface{}{
-			map[string]interface{}{
-				"cachedName":     "LWJGL 3",
-				"cachedVersion":  "3.3.1",
-				"cachedVolatile": true,
-				"dependencyOnly": true,
-				"uid":            "org.lwjgl3",
-				"version":        "3.3.1",
-			},
-			map[string]interface{}{
-				"cachedName":    "Minecraft",
-				"cachedVersion": "1.20.1",
-				"cachedRequires": []interface{}{
-					map[string]interface{}{
-						"suggests": "3.3.1",
-						"uid":      "org.lwjgl3",
-					},
-				},
-				"important": true,
-				"uid":       "net.minecraft",
-				"version":   "1.20.1",
-			},
-			map[string]interface{}{
-				"cachedName":    "Forge",
-				"cachedVersion": "47.4.0", // Update to match working instance
-				"cachedRequires": []interface{}{
-					map[string]interface{}{
-						"equals": "1.20.1",
-						"uid":    "net.minecraft",
-					},
-				},
-				"uid":     "net.minecraftforge",
-				"version": "47.4.0",
-			},
-		},
+		"components": components,
 	}
 
 	// Write all the required MultiMC files (only if they don't exist)
@@ -1458,11 +1516,26 @@ func createMultiMCInstance(modpack Modpack, instDir, javaExe string) error {
 	return nil
 }
 
-func installForgeForInstance(instDir, javaBin string) error {
+func installModLoaderForInstance(instDir, javaBin string, packInfo *PackInfo) error {
+	switch packInfo.ModLoader {
+	case "forge":
+		return installForgeForInstance(instDir, javaBin, packInfo)
+	case "fabric":
+		return installFabricForInstance(instDir, javaBin, packInfo)
+	case "quilt":
+		return installQuiltForInstance(instDir, javaBin, packInfo)
+	case "neoforge":
+		return installNeoForgeForInstance(instDir, javaBin, packInfo)
+	default:
+		return fmt.Errorf("unsupported modloader: %s", packInfo.ModLoader)
+	}
+}
+
+func installForgeForInstance(instDir, javaBin string, packInfo *PackInfo) error {
 	mcDir := filepath.Join(instDir, "minecraft") // Use minecraft not .minecraft
 
 	// Check for Forge installation in MultiMC/Prism instance structure
-	forgeJar := filepath.Join(mcDir, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.4.0", "forge-1.20.1-47.4.0-universal.jar")
+	forgeJar := filepath.Join(mcDir, "libraries", "net", "minecraftforge", "forge", fmt.Sprintf("%s-%s", packInfo.Minecraft, packInfo.LoaderVersion), fmt.Sprintf("forge-%s-%s-universal.jar", packInfo.Minecraft, packInfo.LoaderVersion))
 	mmcPackFile := filepath.Join(instDir, "mmc-pack.json")
 
 	// Check if Forge is already installed
@@ -1472,7 +1545,7 @@ func installForgeForInstance(instDir, javaBin string) error {
 	}
 
 	// Download Forge installer
-	forgeURL := "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.0/forge-1.20.1-47.4.0-installer.jar"
+	forgeURL := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s-%s/forge-%s-%s-installer.jar", packInfo.Minecraft, packInfo.LoaderVersion, packInfo.Minecraft, packInfo.LoaderVersion)
 	utilDir := filepath.Join(filepath.Dir(instDir), "..", "..", "util")
 	installerPath := filepath.Join(utilDir, "forge-installer.jar")
 
@@ -1505,11 +1578,198 @@ func installForgeForInstance(instDir, javaBin string) error {
 	return nil
 }
 
+func installFabricForInstance(instDir, javaBin string, packInfo *PackInfo) error {
+	mcDir := filepath.Join(instDir, "minecraft")
+
+	// Download Fabric installer
+	fabricURL := fmt.Sprintf("https://maven.fabricmc.net/net/fabricmc/fabric-installer/%s/fabric-installer-%s.jar", packInfo.LoaderVersion, packInfo.LoaderVersion)
+	utilDir := filepath.Join(filepath.Dir(instDir), "..", "..", "util")
+	installerPath := filepath.Join(utilDir, "fabric-installer.jar")
+
+	logf("Downloading Fabric installer...")
+	if err := downloadTo(fabricURL, installerPath, 0644); err != nil {
+		return fmt.Errorf("failed to download Fabric installer: %w", err)
+	}
+
+	// Run Fabric installer
+	logf("Installing Fabric Loader...")
+	fmt.Fprintf(out, "Running Fabric installer... (this may take a few minutes)\n")
+
+	cmd := exec.Command(javaBin, "-jar", installerPath, "client", "-dir", mcDir, "-mcversion", packInfo.Minecraft)
+	cmd.Env = append(os.Environ(),
+		"JAVA_HOME="+filepath.Dir(filepath.Dir(javaBin)),
+		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Fabric installer failed: %w\nOutput: %s", err, string(output))
+	}
+
+	fmt.Fprintf(out, "✓ Fabric Loader installation completed successfully\n")
+
+	// Clean up installer
+	_ = os.Remove(installerPath)
+
+	return nil
+}
+
+func installQuiltForInstance(instDir, javaBin string, packInfo *PackInfo) error {
+	mcDir := filepath.Join(instDir, "minecraft")
+
+	// Download Quilt installer
+	quiltURL := fmt.Sprintf("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/%s/quilt-installer-%s.jar", packInfo.LoaderVersion, packInfo.LoaderVersion)
+	utilDir := filepath.Join(filepath.Dir(instDir), "..", "..", "util")
+	installerPath := filepath.Join(utilDir, "quilt-installer.jar")
+
+	logf("Downloading Quilt installer...")
+	if err := downloadTo(quiltURL, installerPath, 0644); err != nil {
+		return fmt.Errorf("failed to download Quilt installer: %w", err)
+	}
+
+	// Run Quilt installer
+	logf("Installing Quilt Loader...")
+	fmt.Fprintf(out, "Running Quilt installer... (this may take a few minutes)\n")
+
+	cmd := exec.Command(javaBin, "-jar", installerPath, "install", "client", "--dir", mcDir, "--minecraft-version", packInfo.Minecraft)
+	cmd.Env = append(os.Environ(),
+		"JAVA_HOME="+filepath.Dir(filepath.Dir(javaBin)),
+		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Quilt installer failed: %w\nOutput: %s", err, string(output))
+	}
+
+	fmt.Fprintf(out, "✓ Quilt Loader installation completed successfully\n")
+
+	// Clean up installer
+	_ = os.Remove(installerPath)
+
+	return nil
+}
+
+func installNeoForgeForInstance(instDir, javaBin string, packInfo *PackInfo) error {
+	mcDir := filepath.Join(instDir, "minecraft")
+
+	// Download NeoForge installer
+	neoforgeURL := fmt.Sprintf("https://maven.neoforged.net/net/neoforged/neoforge/%s/neoforge-%s-installer.jar", packInfo.LoaderVersion, packInfo.LoaderVersion)
+	utilDir := filepath.Join(filepath.Dir(instDir), "..", "..", "util")
+	installerPath := filepath.Join(utilDir, "neoforge-installer.jar")
+
+	logf("Downloading NeoForge installer...")
+	if err := downloadTo(neoforgeURL, installerPath, 0644); err != nil {
+		return fmt.Errorf("failed to download NeoForge installer: %w", err)
+	}
+
+	// Run NeoForge installer
+	logf("Installing NeoForge...")
+	fmt.Fprintf(out, "Running NeoForge installer... (this may take a few minutes)\n")
+
+	cmd := exec.Command(javaBin, "-jar", installerPath, "--install-client", "--install-server")
+	cmd.Dir = mcDir
+	cmd.Env = append(os.Environ(),
+		"JAVA_HOME="+filepath.Dir(filepath.Dir(javaBin)),
+		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("NeoForge installer failed: %w\nOutput: %s", err, string(output))
+	}
+
+	fmt.Fprintf(out, "✓ NeoForge installation completed successfully\n")
+
+	// Clean up installer
+	_ = os.Remove(installerPath)
+
+	return nil
+}
+
 // -------------------- Modpack Version Checking --------------------
 
 // PackConfig represents the structure of a pack.toml file
 type PackConfig struct {
 	Version string `toml:"version"`
+	Versions PackVersions `toml:"versions"`
+}
+
+// PackVersions represents the [versions] section from pack.toml
+type PackVersions struct {
+	Minecraft string `toml:"minecraft"`
+	Forge     string `toml:"forge"`
+	Fabric    string `toml:"fabric"`
+	Quilt     string `toml:"quilt"`
+	NeoForge  string `toml:"neoforge"`
+}
+
+// PackInfo holds the complete modpack information from pack.toml
+type PackInfo struct {
+	Version     string
+	Minecraft   string
+	ModLoader   string // "forge", "fabric", "quilt", "neoforge"
+	LoaderVersion string
+}
+
+// fetchPackInfo reads the remote pack.toml and extracts all version information
+func fetchPackInfo(packURL string) (*PackInfo, error) {
+	req, err := http.NewRequest("GET", packURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, packURL)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var packConfig PackConfig
+	if err := toml.Unmarshal(body, &packConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse pack.toml: %w", err)
+	}
+
+	if packConfig.Version == "" {
+		return nil, errors.New("no version found in pack.toml")
+	}
+
+	// Determine modloader and versions
+	info := &PackInfo{
+		Version:   packConfig.Version,
+		Minecraft: packConfig.Versions.Minecraft,
+	}
+
+	// Determine which modloader is being used
+	if packConfig.Versions.Forge != "" {
+		info.ModLoader = "forge"
+		info.LoaderVersion = packConfig.Versions.Forge
+	} else if packConfig.Versions.Fabric != "" {
+		info.ModLoader = "fabric"
+		info.LoaderVersion = packConfig.Versions.Fabric
+	} else if packConfig.Versions.Quilt != "" {
+		info.ModLoader = "quilt"
+		info.LoaderVersion = packConfig.Versions.Quilt
+	} else if packConfig.Versions.NeoForge != "" {
+		info.ModLoader = "neoforge"
+		info.LoaderVersion = packConfig.Versions.NeoForge
+	} else {
+		return nil, errors.New("no supported modloader found in pack.toml [versions] section")
+	}
+
+	return info, nil
 }
 
 // fetchRemotePackVersion fetches the remote pack.toml and extracts the version
