@@ -153,9 +153,12 @@ func backupPrefixFor(mp Modpack) string    { return slugifyID(mp.ID) + "-backup-
 // -------------------- MAIN --------------------
 
 type launcherOptions struct {
-	useCLI       bool
-	modpackID    string
-	listModpacks bool
+	useCLI            bool
+	modpackID         string
+	listModpacks      bool
+	cleanupAfterUpdate bool
+	cleanupOldExe     string
+	cleanupNewExe     string
 }
 
 func parseOptions() launcherOptions {
@@ -169,6 +172,15 @@ func parseOptions() launcherOptions {
 	flag.BoolVar(&opts.useCLI, "cli", false, "Run the launcher in plain console mode (skip the interactive TUI).")
 	flag.StringVar(&opts.modpackID, "modpack", "", "Select the modpack to launch by ID.")
 	flag.BoolVar(&opts.listModpacks, "list-modpacks", false, "List available modpacks and exit.")
+
+	// Handle cleanup after update (internal flag, not shown in help)
+	if len(os.Args) >= 2 && os.Args[1] == "--cleanup-after-update" && len(os.Args) >= 4 {
+		opts.cleanupAfterUpdate = true
+		opts.cleanupOldExe = os.Args[2]
+		opts.cleanupNewExe = os.Args[3]
+		return opts
+	}
+
 	flag.Parse()
 
 	return opts
@@ -327,6 +339,12 @@ func main() {
 	runtime.LockOSThread()
 
 	opts := parseOptions()
+
+	if opts.cleanupAfterUpdate {
+		// This is a cleanup run after an update
+		performUpdateCleanup(opts.cleanupOldExe, opts.cleanupNewExe)
+		return
+	}
 
 	if runtime.GOOS != "windows" {
 		msgBox("Windows only", launcherShortName, 0)
@@ -938,43 +956,49 @@ func selfUpdate(root, exePath string) error {
 	// Give users time to read the message before restarting
 	time.Sleep(10 * time.Second)
 
-	// Windows can't replace a running EXE. Use a tiny batch to swap.
-	updater := filepath.Join(root, "update_launcher.bat")
-	up := fmt.Sprintf(`@echo off
-title Updating %s...
-echo.
-echo ====================================
-echo   Updating %s to %s
-echo ====================================
-echo.
-echo Downloading update: COMPLETE
-echo Applying update: IN PROGRESS...
-echo.
-echo Please wait while the launcher restarts...
-echo.
-
-set EXE="%s"
-set NEW="%s"
-:loop
-tasklist /FI "IMAGENAME eq %s" | find /I "%s" >nul && (timeout /t 1 >nul & goto loop)
-move /Y %s %s >nul
-echo Update applied successfully! Starting launcher...
-start "" %s
-del "%%~f0"
-exit
-`, launcherName, launcherShortName, tag,
-		filepath.Base(exePath), filepath.Base(tmpNew),
-		filepath.Base(exePath), filepath.Base(exePath),
-		filepath.Base(tmpNew), filepath.Base(exePath),
-		filepath.Base(exePath))
-	if err := os.WriteFile(updater, []byte(up), 0644); err != nil {
-		return err
+	// Use a pure Go approach to replace the executable and restart
+	if err := replaceAndRestart(exePath, tmpNew); err != nil {
+		return fmt.Errorf("failed to replace launcher: %w", err)
 	}
-	cmd := exec.Command("cmd", "/c", "start", "/min", "", filepath.Base(updater))
-	cmd.Dir = root
-	_ = cmd.Start()
+
+	// This shouldn't be reached if replaceAndRestart succeeds
 	os.Exit(0)
 	return nil
+}
+
+// replaceAndRestart replaces the current executable with the new one and launches it
+func replaceAndRestart(currentExe, newExe string) error {
+	// Start the new launcher from the .new file, passing it the paths to clean up
+	cmd := exec.Command(newExe, "--cleanup-after-update", currentExe, newExe)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	// Start the new process
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start new launcher: %w", err)
+	}
+
+	// Exit the current process
+	os.Exit(0)
+	return nil
+}
+
+// performUpdateCleanup handles the cleanup after an update
+func performUpdateCleanup(oldExe, newExe string) {
+	// Wait a moment for the old process to fully exit
+	time.Sleep(2 * time.Second)
+
+	// Try to replace the old executable with the new one
+	if err := os.Rename(newExe, oldExe); err != nil {
+		// If rename fails, try copy+delete approach
+		if copyErr := copyFile(newExe, oldExe); copyErr == nil {
+			os.Remove(newExe)
+		}
+	}
+
+	// Start the launcher normally after cleanup
+	exec.Command(oldExe).Start()
 }
 
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
