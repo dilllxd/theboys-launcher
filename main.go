@@ -54,15 +54,15 @@ import (
 // -------------------- CONFIG: EDIT THESE --------------------
 
 const (
-	// Self-update source (GitHub Releases of this EXE)
-	UPDATE_OWNER      = "dilllxd"
-	UPDATE_REPO       = "theboys-launcher"
-	UPDATE_ASSET      = "TheBoysLauncher.exe"
-	remoteModpacksURL = "https://raw.githubusercontent.com/dilllxd/theboys-launcher/refs/heads/main/modpacks.json"
-
 	launcherName      = "TheBoys Launcher"
 	launcherShortName = "TheBoys"
 	launcherExeName   = "TheBoysLauncher.exe"
+
+	// Self-update source (GitHub Releases of this EXE)
+	UPDATE_OWNER      = "dilllxd"
+	UPDATE_REPO       = "theboys-launcher"
+	UPDATE_ASSET      = launcherExeName
+	remoteModpacksURL = "https://raw.githubusercontent.com/dilllxd/theboys-launcher/refs/heads/main/modpacks.json"
 
 	envCacheBust = "THEBOYS_CACHEBUST"
 	envNoPause   = "THEBOYS_NOPAUSE"
