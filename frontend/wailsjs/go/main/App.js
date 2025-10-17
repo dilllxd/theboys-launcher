@@ -5,3 +5,59 @@
 export function Greet(arg1) {
     return window['go']['main']['App']['Greet'](arg1);
 }
+
+export function GetModpacks() {
+    return window['go']['main']['App']['GetModpacks']();
+}
+
+export function GetInstances() {
+    return window['go']['main']['App']['GetInstances']();
+}
+
+export function GetSettings() {
+    return window['go']['main']['App']['GetSettings']();
+}
+
+export function GetJavaInstallations() {
+    return window['go']['main']['App']['GetJavaInstallations']();
+}
+
+export function SelectModpack(arg1) {
+    return window['go']['main']['App']['SelectModpack'](arg1);
+}
+
+export function CreateInstance(arg1) {
+    return window['go']['main']['App']['CreateInstance'](arg1);
+}
+
+export function LaunchInstance(arg1) {
+    return window['go']['main']['App']['LaunchInstance'](arg1);
+}
+
+export function DeleteInstance(arg1) {
+    return window['go']['main']['App']['DeleteInstance'](arg1);
+}
+
+export function RefreshModpacks() {
+    return window['go']['main']['App']['RefreshModpacks']();
+}
+
+export function GetInstance(arg1) {
+    return window['go']['main']['App']['GetInstance'](arg1);
+}
+
+export function GetBestJavaInstallation(arg1) {
+    return window['go']['main']['App']['GetBestJavaInstallation'](arg1);
+}
+
+export function GetJavaVersionForMinecraft(arg1) {
+    return window['go']['main']['App']['GetJavaVersionForMinecraft'](arg1);
+}
+
+export function DownloadJava(arg1, arg2) {
+    return window['go']['main']['App']['DownloadJava'](arg1, arg2);
+}
+
+export function IsPrismInstalled() {
+    return window['go']['main']['App']['IsPrismInstalled']();
+}

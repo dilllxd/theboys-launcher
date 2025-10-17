@@ -21,6 +21,8 @@ type App struct {
 	modpackManager  *config.ModpackManager
 	launcherManager *launcher.ModpackManager
 	javaManager     *launcher.JavaManager
+	prismManager    *launcher.PrismManager
+	instanceManager *launcher.InstanceManager
 	platform        platform.Platform
 	logger          *logging.Logger
 }
@@ -45,6 +47,12 @@ func NewApp() *App {
 	// Initialize Java manager
 	javaManager := launcher.NewJavaManager(platformImpl, logger)
 
+	// Initialize Prism manager
+	prismManager := launcher.NewPrismManager(platformImpl, logger)
+
+	// Initialize instance manager
+	instanceManager := launcher.NewInstanceManager(platformImpl, logger, prismManager, javaManager)
+
 	// Initialize GUI
 	gui := gui.NewGUI(configManager, platformImpl, logger)
 
@@ -54,6 +62,8 @@ func NewApp() *App {
 		modpackManager:  modpackConfigManager,
 		launcherManager: launcherModpackManager,
 		javaManager:     javaManager,
+		prismManager:    prismManager,
+		instanceManager: instanceManager,
 		platform:        platformImpl,
 		logger:          logger,
 	}
@@ -177,4 +187,61 @@ func (a *App) GetJavaVersionForMinecraft(mcVersion string) string {
 // DownloadJava downloads and installs a Java runtime
 func (a *App) DownloadJava(javaVersion string, installDir string) error {
 	return a.javaManager.DownloadJava(javaVersion, installDir, nil)
+}
+
+// CreateInstance creates a new instance for a modpack
+func (a *App) CreateInstance(modpack types.Modpack) (*launcher.Instance, error) {
+	// Get directories
+	appDataDir, err := a.platform.GetAppDataDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get app data directory: %w", err)
+	}
+
+	prismDir := filepath.Join(appDataDir, "prism")
+	instancesDir := filepath.Join(appDataDir, "instances")
+
+	// Ensure Prism is installed
+	downloaded, err := a.prismManager.EnsurePrismInstallation(prismDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure Prism installation: %w", err)
+	}
+
+	if downloaded {
+		a.logger.Info("Prism Launcher was downloaded and installed")
+	}
+
+	// Create instance
+	instance, err := a.instanceManager.CreateInstance(modpack, prismDir, instancesDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create instance: %w", err)
+	}
+
+	return instance, nil
+}
+
+// GetInstances returns all instances
+func (a *App) GetInstances() ([]*launcher.Instance, error) {
+	return a.instanceManager.ListInstances()
+}
+
+// GetInstance retrieves an instance by ID
+func (a *App) GetInstance(instanceID string) (*launcher.Instance, error) {
+	return a.instanceManager.GetInstance(instanceID)
+}
+
+// LaunchInstance launches an instance using Prism Launcher
+func (a *App) LaunchInstance(instanceID string) error {
+	return a.instanceManager.LaunchInstance(instanceID)
+}
+
+// DeleteInstance removes an instance
+func (a *App) DeleteInstance(instanceID string) error {
+	return a.instanceManager.DeleteInstance(instanceID)
+}
+
+// IsPrismInstalled checks if Prism Launcher is installed
+func (a *App) IsPrismInstalled() bool {
+	appDataDir, _ := a.platform.GetAppDataDir()
+	prismDir := filepath.Join(appDataDir, "prism")
+	return a.prismManager.IsPrismInstalled(prismDir)
 }

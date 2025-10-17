@@ -10,7 +10,7 @@ import (
 	"theboys-launcher/internal/app"
 )
 
-//go:embed all:dist
+//go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
