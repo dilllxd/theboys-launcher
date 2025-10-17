@@ -96,7 +96,7 @@ export const OptimizedLoadingSpinner = memo<OptimizedLoadingSpinnerProps>(({
   size = 'md',
   variant = 'spinner',
   className,
-  'aria-label' = 'Loading...'
+  'aria-label': ariaLabel = 'Loading...'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
