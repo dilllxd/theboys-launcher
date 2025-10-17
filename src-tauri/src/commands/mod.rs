@@ -7,6 +7,7 @@ use crate::packwiz::packwiz_manager;
 use crate::java::{java_manager, JavaInstallation, JavaCompatibilityInfo};
 use crate::prism::{prism_manager, PrismInstallation, PrismUpdateInfo, PrismStatus};
 use crate::update::{UpdateManager, UpdateInfo, UpdateProgress, UpdateSettings, UpdateChannel};
+use crate::api_response::{ApiResponse, HealthResponse};
 use tauri::{State, AppHandle};
 use tauri_plugin_updater::UpdaterExt;
 use std::sync::{Arc, Mutex};
@@ -36,17 +37,22 @@ impl Default for AppState {
 
 /// Health check command to verify the launcher is working
 #[tauri::command]
-pub async fn health_check() -> LauncherResult<String> {
+pub async fn health_check() -> ApiResponse<HealthResponse> {
     info!("Health check requested");
-    Ok("OK".to_string())
+    let health_data = HealthResponse {
+        status: "healthy".to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    ApiResponse::success(health_data)
 }
 
 /// Get the current application version
 #[tauri::command]
-pub async fn get_app_version() -> LauncherResult<String> {
+pub async fn get_app_version() -> ApiResponse<String> {
     let version = env!("CARGO_PKG_VERSION");
     info!("Version requested: {}", version);
-    Ok(version.to_string())
+    ApiResponse::success(version.to_string())
 }
 
 /// Get current launcher settings

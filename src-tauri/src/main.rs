@@ -8,6 +8,7 @@ use tracing_subscriber;
 mod commands;
 mod models;
 mod utils;
+mod api_response;
 mod downloader;
 mod launcher;
 mod modpack;
