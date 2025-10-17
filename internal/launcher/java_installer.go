@@ -15,11 +15,11 @@ import (
 // JavaInstaller handles Java installation and extraction
 type JavaInstaller struct {
 	platform platform.Platform
-	logger   *logging.Logger
+	logger   logging.Logger
 }
 
 // NewJavaInstaller creates a new Java installer
-func NewJavaInstaller(platform platform.Platform, logger *logging.Logger) *JavaInstaller {
+func NewJavaInstaller(platform platform.Platform, logger logging.Logger) *JavaInstaller {
 	return &JavaInstaller{
 		platform: platform,
 		logger:   logger,

@@ -26,13 +26,13 @@ type ModpackManager struct {
 	configManager    *config.Manager
 	modpackManager   *config.ModpackManager
 	platform         platform.Platform
-	logger           *logging.Logger
+	logger           logging.Logger
 	remoteModpacksURL string
 	loadedModpacks   []types.Modpack
 }
 
 // NewModpackManager creates a new modpack manager
-func NewModpackManager(configManager *config.Manager, modpackManager *config.ModpackManager, platform platform.Platform, logger *logging.Logger) *ModpackManager {
+func NewModpackManager(configManager *config.Manager, modpackManager *config.ModpackManager, platform platform.Platform, logger logging.Logger) *ModpackManager {
 	return &ModpackManager{
 		configManager:     configManager,
 		modpackManager:    modpackManager,

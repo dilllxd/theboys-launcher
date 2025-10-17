@@ -23,8 +23,10 @@ type App struct {
 	javaManager     *launcher.JavaManager
 	prismManager    *launcher.PrismManager
 	instanceManager *launcher.InstanceManager
+	packwizManager  *launcher.PackwizManager
+	updater         *launcher.Updater
 	platform        platform.Platform
-	logger          *logging.Logger
+	logger          logging.Logger
 }
 
 // NewApp creates a new application instance
@@ -53,6 +55,12 @@ func NewApp() *App {
 	// Initialize instance manager
 	instanceManager := launcher.NewInstanceManager(platformImpl, logger, prismManager, javaManager)
 
+	// Initialize packwiz manager
+	packwizManager := launcher.NewPackwizManager(platformImpl, logger)
+
+	// Initialize updater
+	updater := launcher.NewUpdater(platformImpl, logger)
+
 	// Initialize GUI
 	gui := gui.NewGUI(configManager, platformImpl, logger)
 
@@ -64,6 +72,8 @@ func NewApp() *App {
 		javaManager:     javaManager,
 		prismManager:    prismManager,
 		instanceManager: instanceManager,
+		packwizManager:  packwizManager,
+		updater:         updater,
 		platform:        platformImpl,
 		logger:          logger,
 	}
@@ -244,4 +254,120 @@ func (a *App) IsPrismInstalled() bool {
 	appDataDir, _ := a.platform.GetAppDataDir()
 	prismDir := filepath.Join(appDataDir, "prism")
 	return a.prismManager.IsPrismInstalled(prismDir)
+}
+
+// InstallModpackWithPackwiz installs a modpack using packwiz
+func (a *App) InstallModpackWithPackwiz(instanceID string, progressCallback func(float64)) error {
+	// Get instance
+	instance, err := a.instanceManager.GetInstance(instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get instance: %w", err)
+	}
+
+	// Get Java installation
+	javaPath, err := a.javaManager.GetBestJavaPath(instance.Minecraft)
+	if err != nil {
+		return fmt.Errorf("failed to get Java path: %w", err)
+	}
+
+	// Install modpack with packwiz
+	return a.packwizManager.InstallModpack(instance.PackURL, instance.InstancePath, javaPath, progressCallback)
+}
+
+// CheckModpackUpdate checks if a modpack has updates available
+func (a *App) CheckModpackUpdate(instanceID string) (bool, string, string, error) {
+	// Get instance
+	instance, err := a.instanceManager.GetInstance(instanceID)
+	if err != nil {
+		return false, "", "", fmt.Errorf("failed to get instance: %w", err)
+	}
+
+	// Get current version from instance metadata
+	localVersion := instance.Version
+
+	// Parse remote pack.toml to get remote version
+	packInfo, err := a.packwizManager.ParsePackInfo(instance.PackURL)
+	if err != nil {
+		return false, "", "", fmt.Errorf("failed to parse remote pack info: %w", err)
+	}
+
+	remoteVersion := packInfo.Version
+	updateAvailable := localVersion != remoteVersion
+
+	return updateAvailable, localVersion, remoteVersion, nil
+}
+
+// UpdateModpack updates a modpack to the latest version
+func (a *App) UpdateModpack(instanceID string, progressCallback func(float64)) error {
+	a.logger.Info("Updating modpack for instance %s", instanceID)
+
+	// Get instance
+	instance, err := a.instanceManager.GetInstance(instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get instance: %w", err)
+	}
+
+	// Create backup before update
+	backupPath, err := a.packwizManager.CreateModpackBackup(instance.InstancePath, instance.ModpackID)
+	if err != nil {
+		a.logger.Warn("Failed to create backup: %v", err)
+	} else {
+		a.logger.Info("Created backup: %s", backupPath)
+	}
+
+	// Get Java installation
+	javaPath, err := a.javaManager.GetBestJavaPath(instance.Minecraft)
+	if err != nil {
+		return fmt.Errorf("failed to get Java path: %w", err)
+	}
+
+	// Update modpack with packwiz
+	err = a.packwizManager.InstallModpack(instance.PackURL, instance.InstancePath, javaPath, progressCallback)
+	if err != nil {
+		// Try to restore from backup on failure
+		if backupPath != "" {
+			a.logger.Warn("Packwiz update failed, attempting to restore from backup")
+			if restoreErr := a.packwizManager.RestoreModpackBackup(instance.InstancePath, backupPath); restoreErr != nil {
+				a.logger.Error("Failed to restore backup: %v", restoreErr)
+			} else {
+				a.logger.Info("Successfully restored from backup")
+			}
+		}
+		return fmt.Errorf("modpack update failed: %w", err)
+	}
+
+	// Update instance metadata with new version
+	packInfo, err := a.packwizManager.ParsePackInfo(instance.PackURL)
+	if err == nil {
+		instance.Version = packInfo.Version
+		a.instanceManager.SaveInstance(instance)
+	}
+
+	a.logger.Info("Modpack update completed successfully")
+	return nil
+}
+
+// GetLWJGLVersionForMinecraft returns the LWJGL version for a Minecraft version
+func (a *App) GetLWJGLVersionForMinecraft(mcVersion string) (*launcher.LWJGLInfo, error) {
+	return a.packwizManager.GetLWJGLVersionForMinecraft(mcVersion)
+}
+
+// CheckForUpdates checks if there are application updates available
+func (a *App) CheckForUpdates() (*launcher.UpdateInfo, error) {
+	return a.updater.CheckForUpdates()
+}
+
+// DownloadUpdate downloads an application update
+func (a *App) DownloadUpdate(downloadURL string, progressCallback func(float64)) (string, error) {
+	return a.updater.DownloadUpdate(downloadURL, progressCallback)
+}
+
+// InstallUpdate installs an application update
+func (a *App) InstallUpdate(updatePath string) error {
+	return a.updater.InstallUpdate(updatePath)
+}
+
+// GetVersion returns the current application version
+func (a *App) GetVersion() string {
+	return launcher.Version
 }

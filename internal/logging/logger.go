@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+// Logger interface defines the logging methods used throughout the application
+type Logger interface {
+	Debug(format string, args ...interface{})
+	Info(format string, args ...interface{})
+	Warn(format string, args ...interface{})
+	Error(format string, args ...interface{})
+	Initialize(logDir string) error
+	GetLogDir() string
+}
+
 // LogLevel represents the severity level of a log entry
 type LogLevel int
 
@@ -35,8 +45,8 @@ func (l LogLevel) String() string {
 	}
 }
 
-// Logger represents the application logger
-type Logger struct {
+// logger represents the application logger implementation
+type logger struct {
 	file     *os.File
 	mu       sync.RWMutex
 	level    LogLevel
@@ -46,15 +56,15 @@ type Logger struct {
 }
 
 // NewLogger creates a new logger instance
-func NewLogger() *Logger {
-	return &Logger{
+func NewLogger() Logger {
+	return &logger{
 		level:   INFO,
 		verbose: false,
 	}
 }
 
 // Initialize sets up the logging system
-func (l *Logger) Initialize(logDir string) error {
+func (l *logger) Initialize(logDir string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -70,7 +80,7 @@ func (l *Logger) Initialize(logDir string) error {
 
 	// Create new log file
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	l.logFile = filepath.Join(logDir, fmt.Sprintf("winterpack-%s.log", timestamp))
+	l.logFile = filepath.Join(logDir, fmt.Sprintf("theboys-launcher-%s.log", timestamp))
 
 	file, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -88,21 +98,21 @@ func (l *Logger) Initialize(logDir string) error {
 }
 
 // SetLevel sets the minimum log level
-func (l *Logger) SetLevel(level LogLevel) {
+func (l *logger) SetLevel(level LogLevel) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.level = level
 }
 
 // SetVerbose enables or disables verbose logging
-func (l *Logger) SetVerbose(verbose bool) {
+func (l *logger) SetVerbose(verbose bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.verbose = verbose
 }
 
 // Close closes the log file
-func (l *Logger) Close() error {
+func (l *logger) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -114,27 +124,27 @@ func (l *Logger) Close() error {
 }
 
 // Debug logs a debug message
-func (l *Logger) Debug(format string, args ...interface{}) {
+func (l *logger) Debug(format string, args ...interface{}) {
 	l.log(DEBUG, format, args...)
 }
 
 // Info logs an info message
-func (l *Logger) Info(format string, args ...interface{}) {
+func (l *logger) Info(format string, args ...interface{}) {
 	l.log(INFO, format, args...)
 }
 
 // Warn logs a warning message
-func (l *Logger) Warn(format string, args ...interface{}) {
+func (l *logger) Warn(format string, args ...interface{}) {
 	l.log(WARN, format, args...)
 }
 
 // Error logs an error message
-func (l *Logger) Error(format string, args ...interface{}) {
+func (l *logger) Error(format string, args ...interface{}) {
 	l.log(ERROR, format, args...)
 }
 
 // log is the internal logging method
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
+func (l *logger) log(level LogLevel, format string, args ...interface{}) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -159,9 +169,9 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 }
 
 // rotateLogs rotates old log files
-func (l *Logger) rotateLogs() {
+func (l *logger) rotateLogs() {
 	// Remove old log files (keep only last 5)
-	entries, err := filepath.Glob(filepath.Join(l.logDir, "winterpack-*.log"))
+	entries, err := filepath.Glob(filepath.Join(l.logDir, "theboys-launcher-*.log"))
 	if err != nil {
 		return
 	}
@@ -185,14 +195,14 @@ func (l *Logger) rotateLogs() {
 }
 
 // GetLogFile returns the current log file path
-func (l *Logger) GetLogFile() string {
+func (l *logger) GetLogFile() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.logFile
 }
 
 // GetLogDir returns the log directory
-func (l *Logger) GetLogDir() string {
+func (l *logger) GetLogDir() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.logDir

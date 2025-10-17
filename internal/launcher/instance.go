@@ -17,11 +17,14 @@ import (
 	"theboys-launcher/internal/logging"
 )
 
+const packDotTomlFile = "pack.toml"
+
 // Instance represents a Prism Launcher instance
 type Instance struct {
 	ID           string                 `json:"id"`
 	Name         string                 `json:"name"`
 	ModpackID    string                 `json:"modpackId"`
+	PackURL      string                 `json:"packUrl"`
 	Minecraft    string                 `json:"minecraft"`
 	ModLoader    string                 `json:"modloader"`
 	JavaVersion  string                 `json:"javaVersion"`
@@ -34,6 +37,7 @@ type Instance struct {
 	TotalTime    time.Duration          `json:"totalTime"`
 	Properties   map[string]string      `json:"properties,omitempty"`
 	Config       map[string]interface{} `json:"config,omitempty"`
+	Version      string                 `json:"version"`
 	CreatedAt    time.Time              `json:"createdAt"`
 	UpdatedAt    time.Time              `json:"updatedAt"`
 }
@@ -41,13 +45,13 @@ type Instance struct {
 // InstanceManager handles instance operations
 type InstanceManager struct {
 	platform   platform.Platform
-	logger     *logging.Logger
+	logger     logging.Logger
 	prismManager *PrismManager
 	javaManager  *JavaManager
 }
 
 // NewInstanceManager creates a new instance manager
-func NewInstanceManager(platform platform.Platform, logger *logging.Logger, prismManager *PrismManager, javaManager *JavaManager) *InstanceManager {
+func NewInstanceManager(platform platform.Platform, logger logging.Logger, prismManager *PrismManager, javaManager *JavaManager) *InstanceManager {
 	return &InstanceManager{
 		platform:     platform,
 		logger:       logger,
@@ -104,6 +108,7 @@ func (im *InstanceManager) CreateInstance(modpack types.Modpack, prismDir, insta
 		ID:           instanceID,
 		Name:         modpack.InstanceName,
 		ModpackID:    modpack.ID,
+		PackURL:      modpack.PackURL,
 		Minecraft:    packInfo.Minecraft,
 		ModLoader:    packInfo.ModLoader,
 		JavaVersion:  javaVersion,
@@ -112,6 +117,7 @@ func (im *InstanceManager) CreateInstance(modpack types.Modpack, prismDir, insta
 		PrismPath:    prismDir,
 		Properties:   make(map[string]string),
 		Config:       make(map[string]interface{}),
+		Version:      packInfo.Version,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -224,6 +230,11 @@ func (im *InstanceManager) UpdateInstance(instance *Instance) error {
 	return im.saveInstanceMetadata(instance)
 }
 
+// SaveInstance saves instance metadata (alias for UpdateInstance)
+func (im *InstanceManager) SaveInstance(instance *Instance) error {
+	return im.UpdateInstance(instance)
+}
+
 // GetInstanceForModpack returns the instance for a specific modpack
 func (im *InstanceManager) GetInstanceForModpack(modpackID string) (*Instance, error) {
 	instances, err := im.ListInstances()
@@ -295,9 +306,13 @@ func (im *InstanceManager) parsePackToml(packTomlPath string) (*PackInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read pack.toml: %w", err)
 	}
+	return im.parsePackTomlContent(data)
+}
 
+func (im *InstanceManager) parsePackTomlContent(data []byte) (*PackInfo, error) {
 	var packInfo struct {
 		Name     string `toml:"name"`
+		Version  string `toml:"version"`
 		Versions []struct {
 			Minecraft string `toml:"minecraft"`
 			Loaders   []struct {
@@ -327,9 +342,11 @@ func (im *InstanceManager) parsePackToml(packTomlPath string) (*PackInfo, error)
 
 	return &PackInfo{
 		Name:          packInfo.Name,
+		Version:       packInfo.Version,
 		Minecraft:     latestVersion.Minecraft,
 		ModLoader:     modloader,
 		LoaderVersion: loaderVersion,
+		Dependencies:  []interface{}{}, // Initialize empty dependencies
 	}, nil
 }
 

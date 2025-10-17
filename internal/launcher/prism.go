@@ -23,8 +23,7 @@ const (
 	defaultPrismVersion    = "latest"
 	prismConfigFile        = "prismlauncher.cfg"
 	instanceConfigFile     = "instance.cfg"
-	packDotTomlFile       = "pack.toml"
-)
+	)
 
 // PrismRelease represents a Prism Launcher release from GitHub
 type PrismRelease struct {
@@ -38,13 +37,13 @@ type PrismRelease struct {
 // PrismManager handles Prism Launcher operations
 type PrismManager struct {
 	platform   platform.Platform
-	logger     *logging.Logger
+	logger     logging.Logger
 	downloader *Downloader
 	installer  *JavaInstaller
 }
 
 // NewPrismManager creates a new Prism manager instance
-func NewPrismManager(platform platform.Platform, logger *logging.Logger) *PrismManager {
+func NewPrismManager(platform platform.Platform, logger logging.Logger) *PrismManager {
 	return &PrismManager{
 		platform:   platform,
 		logger:     logger,
@@ -394,21 +393,6 @@ func (p *PrismManager) calculateOptimalMemory() (int, int) {
 
 func (p *PrismManager) getUserAgent(component string) string {
 	return fmt.Sprintf("TheBoys-%s/dev", component)
-}
-
-// PackInfo represents information extracted from a pack.toml file
-type PackInfo struct {
-	Minecraft     string `json:"minecraft"`
-	ModLoader     string `json:"modloader"`
-	LoaderVersion string `json:"loader_version"`
-	Name          string `json:"name"`
-}
-
-// LWJGLInfo holds version and UID information for LWJGL
-type LWJGLInfo struct {
-	Version string `json:"version"`
-	UID     string `json:"uid"`
-	Name    string `json:"name"`
 }
 
 // getLWJGLVersionForMinecraft fetches LWJGL version from PrismLauncher meta-launcher GitHub

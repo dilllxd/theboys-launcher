@@ -15,7 +15,7 @@ import (
 // Manager handles application configuration
 type Manager struct {
 	platform   platform.Platform
-	logger     *logging.Logger
+	logger     logging.Logger
 	mu         sync.RWMutex
 	settings   *types.LauncherSettings
 	configPath string
@@ -23,7 +23,7 @@ type Manager struct {
 }
 
 // NewManager creates a new configuration manager
-func NewManager(platform platform.Platform, logger *logging.Logger) *Manager {
+func NewManager(platform platform.Platform, logger logging.Logger) *Manager {
 	return &Manager{
 		platform: platform,
 		logger:   logger,

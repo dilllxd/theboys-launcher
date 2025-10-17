@@ -40,23 +40,16 @@ type AdoptiumAsset struct {
 	} `json:"binaries"`
 }
 
-// GitHubRelease represents a GitHub release
-type GitHubRelease struct {
-	Assets []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
-}
 
 // JavaManager handles Java runtime detection, download, and management
 type JavaManager struct {
 	platform   platform.Platform
-	logger     *logging.Logger
+	logger     logging.Logger
 	downloader *Downloader
 }
 
 // NewJavaManager creates a new Java manager instance
-func NewJavaManager(platform platform.Platform, logger *logging.Logger) *JavaManager {
+func NewJavaManager(platform platform.Platform, logger logging.Logger) *JavaManager {
 	return &JavaManager{
 		platform:   platform,
 		logger:     logger,
@@ -178,6 +171,18 @@ func (j *JavaManager) GetBestJavaInstallation(mcVersion string) (*types.JavaInst
 	best := j.selectBestInstallation(compatible)
 	j.logger.Info("Selected Java %s at %s", best.Version, best.Path)
 	return &best, nil
+}
+
+// GetBestJavaPath returns the path to the best Java installation for a Minecraft version
+func (j *JavaManager) GetBestJavaPath(mcVersion string) (string, error) {
+	javaInst, err := j.GetBestJavaInstallation(mcVersion)
+	if err != nil {
+		return "", err
+	}
+	if javaInst == nil {
+		return "", fmt.Errorf("no compatible Java installation found")
+	}
+	return javaInst.Path, nil
 }
 
 // DownloadJava downloads and installs a Java runtime

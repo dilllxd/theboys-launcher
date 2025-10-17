@@ -17,12 +17,12 @@ import (
 // Downloader handles file downloads with progress tracking
 type Downloader struct {
 	platform platform.Platform
-	logger   *logging.Logger
+	logger   logging.Logger
 	client   *http.Client
 }
 
 // NewDownloader creates a new downloader instance
-func NewDownloader(platform platform.Platform, logger *logging.Logger) *Downloader {
+func NewDownloader(platform platform.Platform, logger logging.Logger) *Downloader {
 	return &Downloader{
 		platform: platform,
 		logger:   logger,

@@ -12,13 +12,13 @@ import (
 type GUI struct {
 	config     *config.Manager
 	platform   platform.Platform
-	logger     *logging.Logger
+	logger     logging.Logger
 	ctx        context.Context
 	initialized bool
 }
 
 // NewGUI creates a new GUI instance
-func NewGUI(config *config.Manager, platform platform.Platform, logger *logging.Logger) *GUI {
+func NewGUI(config *config.Manager, platform platform.Platform, logger logging.Logger) *GUI {
 	return &GUI{
 		config: config,
 		platform: platform,

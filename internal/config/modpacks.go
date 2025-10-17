@@ -15,7 +15,7 @@ import (
 // ModpackManager handles modpack configuration
 type ModpackManager struct {
 	platform    platform.Platform
-	logger      *logging.Logger
+	logger      logging.Logger
 	mu          sync.RWMutex
 	modpacks    []types.Modpack
 	configPath  string
@@ -29,7 +29,7 @@ const (
 )
 
 // NewModpackManager creates a new modpack manager
-func NewModpackManager(platform platform.Platform, logger *logging.Logger) *ModpackManager {
+func NewModpackManager(platform platform.Platform, logger logging.Logger) *ModpackManager {
 	return &ModpackManager{
 		platform:   platform,
 		logger:     logger,
