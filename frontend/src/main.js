@@ -768,15 +768,6 @@ function renderProgressIndicators() {
   container.innerHTML = html;
 }
 
-// Settings management
-async function saveSettings() {
-  try {
-    // In a real implementation, this would call a backend function
-    console.log('Settings saved:', settings);
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-  }
-}
 
 // Update checking
 async function checkForUpdates() {

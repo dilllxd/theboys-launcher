@@ -10,7 +10,6 @@ import (
 
 	"theboys-launcher/internal/logging"
 	"theboys-launcher/internal/platform"
-	"theboys-launcher/pkg/types"
 )
 
 // MigrationManager handles migration from portable to user directory mode
@@ -379,7 +378,7 @@ func (mm *MigrationManager) createBackup(portableDir string) (string, error) {
 	mm.logger.Info("Creating backup at: %s", backupDir)
 
 	// Copy portable directory to backup location
-	if err := mm.copyDirectory(portableDir, backupDir); err != nil {
+	if _, err := mm.copyDirectory(portableDir, backupDir); err != nil {
 		return "", err
 	}
 
