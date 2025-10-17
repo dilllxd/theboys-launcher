@@ -2369,10 +2369,10 @@ pub async fn check_and_install_update(
 #[tauri::command]
 pub async fn check_tauri_update(
     app_handle: tauri::AppHandle,
-) -> LauncherResult<Option<tauri_plugin_updater::Update>> {
+) -> Result<Option<tauri_plugin_updater::Update>, String> {
     info!("Checking for Tauri updates");
 
-    let updater = app_handle.updater().map_err(|e| LauncherError::UpdateFailed(format!("Updater initialization failed: {}", e)))?;
+    let updater = app_handle.updater().map_err(|e| format!("Updater initialization failed: {}", e))?;
     match updater.check().await {
         Ok(Some(update)) => {
             info!("Update available: {} (body: {})", update.version, update.body.as_ref().unwrap_or(&String::new()));
@@ -2514,7 +2514,9 @@ pub async fn configure_auto_update(
     };
 
     // Save to configuration
-    crate::utils::config::save_auto_update_settings(&auto_update_settings)?;
+    if let Err(e) = crate::utils::config::save_auto_update_settings(&auto_update_settings) {
+        return Err(LauncherError::Config(format!("Failed to save auto-update settings: {}", e)));
+    }
 
     info!("Auto-update configured successfully");
     Ok(())

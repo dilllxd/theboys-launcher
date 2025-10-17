@@ -397,7 +397,8 @@ impl PackwizManager {
 
         while let Some(entry) = entries.next_entry().await? {
             let entry_path = entry.path();
-            let name = entry.file_name().to_string_lossy();
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
             let zip_name = if prefix.is_empty() {
                 name.to_string()
             } else {
@@ -405,7 +406,7 @@ impl PackwizManager {
             };
 
             if entry_path.is_dir() {
-                let options: zip::write::FileOptions<'_, zip::write::FileOptionExtension> = zip::write::FileOptions::default()
+                let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
                     .compression_method(zip::CompressionMethod::Deflated);
                 zip.add_directory(zip_name.clone(), options)
                     .map_err(|e| LauncherError::FileSystem(
@@ -413,7 +414,7 @@ impl PackwizManager {
                     ))?;
                 Box::pin(self.add_to_zip(zip, &entry_path, &zip_name)).await?;
             } else {
-                let options: zip::write::FileOptions<'_, zip::write::FileOptionExtension> = zip::write::FileOptions::default()
+                let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
                     .compression_method(zip::CompressionMethod::Deflated);
                 zip.start_file(zip_name, options)
                     .map_err(|e| LauncherError::FileSystem(
@@ -532,7 +533,9 @@ impl PackwizManager {
             {
                 use std::os::unix::fs::PermissionsExt;
                 if let Some(mode) = unix_mode {
-                    fs::set_permissions(&path, fs::Permissions::from_mode(mode)).await?;
+                    let mut perms = fs::metadata(&path).await?.permissions();
+                    perms.set_mode(mode);
+                    fs::set_permissions(&path, perms).await?;
                 }
             }
         }

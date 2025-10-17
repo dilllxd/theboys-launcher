@@ -241,6 +241,7 @@ impl ErrorHandler {
             LauncherError::NotImplemented(msg) => ("NotImplemented".to_string(), format!("Feature not implemented: {}", msg)),
             LauncherError::NotFound(msg) => ("NotFound".to_string(), format!("Resource not found: {}", msg)),
             LauncherError::UpdateFailed(msg) => ("UpdateFailed".to_string(), format!("Update failed: {}", msg)),
+            LauncherError::Config(msg) => ("Config".to_string(), format!("Configuration error: {}", msg)),
         }
     }
 
@@ -281,6 +282,7 @@ impl ErrorHandler {
             LauncherError::NotImplemented(_) => format!("This feature is not yet implemented: {}", operation),
             LauncherError::NotFound(_) => format!("Required resource not found while {}", operation),
             LauncherError::UpdateFailed(_) => format!("Update failed while {}", operation),
+            LauncherError::Config(_) => format!("Configuration error while {}", operation),
         }
     }
 

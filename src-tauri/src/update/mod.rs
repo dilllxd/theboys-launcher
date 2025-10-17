@@ -7,6 +7,7 @@ use semver::Version;
 use std::collections::HashMap;
 use crate::models::LauncherError;
 use crate::utils::file;
+use futures_util::StreamExt;
 
 /// Update channel for the launcher
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -59,7 +60,7 @@ pub struct UpdateProgress {
 }
 
 /// Update status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UpdateStatus {
     Checking,
     Available,
@@ -394,7 +395,7 @@ impl UpdateManager {
 
                     if matches_channel || (allow_prerelease && is_prerelease) {
                         if let Ok(version) = Version::parse(&update_info.version) {
-                            if latest_version.is_none() || version > latest_version.unwrap() {
+                            if latest_version.is_none() || version > latest_version.clone().unwrap() {
                                 latest_version = Some(version);
                                 latest_release = Some(update_info);
                             }
@@ -416,9 +417,11 @@ impl UpdateManager {
 
         let version = self.normalize_version(&tag_name);
 
-        let name = release.get("name")
+        let name_str = release.get("name")
             .and_then(|v| v.as_str())
-            .unwrap_or(&version);
+            .unwrap_or(&version)
+            .to_string();
+        let name = name_str;
 
         let body = release.get("body")
             .and_then(|v| v.as_str())
@@ -444,14 +447,16 @@ impl UpdateManager {
         };
 
         // Find the appropriate download asset
-        let assets = release.get("assets")
+        let assets_vec = release.get("assets")
             .and_then(|v| v.as_array())
-            .unwrap_or(&vec![]);
+            .cloned()
+            .unwrap_or_default();
+        let assets = &assets_vec;
 
         let (download_url, file_size) = self.find_suitable_asset(assets).await?;
 
         Ok(UpdateInfo {
-            version,
+            version: version.clone(),
             tag_name,
             release_notes: format!("{}\n\n{}", name, body),
             published_at,
@@ -533,7 +538,7 @@ impl UpdateManager {
         active_downloads: Arc<RwLock<HashMap<String, UpdateProgress>>>,
     ) -> Result<(), LauncherError> {
         let client = Client::new();
-        let mut response = client.get(&update_info.download_url).send().await
+        let response = client.get(&update_info.download_url).send().await
             .map_err(|e| LauncherError::Network(format!("Download failed: {}", e)))?;
 
         if !response.status().is_success() {
@@ -560,20 +565,15 @@ impl UpdateManager {
             ))?;
 
         let mut buffer = [0; 8192];
-        loop {
-            let n = response.read(&mut buffer).await
-                .map_err(|e| LauncherError::Network(format!("Read error: {}", e)))?;
-
-            if n == 0 {
-                break;
-            }
-
-            file.write_all(&buffer[..n]).await
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| LauncherError::Network(format!("Download chunk error: {}", e)))?;
+            file.write_all(&chunk).await
                 .map_err(|e| LauncherError::FileSystem(
                     format!("Write error: {}", e)
                 ))?;
 
-            downloaded += n as u64;
+            downloaded += chunk.len() as u64;
             let progress = (downloaded as f64 / total_size as f64) * 100.0;
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed = if elapsed > 0.0 { (downloaded as f64 / elapsed) as u64 } else { 0 };
@@ -644,7 +644,7 @@ impl UpdateManager {
     }
 
     #[cfg(target_os = "linux")]
-    async fn apply_linux_update(&self, update_file: &str, version: &str) -> Result<(), LauncherError> {
+    async fn apply_linux_update(&self, update_file: &str, _version: &str) -> Result<(), LauncherError> {
         info!("Applying Linux update from {}", update_file);
 
         let current_exe = std::env::current_exe()

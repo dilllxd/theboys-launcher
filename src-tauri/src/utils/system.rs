@@ -1,6 +1,7 @@
 use crate::models::{SystemInfo, JavaVersion, LauncherResult, LauncherError};
 use std::process::Command;
 use std::path::Path;
+use std::fs;
 
 /// Get total system memory in MB
 pub async fn get_total_memory_mb() -> LauncherResult<u64> {
