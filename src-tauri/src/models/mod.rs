@@ -254,6 +254,9 @@ pub enum LauncherError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
+    #[error("Configuration error: {0}")]
+    Config(String),
+
     #[error("Download failed: {0}")]
     DownloadFailed(String),
 

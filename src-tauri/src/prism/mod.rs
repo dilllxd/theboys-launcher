@@ -335,7 +335,7 @@ impl PrismManager {
     }
 
     /// Check if asset name is compatible with current platform
-    fn is_platform_compatible(&self, name: &str, platform: &str, arch: &str) -> bool {
+    fn is_platform_compatible(&self, name: &str, platform: &str, _arch: &str) -> bool {
         let name_lower = name.to_lowercase();
 
         // Check for portable builds (preferred)
