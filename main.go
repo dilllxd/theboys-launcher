@@ -2,7 +2,7 @@
 // - Self-updates from GitHub Releases (latest tag, no downgrades)
 // - Fully portable: writes only beside the EXE (no AppData)
 // - Downloads Prism Launcher (portable) - prefers MinGW w64 on amd64
-// - Downloads Java 21 (Temurin JRE) dynamically (Adoptium API w/ GitHub fallback)
+// - Downloads Java dynamically based on Minecraft version (Temurin JRE) (Adoptium API w/ GitHub fallback)
 // - Downloads packwiz bootstrap dynamically (GitHub assets discovery)
 // - Creates instance beside the EXE, writes instance.cfg (name/RAM/Java)
 // - Runs packwiz from the *instance root* (detects MultiMC/Prism mode)
@@ -49,6 +49,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/sys/windows"
 )
 
 // -------------------- CONFIG: EDIT THESE --------------------
@@ -77,41 +78,75 @@ type Modpack struct {
 	Default      bool   `json:"default,omitempty"`
 }
 
-var defaultModpackID string
+// LauncherSettings holds user-configurable launcher settings
+type LauncherSettings struct {
+	MemoryMB int `json:"memoryMB"` // Memory allocation in MB (2-16GB range)
+}
 
-// Optional: show MessageBox popups (false = log to console/file)
+var defaultModpackID string
+var settings LauncherSettings
+
+// Use TUI interface by default
 var interactive = false
 
 // Populated at build time via -X main.version=vX.Y.Z
 var version = "dev"
 
+// getUserAgent returns a user agent string with the launcher version and component name
+func getUserAgent(component string) string {
+	if version == "dev" {
+		return fmt.Sprintf("TheBoys-%s/dev", component)
+	}
+	return fmt.Sprintf("TheBoys-%s/%s", component, version)
+}
+
 // global writer used by log/fail and for piping subprocess output
 var out io.Writer = os.Stdout
 
 var (
-	sectionStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true)
-	stepBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#bd93f9")).Bold(true)
-	stepTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#f8f8f2"))
-	successBulletStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b")).Bold(true)
-	successTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#50fa7b"))
-	warnBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb86c")).Bold(true)
-	warnTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb86c"))
+	// Modern, friendly colors - less intimidating than terminal colors
+	headerStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#007ACC")).Bold(true)
+	sectionStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#0066CC")).Bold(true).MarginTop(1).MarginBottom(1)
+	stepBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#666666")).Bold(true)
+	stepTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#333333"))
+	successBulletStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#28A745")).Bold(true)
+	successTextStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#28A745"))
+	warnBulletStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFC107")).Bold(true)
+	warnTextStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#856404"))
+	infoStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#17A2B8")).Italic(true)
 )
 
+func headerLine(title string) string {
+	return headerStyle.Render(fmt.Sprintf("╔═ %s ═╗", title))
+}
+
 func sectionLine(title string) string {
-	return sectionStyle.Render(strings.ToUpper(title))
+	border := "═"
+	padding := strings.Repeat(border, len(title)+4)
+	return fmt.Sprintf("%s\n║ %s ║\n%s",
+		sectionStyle.Render("╔"+padding+"╗"),
+		sectionStyle.Render("║  "+title+"  ║"),
+		sectionStyle.Render("╚"+padding+"╝"))
 }
 
 func stepLine(msg string) string {
-	return fmt.Sprintf("%s %s", stepBulletStyle.Render("→"), stepTextStyle.Render(msg))
+	return fmt.Sprintf("  %s %s", stepBulletStyle.Render("●"), stepTextStyle.Render(msg))
 }
 
 func successLine(msg string) string {
-	return fmt.Sprintf("%s %s", successBulletStyle.Render("✓"), successTextStyle.Render(msg))
+	return fmt.Sprintf("  %s %s", successBulletStyle.Render("✓"), successTextStyle.Render(msg))
 }
 
 func warnLine(msg string) string {
-	return fmt.Sprintf("%s %s", warnBulletStyle.Render("!"), warnTextStyle.Render(msg))
+	return fmt.Sprintf("  %s %s", warnBulletStyle.Render("⚠"), warnTextStyle.Render(msg))
+}
+
+func infoLine(msg string) string {
+	return fmt.Sprintf("  ℹ %s", infoStyle.Render(msg))
+}
+
+func dividerLine() string {
+	return stepTextStyle.Render("────────────────────────────────────────")
 }
 
 func modpackLabel(mp Modpack) string {
@@ -156,6 +191,7 @@ type launcherOptions struct {
 	useCLI            bool
 	modpackID         string
 	listModpacks      bool
+	openSettings      bool
 	cleanupAfterUpdate bool
 	cleanupOldExe     string
 	cleanupNewExe     string
@@ -172,6 +208,7 @@ func parseOptions() launcherOptions {
 	flag.BoolVar(&opts.useCLI, "cli", false, "Run the launcher in plain console mode (skip the interactive TUI).")
 	flag.StringVar(&opts.modpackID, "modpack", "", "Select the modpack to launch by ID.")
 	flag.BoolVar(&opts.listModpacks, "list-modpacks", false, "List available modpacks and exit.")
+	flag.BoolVar(&opts.openSettings, "settings", false, "Open launcher settings menu.")
 
 	// Handle cleanup after update (internal flag, not shown in help)
 	if len(os.Args) >= 2 && os.Args[1] == "--cleanup-after-update" && len(os.Args) >= 4 {
@@ -187,7 +224,7 @@ func parseOptions() launcherOptions {
 }
 
 func loadModpacks(root string) []Modpack {
-	remote, err := fetchRemoteModpacks(remoteModpacksURL, 5*time.Second)
+	remote, err := fetchRemoteModpacks(remoteModpacksURL, 30*time.Second)
 	if err != nil {
 		fail(fmt.Errorf("failed to fetch remote modpacks.json: %w", err))
 	}
@@ -267,7 +304,7 @@ func fetchRemoteModpacks(url string, timeout time.Duration) ([]Modpack, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
+	req.Header.Set("User-Agent", getUserAgent("Launcher"))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -347,8 +384,7 @@ func main() {
 	}
 
 	if runtime.GOOS != "windows" {
-		msgBox("Windows only", launcherShortName, 0)
-		return
+		fail(errors.New("Windows only"))
 	}
 
 	exePath, _ := os.Executable()
@@ -358,9 +394,17 @@ func main() {
 	closeLog := setupLogging(root)
 	defer closeLog()
 
-	logf("%s", sectionLine(launcherName))
-	logf("%s", stepLine(fmt.Sprintf("Session started %s", time.Now().Format(time.RFC1123))))
-	logf("%s", stepLine(fmt.Sprintf("Version: %s", version)))
+	// 1) Load settings
+	if err := loadSettings(root); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to load settings: %v", err)))
+	}
+
+	// Show beautiful welcome message
+	logf("\n%s", headerLine(launcherName))
+	logf("%s", dividerLine())
+	logf("%s", infoLine(fmt.Sprintf("Version %s • Started at %s", version, time.Now().Format("3:04 PM"))))
+	logf("%s", infoLine(fmt.Sprintf("Memory allocation: %d GB", settings.MemoryMB/1024)))
+	logf("%s", dividerLine())
 
 	// Check for launcher updates immediately on startup
 	logf("%s", sectionLine("Launcher Update Check"))
@@ -378,6 +422,68 @@ func main() {
 		return
 	}
 
+	if opts.openSettings {
+		runSettingsMenu(root)
+		return
+	}
+
+	// Default to TUI mode unless explicitly using CLI
+	if !opts.useCLI {
+		// TUI Mode - Show main menu with modpack selection and settings
+		var selectedModpack Modpack
+		var settingsChosen bool
+
+		for {
+			selectedModpack, settingsChosen = runMainTUI(modpacks)
+			if settingsChosen {
+				runSettingsMenu(root)
+				// After settings, show main menu again (continue loop)
+				continue
+			}
+
+			if selectedModpack.ID == "" {
+				logf("%s", infoLine("No modpack selected. Exiting."))
+				return
+			}
+
+			// User selected a modpack, break the loop and launch it
+			break
+		}
+
+		// Set up signal handling for force-closing Prism and Minecraft on launcher exit
+		var prismProcess *os.Process
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+		go func() {
+			<-c
+			logf("%s", warnLine("Launcher interrupted, force-closing Prism Launcher and Minecraft..."))
+
+			// Force close all Prism processes
+			cmd := exec.Command("taskkill", "/F", "/IM", "PrismLauncher.exe")
+			cmd.Run()
+
+			// Force close any Java processes (likely Minecraft)
+			javaCmd := exec.Command("taskkill", "/F", "/IM", "java.exe")
+			javaCmd.Run()
+
+			// Also close the specific Prism process we launched if we have it
+			if prismProcess != nil && prismProcess.Pid > 0 {
+				killCmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", prismProcess.Pid))
+				killCmd.Run()
+				logf("Force-closed Prism process %d and related processes", prismProcess.Pid)
+			}
+
+			logf("All game processes force-closed")
+			os.Exit(1)
+		}()
+
+		logf("%s", infoLine(fmt.Sprintf("Launching modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)))
+		runLauncherLogic(root, exePath, selectedModpack, &prismProcess)
+		return
+	}
+
+	// CLI Mode - Use console interface
 	selectedModpack, err := selectModpack(modpacks, opts.modpackID)
 	if err != nil {
 		fail(err)
@@ -411,23 +517,7 @@ func main() {
 		os.Exit(1)
 	}()
 
-	if opts.useCLI {
-		logf("Launching (CLI) modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)
-		runLauncherLogic(root, exePath, selectedModpack, &prismProcess)
-		return
-	}
-
-	chosen, confirmed, err := runLauncherTUI(modpacks, selectedModpack)
-	if err != nil {
-		fail(err)
-	}
-	if !confirmed {
-		logf("No modpack selected; exiting.")
-		return
-	}
-
-	selectedModpack = chosen
-	logf("Launching modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)
+	logf("Launching (CLI) modpack: %s (%s)", modpackLabel(selectedModpack), selectedModpack.ID)
 	runLauncherLogic(root, exePath, selectedModpack, &prismProcess)
 }
 
@@ -448,7 +538,10 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	// 1) Ensure prerequisites — organize directories cleanly
 	prismDir := filepath.Join(root, "prism")
 	utilDir := filepath.Join(root, "util")
-	jreDir := filepath.Join(utilDir, "jre21")
+
+	// Determine required Java version based on Minecraft version
+	requiredJavaVersion := getJavaVersionForMinecraft(packInfo.Minecraft)
+	jreDir := filepath.Join(utilDir, "jre"+requiredJavaVersion)
 	javaBin := filepath.Join(jreDir, "bin", "java.exe")
 	bootstrapExe := filepath.Join(utilDir, "packwiz-installer-bootstrap.exe")
 	bootstrapJar := filepath.Join(utilDir, "packwiz-installer-bootstrap.jar")
@@ -472,21 +565,21 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	}
 
 	if !exists(javaBin) {
-		logf("%s", stepLine("Installing Temurin JRE 21"))
-		jreURL, err := fetchJRE21ZipURL()
+		logf("%s", stepLine(fmt.Sprintf("Installing Temurin JRE %s", requiredJavaVersion)))
+		jreURL, err := fetchJREURL(requiredJavaVersion)
 		if err != nil {
-			fail(fmt.Errorf("failed to resolve Java 21 download: %w", err))
+			fail(fmt.Errorf("failed to resolve Java %s download: %w", requiredJavaVersion, err))
 		}
 		if err := downloadAndUnzipTo(jreURL, jreDir); err != nil {
 			fail(err)
 		}
 		_ = flattenOneLevel(jreDir)
 		if !exists(javaBin) {
-			fail(errors.New("Java 21 installation looks incomplete (bin/java.exe not found)"))
+			fail(fmt.Errorf("Java %s installation looks incomplete (bin/java.exe not found)", requiredJavaVersion))
 		}
-		logf("%s", successLine("Java 21 installed"))
+		logf("%s", successLine(fmt.Sprintf("Java %s installed", requiredJavaVersion)))
 	} else {
-		logf("%s", successLine("Java 21 already installed"))
+		logf("%s", successLine(fmt.Sprintf("Java %s already installed", requiredJavaVersion)))
 	}
 
 	logf("%s", stepLine("Ensuring packwiz bootstrap"))
@@ -741,6 +834,12 @@ func runLauncherTUI(modpacks []Modpack, initial Modpack) (Modpack, bool, error) 
 	}
 
 	finalModel := res.(tuiModel)
+
+	// Check if user selected "Back" option
+	if finalModel.isBack {
+		return Modpack{}, false, nil // Return empty modpack and false for back navigation
+	}
+
 	return finalModel.selected, finalModel.confirmed, nil
 }
 
@@ -748,12 +847,16 @@ type tuiModel struct {
 	list      list.Model
 	selected  Modpack
 	confirmed bool
+	isBack    bool
 }
 
 func newTUIModel(modpacks []Modpack, defaultIndex int) tuiModel {
-	items := make([]list.Item, len(modpacks))
+	// Create items: back button + modpacks
+	items := make([]list.Item, len(modpacks)+1)
+	items[0] = backMenuItem{title: "← Back to Main Menu", description: "Return to the main menu"}
+
 	for i, mp := range modpacks {
-		items[i] = modpackListItem{modpack: mp}
+		items[i+1] = modpackListItem{modpack: mp}
 	}
 
 	delegate := list.NewDefaultDelegate()
@@ -771,11 +874,17 @@ func newTUIModel(modpacks []Modpack, defaultIndex int) tuiModel {
 	l.SetFilteringEnabled(false)
 	l.SetShowHelp(false)
 	l.InfiniteScrolling = false
-	l.Select(defaultIndex)
+	l.Select(defaultIndex + 1) // +1 to account for back button
+
+	selectedModpack := Modpack{}
+	if len(modpacks) > 0 {
+		selectedModpack = modpacks[defaultIndex]
+	}
 
 	return tuiModel{
 		list:     l,
-		selected: modpacks[defaultIndex],
+		selected: selectedModpack,
+		isBack:   false,
 	}
 }
 
@@ -788,10 +897,21 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
 		case "enter":
-			if item, ok := m.list.SelectedItem().(modpackListItem); ok {
+			if _, ok := m.list.SelectedItem().(backMenuItem); ok {
+				// Back button selected
+				m.isBack = true
+				m.confirmed = false
+			} else if item, ok := m.list.SelectedItem().(modpackListItem); ok {
+				// Modpack selected
 				m.selected = item.modpack
+				m.confirmed = true
+				m.isBack = false
 			}
-			m.confirmed = true
+			return m, tea.Quit
+		case "b":
+			// Quick back shortcut
+			m.isBack = true
+			m.confirmed = false
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
@@ -808,9 +928,16 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
-	if item, ok := m.list.SelectedItem().(modpackListItem); ok {
+
+	// Update selected item tracking
+	if _, ok := m.list.SelectedItem().(backMenuItem); ok {
+		m.isBack = false
+		m.selected = Modpack{}
+	} else if item, ok := m.list.SelectedItem().(modpackListItem); ok {
 		m.selected = item.modpack
+		m.isBack = false
 	}
+
 	return m, cmd
 }
 
@@ -824,7 +951,7 @@ func (m tuiModel) View() string {
 	help := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#8be9fd")).
 		MarginTop(1).
-		Render("↑/↓ navigate   •   Enter launch   •   q quit")
+		Render("↑/↓ navigate   •   Enter select   •   b back   •   q quit")
 
 	return frame + "\n" + help
 }
@@ -855,6 +982,15 @@ func (i modpackListItem) FilterValue() string {
 	return strings.ToLower(i.modpack.ID + " " + i.modpack.DisplayName + " " + i.modpack.Description)
 }
 
+type backMenuItem struct {
+	title       string
+	description string
+}
+
+func (i backMenuItem) Title() string        { return i.title }
+func (i backMenuItem) Description() string { return i.description }
+func (i backMenuItem) FilterValue() string { return strings.ToLower(i.title + " " + i.description) }
+
 // -------------------- Logging --------------------
 
 func setupLogging(root string) func() {
@@ -883,11 +1019,7 @@ func setupLogging(root string) func() {
 }
 
 func logf(format string, a ...any) {
-	if interactive {
-		msgBox(fmt.Sprintf(format, a...), launcherShortName, 0)
-	} else {
-		fmt.Fprintf(out, format+"\n", a...)
-	}
+	fmt.Fprintf(out, format+"\n", a...)
 }
 
 func pauseIfWanted() {
@@ -899,11 +1031,7 @@ func pauseIfWanted() {
 }
 
 func fail(err error) {
-	if interactive {
-		msgBox("Error: "+err.Error(), launcherShortName, 0)
-	} else {
-		fmt.Fprintf(out, "Error: %v\n", err)
-	}
+	fmt.Fprintf(out, "Error: %v\n", err)
 	pauseIfWanted()
 	os.Exit(1)
 }
@@ -1007,7 +1135,7 @@ func performUpdateCleanup(oldExe, newExe string) {
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
 	api := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "TheBoys-Updater/1.0")
+	req.Header.Set("User-Agent", getUserAgent("Updater"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -1142,7 +1270,7 @@ func download(url string) ([]byte, error) {
 
 func downloadWithProgress(url string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("User-Agent", getUserAgent("General"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -1251,7 +1379,7 @@ type prismRelease struct {
 func fetchLatestPrismPortableURL() (string, error) {
 	api := "https://api.github.com/repos/PrismLauncher/PrismLauncher/releases/latest"
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "TheBoys-Prism/1.0")
+	req.Header.Set("User-Agent", getUserAgent("Prism"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -1298,15 +1426,153 @@ func fetchLatestPrismPortableURL() (string, error) {
 	return "", errors.New("no suitable Prism portable asset found in latest release")
 }
 
-// -------------------- Java 21 URL discovery --------------------
+// -------------------- Java Version Detection --------------------
+
+// getJavaVersionForMinecraft fetches compatible Java versions from PrismLauncher meta-launcher GitHub
+func getJavaVersionForMinecraft(mcVersion string) string {
+	// Clean version string for GitHub path
+	cleanVersion := strings.TrimSpace(mcVersion)
+	if cleanVersion == "" {
+		return "17" // default fallback
+	}
+
+	// Construct GitHub URL for PrismLauncher meta-launcher data
+	url := fmt.Sprintf("https://raw.githubusercontent.com/PrismLauncher/meta-launcher/refs/heads/master/net.minecraft/%s.json", cleanVersion)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to create request for Java compatibility data: %v", err)))
+		return "17" // default fallback
+	}
+	req.Header.Set("User-Agent", getUserAgent("Java"))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to fetch Java compatibility data for Minecraft %s: %v", cleanVersion, err)))
+		return "17" // default fallback
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		logf("%s", warnLine(fmt.Sprintf("Java compatibility data not found for Minecraft %s (HTTP %d)", cleanVersion, resp.StatusCode)))
+		return "17" // default fallback
+	}
+
+	// Parse the JSON response
+	var data struct {
+		CompatibleJavaMajors []int `json:"compatibleJavaMajors"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to parse Java compatibility data for Minecraft %s: %v", cleanVersion, err)))
+		return "17" // default fallback
+	}
+
+	// If we have compatible Java versions, select the best one
+	if len(data.CompatibleJavaMajors) > 0 {
+		// Choose the newest compatible Java version (prefer higher versions)
+		bestJava := data.CompatibleJavaMajors[0]
+		for _, javaVersion := range data.CompatibleJavaMajors {
+			if javaVersion > bestJava {
+				bestJava = javaVersion
+			}
+		}
+
+		logf("%s", successLine(fmt.Sprintf("Found Java %d compatible with Minecraft %s from PrismLauncher meta", bestJava, cleanVersion)))
+		return strconv.Itoa(bestJava)
+	}
+
+	logf("%s", warnLine(fmt.Sprintf("No Java compatibility data found for Minecraft %s", cleanVersion)))
+	return "17" // default fallback
+}
+
+// LWJGLInfo holds version and UID information for LWJGL
+type LWJGLInfo struct {
+	Version string
+	UID     string
+	Name    string
+}
+
+// getLWJGLVersionForMinecraft fetches LWJGL version from PrismLauncher meta-launcher GitHub
+func getLWJGLVersionForMinecraft(mcVersion string) LWJGLInfo {
+	// Clean version string for GitHub path
+	cleanVersion := strings.TrimSpace(mcVersion)
+	if cleanVersion == "" {
+		return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+	}
+
+	// Construct GitHub URL for PrismLauncher meta-launcher data
+	url := fmt.Sprintf("https://raw.githubusercontent.com/PrismLauncher/meta-launcher/refs/heads/master/net.minecraft/%s.json", cleanVersion)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to create request for LWJGL data: %v", err)))
+		return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+	}
+	req.Header.Set("User-Agent", getUserAgent("LWJGL"))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to fetch LWJGL data for Minecraft %s: %v", cleanVersion, err)))
+		return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		logf("%s", warnLine(fmt.Sprintf("LWJGL data not found for Minecraft %s (HTTP %d)", cleanVersion, resp.StatusCode)))
+		return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+	}
+
+	// Parse the JSON response
+	var data struct {
+		Requires []struct {
+			Suggests string `json:"suggests"`
+			UID      string `json:"uid"`
+		} `json:"requires"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to parse LWJGL data for Minecraft %s: %v", cleanVersion, err)))
+		return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+	}
+
+	// Look for LWJGL requirement
+	for _, req := range data.Requires {
+		if req.UID == "org.lwjgl" || req.UID == "org.lwjgl3" {
+			if req.Suggests != "" {
+				var name string
+				if req.UID == "org.lwjgl" {
+					name = "LWJGL 2"
+				} else {
+					name = "LWJGL 3"
+				}
+				logf("%s", successLine(fmt.Sprintf("Found LWJGL %s (%s) for Minecraft %s from PrismLauncher meta", req.Suggests, name, cleanVersion)))
+				return LWJGLInfo{Version: req.Suggests, UID: req.UID, Name: name}
+			}
+		}
+	}
+
+	logf("%s", warnLine(fmt.Sprintf("No LWJGL data found for Minecraft %s", cleanVersion)))
+	return LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"} // default fallback
+}
+
+// -------------------- Java URL discovery --------------------
 
 // Prefer Adoptium API (stable), fall back to GitHub release asset.
-// We want: OS=windows, arch=x64, image_type=jre, vm=hotspot, latest for 21.
-func fetchJRE21ZipURL() (string, error) {
+// We want: OS=windows, arch=x64, image_type=jre (or jdk for Java 16), vm=hotspot, latest for specified version.
+func fetchJREURL(javaVersion string) (string, error) {
+	// Java 16 only has JDK builds available, not JRE
+	imageType := "jre"
+	if javaVersion == "16" {
+		imageType = "jdk"
+	}
+
 	// 1) Adoptium API (v3)
-	adoptium := "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jre&os=windows"
+	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=x64&image_type=%s&os=windows", javaVersion, imageType)
 	req, _ := http.NewRequest("GET", adoptium, nil)
-	req.Header.Set("User-Agent", "TheBoys-Adoptium/1.0")
+	req.Header.Set("User-Agent", getUserAgent("Adoptium"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -1332,10 +1598,10 @@ func fetchJRE21ZipURL() (string, error) {
 		resp.Body.Close()
 	}
 
-	// 2) Fallback to GitHub Releases: adoptium/temurin21-binaries
-	api := "https://api.github.com/repos/adoptium/temurin21-binaries/releases/latest"
+	// 2) Fallback to GitHub Releases: adoptium/temurin{version}-binaries
+	api := fmt.Sprintf("https://api.github.com/repos/adoptium/temurin%s-binaries/releases/latest", javaVersion)
 	req2, _ := http.NewRequest("GET", api, nil)
-	req2.Header.Set("User-Agent", "TheBoys-Adoptium/1.0")
+	req2.Header.Set("User-Agent", getUserAgent("Adoptium"))
 	req2.Header.Set("Cache-Control", "no-cache")
 	req2.Header.Set("Pragma", "no-cache")
 	resp2, err2 := http.DefaultClient.Do(req2)
@@ -1350,14 +1616,14 @@ func fetchJRE21ZipURL() (string, error) {
 	if err := json.NewDecoder(resp2.Body).Decode(&rel); err != nil {
 		return "", err
 	}
-	// Example pattern: OpenJDK21U-jre_x64_windows_hotspot_*.zip
-	re := regexp.MustCompile(`(?i)^OpenJDK21U-jre_x64_windows_hotspot_.*\.zip$`)
+	// Example pattern: OpenJDK{version}U-jre_x64_windows_hotspot_*.zip or OpenJDK{version}U-jdk_x64_windows_hotspot_*.zip
+	re := regexp.MustCompile(fmt.Sprintf(`(?i)^OpenJDK%sU-%s_x64_windows_hotspot_.*\.zip$`, javaVersion, imageType))
 	for _, a := range rel.Assets {
 		if re.MatchString(a.Name) {
 			return a.BrowserDownloadURL, nil
 		}
 	}
-	return "", errors.New("no suitable Java 21 JRE zip found")
+	return "", fmt.Errorf("no suitable Java %s %s zip found", javaVersion, imageType)
 }
 
 // -------------------- packwiz bootstrap URL discovery --------------------
@@ -1365,7 +1631,7 @@ func fetchJRE21ZipURL() (string, error) {
 func fetchPackwizBootstrapURL() (string, error) {
 	api := "https://api.github.com/repos/packwiz/packwiz-installer-bootstrap/releases/latest"
 	req, _ := http.NewRequest("GET", api, nil)
-	req.Header.Set("User-Agent", "TheBoys-Packwiz/1.0")
+	req.Header.Set("User-Agent", getUserAgent("Packwiz"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
@@ -1415,22 +1681,27 @@ func createMultiMCInstance(modpack Modpack, packInfo *PackInfo, instDir, javaExe
 	}
 
 	// Build components dynamically based on pack info
+	lwjglInfo := getLWJGLVersionForMinecraft(packInfo.Minecraft)
+	lwjglVersion := lwjglInfo.Version
+	lwjglUID := lwjglInfo.UID
+	lwjglName := lwjglInfo.Name
+
 	components := []interface{}{
 		map[string]interface{}{
-			"cachedName":     "LWJGL 3",
-			"cachedVersion":  "3.3.1",
+			"cachedName":     lwjglName,
+			"cachedVersion":  lwjglVersion,
 			"cachedVolatile": true,
 			"dependencyOnly": true,
-			"uid":            "org.lwjgl3",
-			"version":        "3.3.1",
+			"uid":            lwjglUID,
+			"version":        lwjglVersion,
 		},
 		map[string]interface{}{
 			"cachedName":    "Minecraft",
 			"cachedVersion": packInfo.Minecraft,
 			"cachedRequires": []interface{}{
 				map[string]interface{}{
-					"suggests": "3.3.1",
-					"uid":      "org.lwjgl3",
+					"suggests": lwjglVersion,
+					"uid":      lwjglUID,
 				},
 			},
 			"important": true,
@@ -1746,7 +2017,7 @@ func fetchPackInfo(packURL string) (*PackInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("User-Agent", getUserAgent("General"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 
@@ -1806,7 +2077,7 @@ func fetchRemotePackVersion(packURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("User-Agent", getUserAgent("General"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 
@@ -2124,59 +2395,334 @@ func flattenOneLevel(dir string) error {
 	return nil
 }
 
-func msgBox(text, title string, flags uintptr) {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	proc := user32.NewProc("MessageBoxW")
-	_, _, _ = proc.Call(0,
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(text))),
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(title))),
-		flags)
+// -------------------- Main TUI --------------------
+
+// runMainTUI displays the main TUI with modpack selection and settings
+func runMainTUI(modpacks []Modpack) (Modpack, bool) {
+	for {
+		// Create only menu items - no modpacks in main menu
+		items := []list.Item{
+			mainMenuItem{title: "Select Modpack", description: "Choose a modpack to launch"},
+			mainMenuItem{title: "Settings", description: "Configure launcher settings"},
+		}
+
+		defaultIndex := 0 // Select "Select Modpack" by default
+
+		model := newMainTUIModel(items, defaultIndex)
+		prog := tea.NewProgram(model, tea.WithAltScreen())
+		res, err := prog.Run()
+		if err != nil {
+			return Modpack{}, false
+		}
+
+		finalModel := res.(mainTUIModel)
+
+		// Check if user selected settings
+		if finalModel.selectedIndex == 1 {
+			return Modpack{}, true // Settings chosen
+		}
+
+		// If user selected "Select Modpack" (index 0)
+		if finalModel.selectedIndex == 0 {
+			// Open modpack selection TUI
+			selectedModpack, confirmed, err := runLauncherTUI(modpacks, Modpack{})
+			if err != nil {
+				return Modpack{}, false // Error occurred
+			}
+
+			// Check if user pressed back or cancelled
+			if !confirmed || selectedModpack.ID == "" {
+				// User pressed back or cancelled - show main menu again
+				continue
+			}
+
+			// User selected a modpack
+			return selectedModpack, false
+		}
+
+		// User quit or cancelled from main menu
+		return Modpack{}, false
+	}
+}
+
+type mainTUIModel struct {
+	list         list.Model
+	selectedIndex int
+}
+
+type mainMenuItem struct {
+	title       string
+	description string
+}
+
+func (i mainMenuItem) Title() string        { return i.title }
+func (i mainMenuItem) Description() string { return i.description }
+func (i mainMenuItem) FilterValue() string { return strings.ToLower(i.title + " " + i.description) }
+
+type settingsMenuItem struct {
+	title       string
+	description string
+	action      string
+}
+
+func (i settingsMenuItem) Title() string        { return i.title }
+func (i settingsMenuItem) Description() string { return i.description }
+func (i settingsMenuItem) FilterValue() string { return strings.ToLower(i.title + " " + i.description) }
+
+type settingsTUIModel struct {
+	list           list.Model
+	selectedAction string
+}
+
+func newSettingsTUIModel(items []list.Item, defaultIndex int) settingsTUIModel {
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	delegate.SetSpacing(1)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#bfc7ff"))
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#14141f")).Background(lipgloss.Color("#8be9fd")).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#e2e2f9"))
+
+	l := list.New(items, delegate, 0, 0)
+	l.Title = "Settings"
+	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true).PaddingLeft(1)
+	l.SetShowStatusBar(false)
+	l.SetShowPagination(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
+	l.InfiniteScrolling = false
+	l.Select(defaultIndex)
+
+	return settingsTUIModel{
+		list:           l,
+		selectedAction: "",
+	}
+}
+
+func (m settingsTUIModel) Init() tea.Cmd { return nil }
+
+func (m settingsTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			if item, ok := m.list.SelectedItem().(settingsMenuItem); ok {
+				m.selectedAction = item.action
+			}
+			return m, tea.Quit
+		}
+	case tea.WindowSizeMsg:
+		height := msg.Height - 5
+		if height < 5 {
+			height = 5
+		}
+		width := msg.Width - 6
+		if width < 40 {
+			width = 40
+		}
+		m.list.SetSize(width, height)
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m settingsTUIModel) View() string {
+	frame := lipgloss.NewStyle().
+		Padding(1, 2).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#44475a")).
+		Render(m.list.View())
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#8be9fd")).
+		MarginTop(1).
+		Render("↑/↓ navigate   •   Enter select   •   q quit")
+
+	return frame + "\n" + help
+}
+
+func newMainTUIModel(items []list.Item, defaultIndex int) mainTUIModel {
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	delegate.SetSpacing(1)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#bfc7ff"))
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#14141f")).Background(lipgloss.Color("#8be9fd")).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#e2e2f9"))
+
+	l := list.New(items, delegate, 0, 0)
+	l.Title = fmt.Sprintf("%s Main Menu", launcherShortName)
+	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true).PaddingLeft(1)
+	l.SetShowStatusBar(false)
+	l.SetShowPagination(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
+	l.InfiniteScrolling = false
+	l.Select(defaultIndex)
+
+	return mainTUIModel{
+		list:         l,
+		selectedIndex: defaultIndex,
+	}
+}
+
+func (m mainTUIModel) Init() tea.Cmd { return nil }
+
+func (m mainTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			return m, tea.Quit
+		case "s":
+			// Quick access to settings
+			m.selectedIndex = 1
+			m.list.Select(1)
+			return m, tea.Quit
+		case "1":
+			m.selectedIndex = 0
+			m.list.Select(0)
+			return m, tea.Quit
+		case "2":
+			m.selectedIndex = 1
+			m.list.Select(1)
+			return m, tea.Quit
+		}
+	case tea.WindowSizeMsg:
+		height := msg.Height - 5
+		if height < 5 {
+			height = 5
+		}
+		width := msg.Width - 6
+		if width < 40 {
+			width = 40
+		}
+		m.list.SetSize(width, height)
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	m.selectedIndex = m.list.Index()
+	return m, cmd
+}
+
+func (m mainTUIModel) View() string {
+	frame := lipgloss.NewStyle().
+		Padding(1, 2).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#44475a")).
+		Render(m.list.View())
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#8be9fd")).
+		MarginTop(1).
+		Render("↑/↓ navigate   •   Enter select   •   s settings   •   q quit")
+
+	return frame + "\n" + help
 }
 
 // Auto RAM: ~50% of total, min 4096 MB, max 16384 MB for modern systems
+// loadSettings loads launcher settings from settings.json, creates defaults if needed
+func loadSettings(root string) error {
+	settingsPath := filepath.Join(root, "settings.json")
+
+	// Default settings - use half of system RAM, within 2-16GB range
+	totalRAM := totalRAMMB()
+	if totalRAM <= 0 {
+		totalRAM = 65536 // fallback 64GB
+	}
+
+	// Debug: Show detected RAM
+	logf("%s", infoLine(fmt.Sprintf("Detected system RAM: %d GB", totalRAM/1024)))
+
+	defaultMemory := totalRAM / 2 // Use half of system RAM
+	if defaultMemory > 16384 {
+		defaultMemory = 16384 // Cap at 16GB
+	}
+	if defaultMemory < 2048 {
+		defaultMemory = 2048 // Minimum 2GB
+	}
+
+	defaultSettings := LauncherSettings{
+		MemoryMB: defaultMemory,
+	}
+
+	// Try to load existing settings
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		if err := json.Unmarshal(data, &settings); err == nil {
+			// Validate loaded settings are within bounds
+			if settings.MemoryMB < 2048 {
+				settings.MemoryMB = 2048
+			}
+			if settings.MemoryMB > 16384 {
+				settings.MemoryMB = 16384
+			}
+			return nil
+		}
+	}
+
+	// Use defaults if loading failed
+	settings = defaultSettings
+	return saveSettings(root)
+}
+
+// saveSettings saves current settings to settings.json
+func saveSettings(root string) error {
+	settingsPath := filepath.Join(root, "settings.json")
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(settingsPath, data, 0644)
+}
+
 func autoRAM() (minMB, maxMB int) {
-	total := totalRAMMB()
-	if total <= 0 {
-		total = 65536 // fallback if detection fails (assume 64GB)
-	}
-
-	// Use 25-30% of total RAM for modpacks, but cap at 16GB
-	maxMB = int(float64(total) * 0.30)
-	if maxMB > 16384 {
-		maxMB = 16384
-	}
-
-	// Floor at 4096 for modern modpacks
-	if maxMB < 4096 {
-		maxMB = 4096
-	}
-
-	// Min mem = half of max, but not below 4096
-	minMB = max(4096, maxMB/2)
-	return
+	// Use configured settings as both min and max for simplicity
+	return settings.MemoryMB, settings.MemoryMB
 }
 
 // totalRAMMB returns total system memory in MB
 func totalRAMMB() int {
-	type mstat struct {
-		dwLen uint32
-		load  uint32
-		total uint64
-		avail uint64
-		a     uint64
-		b     uint64
-		c     uint64
-		d     uint64
+	// Use Windows GlobalMemoryStatusEx API to get total physical memory
+	// Define the structure ourselves since it's not in the basic windows package
+	type memoryStatusEx struct {
+		DwLength                uint32
+		DwMemoryLoad            uint32
+		UllTotalPhys            uint64
+		UllAvailPhys            uint64
+		UllTotalPageFile        uint64
+		UllAvailPageFile        uint64
+		UllTotalVirtual         uint64
+		UllAvailVirtual         uint64
+		UllAvailExtendedVirtual uint64
 	}
-	k32 := syscall.NewLazyDLL("kernel32.dll")
-	proc := k32.NewProc("GlobalMemoryStatusEx")
-	var s mstat
-	s.dwLen = uint32(unsafe.Sizeof(s))
-	r1, _, _ := proc.Call(uintptr(unsafe.Pointer(&s)))
-	if r1 == 0 {
-		return 0
+
+	var memStatus memoryStatusEx
+	memStatus.DwLength = uint32(unsafe.Sizeof(memStatus))
+
+	// Call the Windows API directly
+	kernel32 := windows.NewLazyDLL("kernel32.dll")
+	globalMemoryStatusEx := kernel32.NewProc("GlobalMemoryStatusEx")
+
+	ret, _, _ := globalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
+	if ret == 0 {
+		// Fallback to default if API call fails
+		return 16384 // 16GB default
 	}
-	return int(s.total / (1024 * 1024))
+
+	// Convert bytes to megabytes
+	totalMB := int(memStatus.UllTotalPhys / (1024 * 1024))
+
+	// Validate the result seems reasonable
+	if totalMB < 1024 || totalMB > 1024*1024 { // Less than 1GB or more than 1TB
+		return 16384 // Use default if result seems invalid
+	}
+
+	return totalMB
 }
 
 func min(a, b int) int {
@@ -2227,7 +2773,7 @@ func downloadCurseForgeFileWithRetry(pageURL, destPath string, maxRetries int) e
 
 		// Don't wait on the last attempt
 		if attempt < maxRetries {
-			waitTime := time.Duration(attempt) * time.Second
+			waitTime := time.Duration(attempt) * 3 * time.Second
 			logf("  Retrying in %d seconds...", waitTime/time.Second)
 			time.Sleep(waitTime)
 		}
@@ -2280,7 +2826,7 @@ func getProjectIDFromFilePage(filePageURL string) (string, error) {
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 	}
 
 	resp, err := client.Do(req)
@@ -2379,10 +2925,10 @@ func tryDirectDownload(downloadURL, destPath string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("User-Agent", getUserAgent("General"))
 
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Follow redirects for direct downloads
 			return nil
@@ -2428,7 +2974,7 @@ func downloadCurseForgeFromPage(pageURL, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "TheBoys/1.0")
+	req.Header.Set("User-Agent", getUserAgent("General"))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -2634,18 +3180,257 @@ func waitEnter() {
 	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
-// Returns IDYES(6) or IDNO(7)
+// runSettingsMenu displays and handles the settings menu using TUI
+func runSettingsMenu(root string) {
+	items := []list.Item{
+		settingsMenuItem{title: "Change Memory Settings", description: fmt.Sprintf("Current: %d GB", settings.MemoryMB/1024), action: "memory"},
+		settingsMenuItem{title: "Reset to Auto", description: "Use half of system RAM", action: "auto"},
+		settingsMenuItem{title: "Save and Exit", description: "Save settings and return to main menu", action: "save"},
+		settingsMenuItem{title: "Exit without Saving", description: "Discard changes and return to main menu", action: "exit"},
+	}
+
+	defaultIndex := 0
+
+	model := newSettingsTUIModel(items, defaultIndex)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+	res, err := prog.Run()
+	if err != nil {
+		return
+	}
+
+	finalModel := res.(settingsTUIModel)
+	if finalModel.selectedAction == "" {
+		return // User cancelled
+	}
+
+	// Handle the selected action
+	switch finalModel.selectedAction {
+	case "memory":
+		changeMemorySettingsTUI()
+		// Recursively show settings menu again
+		runSettingsMenu(root)
+	case "auto":
+		resetToAutoSettings(root)
+		fmt.Printf("\n%s", successLine("Memory reset to auto settings"))
+		fmt.Printf("%s", infoLine("Returning to settings menu..."))
+		time.Sleep(2 * time.Second)
+		runSettingsMenu(root)
+	case "save":
+		if err := saveSettings(root); err != nil {
+			fmt.Printf("\n%s", warnLine(fmt.Sprintf("Failed to save settings: %v", err)))
+		} else {
+			fmt.Printf("\n%s", successLine("Settings saved successfully!"))
+		}
+	case "exit":
+		fmt.Printf("\n%s", infoLine("Settings not saved."))
+	}
+}
+
+// changeMemorySettingsTUI provides a TUI for changing memory settings
+func changeMemorySettingsTUI() {
+	// Create items for memory options
+	memItems := []list.Item{}
+
+	// Add memory options from 2GB to 16GB in sensible increments
+	memoryOptions := []int{2, 4, 6, 8, 10, 12, 14, 16}
+
+	for _, gb := range memoryOptions {
+		desc := fmt.Sprintf("Allocate %d GB to the modpack", gb)
+		memItems = append(memItems, memoryMenuItem{
+			title:       fmt.Sprintf("%d GB", gb),
+			description: desc,
+			memoryMB:    gb * 1024,
+		})
+	}
+
+	// Add custom option
+	memItems = append(memItems, memoryMenuItem{
+		title:       "Custom",
+		description: "Enter custom GB amount",
+		memoryMB:    -1, // Special value for custom
+	})
+
+	model := newMemoryTUIModel(memItems, 0)
+	prog := tea.NewProgram(model, tea.WithAltScreen())
+	res, err := prog.Run()
+	if err != nil {
+		return
+	}
+
+	finalModel := res.(memoryTUIModel)
+	if finalModel.selected {
+		if finalModel.memoryMB == -1 {
+			// Custom values - fall back to console input
+			changeMemorySettingsConsole()
+		} else {
+			// Update settings with selected memory amount
+			settings.MemoryMB = finalModel.memoryMB
+
+			fmt.Printf("\n%s", successLine("Memory settings updated:"))
+			fmt.Printf("  ■ Memory: %d GB\n", finalModel.memoryMB/1024)
+			fmt.Printf("%s", infoLine("Press Enter to continue..."))
+			fmt.Scanln() // Wait for user to acknowledge
+		}
+	}
+}
+
+// changeMemorySettingsConsole provides console input for custom memory values
+func changeMemorySettingsConsole() {
+	fmt.Printf("\n%s", headerLine("Custom Memory Configuration"))
+	fmt.Printf("%s", infoLine("Enter memory allocation in GB (2-16 GB range)"))
+	fmt.Printf("%s", dividerLine())
+
+	var memoryGB int
+
+	for {
+		fmt.Printf("  %s Memory allocation (2-16 GB): ", stepBulletStyle.Render("►"))
+		_, err := fmt.Scanf("%d", &memoryGB)
+		if err != nil || memoryGB < 2 || memoryGB > 16 {
+			fmt.Printf("  %s %s\n", warnBulletStyle.Render("⚠"), warnTextStyle.Render("Please enter a number between 2 and 16"))
+			continue
+		}
+		break
+	}
+
+	// Convert to MB and update settings
+	settings.MemoryMB = memoryGB * 1024
+
+	fmt.Printf("%s", dividerLine())
+	fmt.Printf("%s", successLine("Memory settings updated:"))
+	fmt.Printf("  ■ Memory: %d GB\n", memoryGB)
+	fmt.Printf("%s", infoLine("Press Enter to continue..."))
+	fmt.Scanln() // Wait for user to acknowledge
+}
+
+type memoryMenuItem struct {
+	title       string
+	description string
+	memoryMB    int
+}
+
+func (i memoryMenuItem) Title() string        { return i.title }
+func (i memoryMenuItem) Description() string { return i.description }
+func (i memoryMenuItem) FilterValue() string { return strings.ToLower(i.title + " " + i.description) }
+
+type memoryTUIModel struct {
+	list       list.Model
+	selected   bool
+	memoryMB   int
+}
+
+func newMemoryTUIModel(items []list.Item, defaultIndex int) memoryTUIModel {
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	delegate.SetSpacing(1)
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#bfc7ff"))
+	delegate.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#14141f")).Background(lipgloss.Color("#8be9fd")).Bold(true)
+	delegate.Styles.SelectedDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#e2e2f9"))
+
+	l := list.New(items, delegate, 0, 0)
+	l.Title = "Select Memory Allocation"
+	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#8be9fd")).Bold(true).PaddingLeft(1)
+	l.SetShowStatusBar(false)
+	l.SetShowPagination(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowHelp(false)
+	l.InfiniteScrolling = false
+	l.Select(defaultIndex)
+
+	return memoryTUIModel{
+		list:     l,
+		selected: false,
+		memoryMB: 0,
+	}
+}
+
+func (m memoryTUIModel) Init() tea.Cmd { return nil }
+
+func (m memoryTUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			if item, ok := m.list.SelectedItem().(memoryMenuItem); ok {
+				m.selected = true
+				m.memoryMB = item.memoryMB
+			}
+			return m, tea.Quit
+		}
+	case tea.WindowSizeMsg:
+		height := msg.Height - 5
+		if height < 5 {
+			height = 5
+		}
+		width := msg.Width - 6
+		if width < 40 {
+			width = 40
+		}
+		m.list.SetSize(width, height)
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m memoryTUIModel) View() string {
+	frame := lipgloss.NewStyle().
+		Padding(1, 2).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#44475a")).
+		Render(m.list.View())
+
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#8be9fd")).
+		MarginTop(1).
+		Render("↑/↓ navigate   •   Enter select   •   q quit")
+
+	return frame + "\n" + help
+}
+
+// resetToAutoSettings resets memory to auto-detected values
+func resetToAutoSettings(root string) {
+	totalRAM := totalRAMMB()
+	if totalRAM <= 0 {
+		totalRAM = 65536 // fallback 64GB
+	}
+
+	autoMemory := totalRAM / 2 // Use half of system RAM
+	if autoMemory > 16384 {
+		autoMemory = 16384 // Cap at 16GB
+	}
+	if autoMemory < 2048 {
+		autoMemory = 2048 // Minimum 2GB
+	}
+
+	settings.MemoryMB = autoMemory
+
+	fmt.Printf("\n%s", dividerLine())
+	fmt.Printf("%s", successLine("Memory settings reset to auto:"))
+	fmt.Printf("  ■ Memory: %d GB\n", autoMemory/1024)
+	fmt.Printf("  %s\n", infoLine(fmt.Sprintf("Based on half of your %d GB total RAM", totalRAM/1024)))
+	fmt.Printf("%s", dividerLine())
+}
+
+// Returns true for yes, false for no (console version)
 func yesNoBox(text, title string) int {
 	const (
-		MB_YESNO = 0x00000004
-		IDYES    = 6
+		IDYES = 6
+		IDNO  = 7
 	)
-	user32 := syscall.NewLazyDLL("user32.dll")
-	proc := user32.NewProc("MessageBoxW")
-	r, _, _ := proc.Call(0,
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(text))),
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(title))),
-		MB_YESNO,
-	)
-	return int(r)
+
+	fmt.Printf("\n%s\n", headerLine(title))
+	fmt.Printf("%s\n", text)
+	fmt.Printf("Continue? (y/n): ")
+
+	var response string
+	fmt.Scanln(&response)
+
+	response = strings.ToLower(strings.TrimSpace(response))
+	if response == "y" || response == "yes" {
+		return IDYES
+	}
+	return IDNO
 }
