@@ -259,10 +259,10 @@ type Platform interface {
 - [x] Implement modpack selection and validation
 - [x] Add modpack metadata handling
 - [x] Create modpack update checking
-- [ ] Implement cross-platform Java detection
-- [ ] Create Java download manager (Adoptium API)
-- [ ] Add Java version validation
-- [ ] Implement Java installation verification
+- [x] Implement cross-platform Java detection
+- [x] Create Java download manager (Adoptium API)
+- [x] Add Java version validation
+- [x] Implement Java installation verification
 - [ ] Create Prism download manager
 - [ ] Implement Prism instance creation
 - [ ] Add Prism configuration management

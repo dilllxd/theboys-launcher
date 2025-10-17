@@ -20,6 +20,7 @@ type App struct {
 	config          *config.Manager
 	modpackManager  *config.ModpackManager
 	launcherManager *launcher.ModpackManager
+	javaManager     *launcher.JavaManager
 	platform        platform.Platform
 	logger          *logging.Logger
 }
@@ -41,6 +42,9 @@ func NewApp() *App {
 	// Initialize launcher modpack manager
 	launcherModpackManager := launcher.NewModpackManager(configManager, modpackConfigManager, platformImpl, logger)
 
+	// Initialize Java manager
+	javaManager := launcher.NewJavaManager(platformImpl, logger)
+
 	// Initialize GUI
 	gui := gui.NewGUI(configManager, platformImpl, logger)
 
@@ -49,6 +53,7 @@ func NewApp() *App {
 		config:          configManager,
 		modpackManager:  modpackConfigManager,
 		launcherManager: launcherModpackManager,
+		javaManager:     javaManager,
 		platform:        platformImpl,
 		logger:          logger,
 	}
@@ -98,6 +103,18 @@ func (a *App) Startup(ctx context.Context) {
 		a.logger.Info("Loaded %d modpack(s)", len(modpacks))
 	}
 
+	// Detect Java installations
+	a.logger.Info("Detecting Java installations...")
+	javaInstallations, err := a.javaManager.DetectJavaInstallations()
+	if err != nil {
+		a.logger.Warn("Failed to detect Java installations: %v", err)
+	} else {
+		a.logger.Info("Found %d Java installation(s)", len(javaInstallations))
+		for _, java := range javaInstallations {
+			a.logger.Debug("Java %s at %s (%s)", java.Version, java.Path, map[bool]string{true: "JDK", false: "JRE"}[java.IsJDK])
+		}
+	}
+
 	// Initialize GUI components
 	a.gui.Initialize(ctx)
 
@@ -140,4 +157,24 @@ func (a *App) RefreshModpacks() error {
 // GetSettings returns the current application settings
 func (a *App) GetSettings() *types.LauncherSettings {
 	return a.config.GetSettings()
+}
+
+// GetJavaInstallations returns detected Java installations
+func (a *App) GetJavaInstallations() ([]types.JavaInstallation, error) {
+	return a.javaManager.DetectJavaInstallations()
+}
+
+// GetBestJavaInstallation returns the best Java installation for a Minecraft version
+func (a *App) GetBestJavaInstallation(mcVersion string) (*types.JavaInstallation, error) {
+	return a.javaManager.GetBestJavaInstallation(mcVersion)
+}
+
+// GetJavaVersionForMinecraft returns the recommended Java version for a Minecraft version
+func (a *App) GetJavaVersionForMinecraft(mcVersion string) string {
+	return a.javaManager.GetJavaVersionForMinecraft(mcVersion)
+}
+
+// DownloadJava downloads and installs a Java runtime
+func (a *App) DownloadJava(javaVersion string, installDir string) error {
+	return a.javaManager.DownloadJava(javaVersion, installDir, nil)
 }
