@@ -1,7 +1,6 @@
 import React, { memo, useEffect, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { createPortal } from 'react-dom';
-import { OptimizedButton } from './OptimizedLoadingSpinner';
 
 // Enhanced animations
 const fadeIn = keyframes`
@@ -12,17 +11,6 @@ const fadeIn = keyframes`
   to {
     opacity: 1;
     transform: scale(1);
-  }
-`;
-
-const slideIn = keyframes`
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 `;
 

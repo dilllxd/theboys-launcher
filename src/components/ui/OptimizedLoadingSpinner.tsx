@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 
 // Performance-optimized keyframes
@@ -96,7 +96,7 @@ export const OptimizedLoadingSpinner = memo<OptimizedLoadingSpinnerProps>(({
   size = 'md',
   variant = 'spinner',
   className,
-  'aria-label' = 'Loading...'
+  'aria-label': ariaLabel = 'Loading...'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 

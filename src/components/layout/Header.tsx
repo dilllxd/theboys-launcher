@@ -43,10 +43,18 @@ const ThemeToggle = styled.button`
 `;
 
 interface HeaderProps {
-  title: string;
+  title?: string;
+  onSidebarToggle?: () => void;
+  sidebarCollapsed?: boolean;
+  isScrolled?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ title }) => {
+export const Header: React.FC<HeaderProps> = ({
+  title = "TheBoys Launcher",
+  onSidebarToggle,
+  sidebarCollapsed,
+  isScrolled
+}) => {
   const handleThemeToggle = () => {
     // TODO: Implement theme toggle
     console.log('Theme toggle clicked');
@@ -54,7 +62,14 @@ export const Header: React.FC<HeaderProps> = ({ title }) => {
 
   return (
     <HeaderContainer>
-      <HeaderTitle>{title}</HeaderTitle>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
+        {onSidebarToggle && (
+          <ThemeToggle onClick={onSidebarToggle} title="Toggle sidebar">
+            {sidebarCollapsed ? '☰' : '☰'}
+          </ThemeToggle>
+        )}
+        <HeaderTitle>{title}</HeaderTitle>
+      </div>
       <HeaderActions>
         <ThemeToggle onClick={handleThemeToggle} title="Toggle theme">
           🌙
