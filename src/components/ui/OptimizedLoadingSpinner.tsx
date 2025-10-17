@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 
 // Performance-optimized keyframes

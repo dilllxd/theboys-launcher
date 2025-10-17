@@ -3,16 +3,6 @@ import styled, { keyframes } from 'styled-components';
 import { OptimizedButton } from './OptimizedButton';
 
 // Enhanced animations
-const slideIn = keyframes`
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-`;
 
 const slideOut = keyframes`
   from {
@@ -222,8 +212,7 @@ export const EnhancedNotification: React.FC<NotificationProps> = memo(({
 }) => {
   const [isExiting, setIsExiting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout>();
-  const progressTimerRef = useRef<NodeJS.Timeout>();
+  const timerRef = useRef<number>();
 
   const handleMouseEnter = () => {
     setIsPaused(true);

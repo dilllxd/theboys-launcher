@@ -24,6 +24,14 @@ export const performance = {
     return 0;
   },
 
+  // Get current time
+  now: () => {
+    if (window.performance && window.performance.now) {
+      return window.performance.now();
+    }
+    return Date.now();
+  },
+
   // Get navigation timing
   getNavigationTiming: () => {
     if (window.performance && window.performance.timing) {
@@ -40,6 +48,14 @@ export const performance = {
     }
     return null;
   },
+
+  // Get entries by type
+  getEntriesByType: (type: string) => {
+    if (window.performance && window.performance.getEntriesByType) {
+      return window.performance.getEntriesByType(type);
+    }
+    return [];
+  },
 };
 
 // Debounce utility for search and other frequent operations
@@ -47,7 +63,7 @@ export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
+  let timeout: number;
   return (...args: Parameters<T>) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
@@ -290,10 +306,8 @@ export const collectPerformanceMetrics = () => {
   };
 
   // Send metrics to analytics service (optional)
-  if (process.env.NODE_ENV === 'production') {
-    // Send to your analytics service
-    console.log('Performance metrics:', metrics);
-  }
+  // In production, you might want to send these to an analytics service
+  console.log('Performance metrics:', metrics);
 
   return metrics;
 };

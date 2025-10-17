@@ -2,13 +2,14 @@ import React from 'react';
 import styled from 'styled-components';
 import { Link, useLocation } from 'react-router-dom';
 
-const SidebarContainer = styled.aside`
-  width: 250px;
+const SidebarContainer = styled.aside<{ collapsed: boolean }>`
+  width: ${props => props.collapsed ? '60px' : '250px'};
   background-color: var(--color-bg-secondary);
   border-right: 1px solid var(--color-border-primary);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  transition: width var(--transition-normal) ease-in-out;
 `;
 
 const Logo = styled.div`
@@ -78,7 +79,11 @@ const NavigationLink = styled(Link)<{
   }
 `;
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  collapsed?: boolean;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
   const location = useLocation();
 
   const navigationItems = [
@@ -91,10 +96,10 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <SidebarContainer>
+    <SidebarContainer collapsed={collapsed}>
       <Logo>
-        <h1>TheBoys</h1>
-        <p>Launcher</p>
+        <h1>{collapsed ? 'TB' : 'TheBoys'}</h1>
+        {!collapsed && <p>Launcher</p>}
       </Logo>
 
       <Navigation>
@@ -104,9 +109,10 @@ export const Sidebar: React.FC = () => {
               <NavigationLink
                 to={item.path}
                 active={location.pathname === item.path}
+                title={collapsed ? item.label : undefined}
               >
                 <span>{item.icon}</span>
-                <span>{item.label}</span>
+                {!collapsed && <span>{item.label}</span>}
               </NavigationLink>
             </NavigationItem>
           ))}

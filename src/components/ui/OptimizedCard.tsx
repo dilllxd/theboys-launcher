@@ -1,5 +1,5 @@
 import React, { memo, useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import { createIntersectionObserver, VirtualScrollManager } from '../../utils/performance';
 
 const CardContainer = styled.div<{
@@ -65,10 +65,6 @@ const CardSubtitle = styled.p`
   line-height: 1.4;
 `;
 
-const CardContent = styled.div`
-  color: var(--color-text-primary);
-  line-height: 1.6;
-`;
 
 const CardFooter = styled.div`
   margin-top: var(--spacing-md);
@@ -115,7 +111,6 @@ export const OptimizedCard = memo<OptimizedCardProps>(({
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isLoaded, setIsLoaded] = useState(!lazy);
-  const [isVisible, setIsVisible] = useState(!lazy);
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -214,14 +209,12 @@ interface VirtualizedCardListProps {
   }>;
   itemHeight?: number;
   containerHeight?: number;
-  onItemRender?: (item: any, index: number) => void;
 }
 
 export const VirtualizedCardList = memo<VirtualizedCardListProps>(({
   items,
   itemHeight = 200,
   containerHeight = 600,
-  onItemRender,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollElementRef = useRef<HTMLDivElement>(null);
