@@ -336,9 +336,9 @@ func (pm *PackwizManager) GetLWJGLVersionForMinecraft(mcVersion string) (*LWJGLI
 	return &LWJGLInfo{Version: "3.3.3", UID: "org.lwjgl3", Name: "LWJGL 3"}, nil
 }
 
-// CreateModpackBackup creates a backup of the current modpack installation
+// CreateModpackBackup creates a comprehensive backup of the current modpack installation
 func (pm *PackwizManager) CreateModpackBackup(instanceDir, modpackID string) (string, error) {
-	pm.logger.Info("Creating modpack backup for %s", modpackID)
+	pm.logger.Info("Creating comprehensive backup for %s", modpackID)
 
 	timestamp := time.Now().Format("20060102-150405")
 	backupName := fmt.Sprintf("%s-backup-%s", modpackID, timestamp)
@@ -349,27 +349,73 @@ func (pm *PackwizManager) CreateModpackBackup(instanceDir, modpackID string) (st
 		return "", fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
-	// Copy important files
+	// Calculate total backup size for progress tracking
+	var totalSize int64
+	dirsToBackup := []string{"mods", "config", "resourcepacks", "shaderpacks", "scripts", "options.txt"}
+	for _, dir := range dirsToBackup {
+		if size, err := pm.getDirectorySize(filepath.Join(instanceDir, dir)); err == nil {
+			totalSize += size
+		}
+	}
+
+	var backedUpSize int64 = 0
+	totalSizePtr := totalSize
+	// Backup important directories and files
 	filesToBackup := []string{
 		"pack.toml",
 		"mods",
 		"config",
 		"resourcepacks",
 		"shaderpacks",
+		"scripts",
+		"options.txt",
+		"servers.dat",
+		"realmstoken.dat",
 	}
 
 	for _, file := range filesToBackup {
 		src := filepath.Join(instanceDir, file)
 		dst := filepath.Join(backupPath, file)
 
-		if _, err := os.Stat(src); err == nil {
-			if err := copyDir(src, dst); err != nil {
-				pm.logger.Warn("Failed to backup %s: %v", file, err)
+		if info, err := os.Stat(src); err == nil {
+			if info.IsDir() {
+				// Backup directory with progress
+				if err := pm.copyDirWithProgress(src, dst, &backedUpSize, totalSizePtr); err != nil {
+					pm.logger.Warn("Failed to backup directory %s: %v", file, err)
+				}
+			} else {
+				// Backup single file
+				if err := copyFile(src, dst); err != nil {
+					pm.logger.Warn("Failed to backup file %s: %v", file, err)
+				} else {
+					backedUpSize += info.Size()
+				}
 			}
 		}
 	}
 
-	pm.logger.Info("Backup created: %s", backupPath)
+	// Create comprehensive backup metadata
+	metadata := map[string]interface{}{
+		"timestamp":       timestamp,
+		"modpack_id":      modpackID,
+		"instance_path":   instanceDir,
+		"backup_path":     backupPath,
+		"created_at":      time.Now().Format(time.RFC3339),
+		"total_size":      totalSize,
+		"backed_up_size":  backedUpSize,
+		"files_backed_up": len(filesToBackup),
+		"minecraft_version": pm.detectMinecraftVersion(instanceDir),
+		"modloader": pm.detectModloader(instanceDir),
+		"backup_format": "comprehensive_v1",
+	}
+
+	metadataFile := filepath.Join(backupPath, "backup.json")
+	metadataBytes, _ := json.MarshalIndent(metadata, "", "  ")
+	if err := os.WriteFile(metadataFile, metadataBytes, 0644); err != nil {
+		pm.logger.Warn("Failed to write backup metadata: %v", err)
+	}
+
+	pm.logger.Info("Comprehensive backup created: %s (%s)", backupPath, formatBytes(backedUpSize))
 	return backupPath, nil
 }
 
@@ -463,3 +509,136 @@ func copyFile(src, dst string) error {
 	_, err = io.Copy(dstFile, srcFile)
 	return err
 }
+
+// getDirectorySize calculates the total size of a directory recursively
+func (pm *PackwizManager) getDirectorySize(dirPath string) (int64, error) {
+	var totalSize int64
+
+	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+
+	return totalSize, err
+}
+
+// copyDirWithProgress copies a directory with progress tracking
+func (pm *PackwizManager) copyDirWithProgress(src, dst string, currentSize *int64, totalSize int64) error {
+	// Create destination directory
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+
+	// Read source directory
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	// Copy each entry
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			// Recursively copy subdirectory
+			if err := pm.copyDirWithProgress(srcPath, dstPath, currentSize, totalSize); err != nil {
+				return err
+			}
+		} else {
+			// Copy file
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+			// Update progress
+			if info, err := entry.Info(); err == nil {
+				*currentSize += info.Size()
+				if totalSize > 0 {
+					progress := float64(*currentSize) / float64(totalSize)
+					pm.logger.Debug("Backup progress: %.1f%%", progress*100)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// detectMinecraftVersion attempts to detect Minecraft version from instance
+func (pm *PackwizManager) detectMinecraftVersion(instancePath string) string {
+	// Try to read from pack.toml first
+	packFile := filepath.Join(instancePath, "pack.toml")
+	if content, err := os.ReadFile(packFile); err == nil {
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "minecraft = ") {
+				version := strings.Trim(strings.TrimPrefix(line, "minecraft = "), `"`)
+				if version != "" {
+					return version
+				}
+			}
+		}
+	}
+
+	// Try to read from PrismLauncher instance config
+	instanceConfig := filepath.Join(instancePath, "..", "instance.cfg")
+	if content, err := os.ReadFile(instanceConfig); err == nil {
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "MinecraftVersion=") {
+				version := strings.TrimPrefix(line, "MinecraftVersion=")
+				return version
+			}
+		}
+	}
+
+	return "unknown"
+}
+
+// detectModloader attempts to detect the modloader type from instance
+func (pm *PackwizManager) detectModloader(instancePath string) string {
+	// Check for Forge markers
+	if _, err := os.Stat(filepath.Join(instancePath, "forge.toml")); err == nil {
+		return "forge"
+	}
+
+	// Check for Fabric markers
+	if _, err := os.Stat(filepath.Join(instancePath, "fabric-loader.json")); err == nil {
+		return "fabric"
+	}
+
+	// Check for Quilt markers
+	if _, err := os.Stat(filepath.Join(instancePath, "quilt-loader.json")); err == nil {
+		return "quilt"
+	}
+
+	// Check for NeoForge markers
+	if _, err := os.Stat(filepath.Join(instancePath, "neoforge.mods.toml")); err == nil {
+		return "neoforge"
+	}
+
+	// Try to detect from pack.toml
+	packFile := filepath.Join(instancePath, "pack.toml")
+	if content, err := os.ReadFile(packFile); err == nil {
+		contentStr := string(content)
+		if strings.Contains(contentStr, "fabric") {
+			return "fabric"
+		} else if strings.Contains(contentStr, "forge") {
+			return "forge"
+		} else if strings.Contains(contentStr, "quilt") {
+			return "quilt"
+		} else if strings.Contains(contentStr, "neoforge") {
+			return "neoforge"
+		}
+	}
+
+	return "unknown"
+}
+
