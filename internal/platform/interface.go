@@ -11,6 +11,7 @@ type Platform interface {
 	GetArch() string
 	GetExecutablePath() (string, error)
 	GetAppDataDir() (string, error)
+	GetCustomDataDir() (string, error) // Custom installation directory support
 
 	// Java management
 	DetectJavaInstallations() ([]types.JavaInstallation, error)
@@ -35,9 +36,17 @@ type Platform interface {
 	SupportsAutoUpdate() bool
 	GetSupportedFileExtensions() []string
 	ValidateFilePermissions(path string) error
+	CanCreateShortcut() bool
+	CreateShortcut(target, shortcutPath string) error
 
 	// UI integration
 	SetWindowState(state string) error // minimize, maximize, restore
 	ShowNotification(title, message string) error
 	OpenURL(url string) error
+
+	// Installation support
+	IsInstalled() bool
+	GetInstallationPath() (string, error)
+	RegisterInstallation(path string) error
+	UnregisterInstallation() error
 }

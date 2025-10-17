@@ -1,10 +1,12 @@
 package platform
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 	"theboys-launcher/pkg/types"
 )
 
@@ -202,4 +204,120 @@ func (p *WindowsPlatform) isJDK(javaPath string) bool {
 
 func (p *WindowsPlatform) isVersionCompatible(current, required string) bool {
 	return current != "unknown"
+}
+
+// CanCreateShortcut returns whether Windows supports creating shortcuts
+func (p *WindowsPlatform) CanCreateShortcut() bool {
+	return true
+}
+
+// CreateShortcut creates a Windows shortcut (.lnk file)
+func (p *WindowsPlatform) CreateShortcut(target, shortcutPath string) error {
+	// Use PowerShell to create a shortcut
+	vbsScript := `
+Set oWS = WScript.CreateObject("WScript.Shell")
+sLinkFile = "` + shortcutPath + `"
+Set oLink = oWS.CreateShortcut(sLinkFile)
+oLink.TargetPath = "` + target + `"
+oLink.Save
+`
+
+	vbsPath := filepath.Join(os.TempDir(), "createshortcut.vbs")
+	file, err := os.Create(vbsPath)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(vbsPath)
+
+	_, err = file.WriteString(vbsScript)
+	if err != nil {
+		return err
+	}
+	file.Close()
+
+	// Execute the VBScript
+	cmd := exec.Command("cscript", "//NoLogo", vbsPath)
+	return cmd.Run()
+}
+
+// IsInstalled returns whether the launcher is properly installed on Windows
+func (p *WindowsPlatform) IsInstalled() bool {
+	// Check Windows Registry for installation
+	// For now, check if executable is in Program Files
+	exePath, err := p.GetExecutablePath()
+	if err != nil {
+		return false
+	}
+
+	return strings.Contains(strings.ToLower(exePath), strings.ToLower("Program Files"))
+}
+
+// GetInstallationPath returns the Windows installation path from registry
+func (p *WindowsPlatform) GetInstallationPath() (string, error) {
+	// Try to read from Windows Registry (simplified)
+	// In a full implementation, this would use golang.org/x/sys/windows/registry
+
+	// For now, try common installation locations
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	possiblePaths := []string{
+		filepath.Join(home, "AppData", "Local", "TheBoysLauncher"),
+		`C:\Program Files\TheBoysLauncher`,
+		`C:\Program Files (x86)\TheBoysLauncher`,
+	}
+
+	for _, path := range possiblePaths {
+		if p.FileExists(path) {
+			return path, nil
+		}
+	}
+
+	// Fall back to executable directory
+	exePath, err := p.GetExecutablePath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(exePath), nil
+}
+
+// RegisterInstallation registers the installation in Windows Registry
+func (p *WindowsPlatform) RegisterInstallation(path string) error {
+	// Create installation marker
+	installFile := filepath.Join(path, ".theboys-installed")
+	file, err := os.Create(installFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Write installation info
+	fmt.Fprintf(file, "installed_at=%s\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, "version=%s\n", os.Getenv("THEBOYS_VERSION"))
+	fmt.Fprintf(file, "platform=windows\n")
+
+	// In a full implementation, this would also write to Windows Registry
+	// to register the application properly
+
+	return nil
+}
+
+// UnregisterInstallation removes the installation from Windows Registry
+func (p *WindowsPlatform) UnregisterInstallation() error {
+	installPath, err := p.GetInstallationPath()
+	if err != nil {
+		return err
+	}
+
+	installFile := filepath.Join(installPath, ".theboys-installed")
+	err = os.Remove(installFile)
+	if err != nil {
+		return err
+	}
+
+	// In a full implementation, this would also remove from Windows Registry
+
+	return nil
 }

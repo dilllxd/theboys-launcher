@@ -146,6 +146,80 @@ package: build-all
 	@mkdir -p $(DIST_DIR)
 	@echo "Packages created in $(DIST_DIR)"
 
+# Build installers for all platforms
+.PHONY: installers
+installers: build-all
+	@echo "Creating installers for all platforms..."
+	@mkdir -p installers/dist
+
+# Windows installer (GUI with directory selection)
+.PHONY: installer-windows
+installer-windows: build-windows
+	@echo "Creating Windows GUI installer..."
+	@mkdir -p installers/dist
+	@if command -v makensis >/dev/null 2>&1; then \
+		if [ -f "build/windows-amd64/theboys-launcher-windows-amd64.exe" ]; then \
+			cp "build/windows-amd64/theboys-launcher-windows-amd64.exe" "installers/TheBoysLauncher.exe"; \
+			cd installers && makensis windows-installer.nsi && cd ..; \
+			echo "✓ Windows GUI installer created: installers/dist/TheBoysLauncher-Setup-$(VERSION).exe"; \
+			echo "  - Professional installation wizard"; \
+			echo "  - Directory selection"; \
+			echo "  - Component selection"; \
+			echo "  - Desktop shortcuts"; \
+			echo "  - File associations"; \
+		else \
+			echo "❌ Windows build not found"; \
+		fi; \
+	else \
+		echo "❌ NSIS not found. Install NSIS to create Windows installer."; \
+		echo "  Download from: https://nsis.sourceforge.io/"; \
+	fi
+
+# macOS installer (GUI with proper wizard)
+.PHONY: installer-macos
+installer-macos: build-macos
+	@echo "Creating macOS GUI installer..."
+	@mkdir -p installers/dist
+	@if command -v pkgbuild >/dev/null 2>&1; then \
+		if [ -f "build/darwin-amd64/theboys-launcher-macos-amd64" ]; then \
+			cp "build/darwin-amd64/theboys-launcher-macos-amd64" "installers/theboys-launcher-macos"; \
+			chmod +x "installers/theboys-launcher-macos"; \
+			cd installers && ./macos-build-installer.sh && cd ..; \
+			echo "✓ macOS GUI installer created: installers/dist/TheBoys Launcher-$(VERSION).pkg"; \
+			echo "  - Professional installation wizard"; \
+			echo "  - Drag-and-drop interface"; \
+			echo "  - Welcome and completion screens"; \
+			echo "  - License agreement"; \
+		else \
+			echo "❌ macOS build not found"; \
+		fi; \
+	else \
+		echo "❌ macOS build tools not found. Run on macOS to create macOS installer."; \
+	fi
+
+# Linux installers (Multiple GUI options)
+.PHONY: installer-linux
+installer-linux: build-linux
+	@echo "Creating Linux GUI installers..."
+	@mkdir -p installers/dist
+	@if [ -f "build/linux-amd64/theboys-launcher-linux-amd64" ]; then \
+		cp "build/linux-amd64/theboys-launcher-linux-amd64" "installers/theboys-launcher-linux"; \
+		chmod +x "installers/theboys-launcher-linux"; \
+		cd installers && ./linux-gui-installer.sh && cd ..; \
+		echo "✓ Linux GUI installers created in installers/dist/"; \
+		echo "  - Qt-based GUI installer (primary)"; \
+		echo "  - Zenity fallback installer"; \
+		echo "  - Dialog terminal installer"; \
+		echo "  - AppImage self-contained installer"; \
+	else \
+		echo "❌ Linux build not found"; \
+	fi
+
+# Create all installers
+.PHONY: installer-all
+installer-all: installer-windows installer-macos installer-linux
+	@echo "All installers created in installers/dist/"
+
 # Create Windows package
 .PHONY: package-windows
 package-windows: build-windows
