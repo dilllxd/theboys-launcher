@@ -46,7 +46,64 @@ type DownloadProgress struct {
 
 // DownloadFile downloads a file with progress tracking
 func (d *Downloader) DownloadFile(ctx context.Context, url, outputPath string, progressCallback func(*DownloadProgress)) error {
-	d.logger.Info("Starting download: %s", url)
+	return d.DownloadFileWithRetry(ctx, url, outputPath, progressCallback, 3)
+}
+
+// DownloadFileWithRetry downloads a file with retry logic
+func (d *Downloader) DownloadFileWithRetry(ctx context.Context, url, outputPath string, progressCallback func(*DownloadProgress), maxRetries int) error {
+	d.logger.Info("Starting download: %s (max retries: %d)", url, maxRetries)
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff
+			delay := time.Duration(1<<uint(attempt)) * time.Second
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
+
+			d.logger.Info("Retrying download in %v (attempt %d/%d)", delay, attempt+1, maxRetries)
+
+			// Update progress for retry
+			if progressCallback != nil {
+				progress := &DownloadProgress{
+					URL:    url,
+					Status: fmt.Sprintf("retrying in %v", delay),
+					Error:  fmt.Sprintf("Attempt %d failed, retrying...", attempt+1),
+				}
+				progressCallback(progress)
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+				// Continue with retry
+			}
+		}
+
+		err := d.downloadFileAttempt(ctx, url, outputPath, progressCallback, attempt+1, maxRetries)
+		if err == nil {
+			d.logger.Info("Download successful on attempt %d", attempt+1)
+			return nil
+		}
+
+		lastErr = err
+		d.logger.Warn("Download attempt %d failed: %v", attempt+1, err)
+
+		// Check if error is retryable
+		if !d.isRetryableError(err) {
+			d.logger.Info("Error is not retryable, giving up: %v", err)
+			break
+		}
+	}
+
+	return fmt.Errorf("download failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+// downloadFileAttempt performs a single download attempt
+func (d *Downloader) downloadFileAttempt(ctx context.Context, url, outputPath string, progressCallback func(*DownloadProgress), attempt, maxAttempts int) error {
+	d.logger.Info("Download attempt %d/%d: %s", attempt, maxAttempts, url)
 
 	// Create progress tracker
 	progress := &DownloadProgress{
@@ -306,6 +363,64 @@ func (d *Downloader) GetURLSize(url string) (int64, error) {
 	}
 
 	return resp.ContentLength, nil
+}
+
+// isRetryableError determines if an error is worth retrying
+func (d *Downloader) isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Network-related errors that are typically retryable
+	retryableErrors := []string{
+		"connection refused",
+		"connection reset",
+		"connection timed out",
+		"timeout",
+		"temporary failure",
+		"network is unreachable",
+		"no such host",
+		"server returned 502",
+		"server returned 503",
+		"server returned 504",
+		"server returned 429", // Too Many Requests
+		"read: connection reset by peer",
+		"write: connection reset by peer",
+		"broken pipe",
+		"ssl handshake timeout",
+		"tls handshake timeout",
+	}
+
+	for _, retryableErr := range retryableErrors {
+		if strings.Contains(strings.ToLower(errStr), retryableErr) {
+			return true
+		}
+	}
+
+	// HTTP status codes that are retryable
+	if strings.Contains(errStr, "HTTP 502") ||
+	   strings.Contains(errStr, "HTTP 503") ||
+	   strings.Contains(errStr, "HTTP 504") ||
+	   strings.Contains(errStr, "HTTP 429") {
+		return true
+	}
+
+	// Don't retry on client errors (4xx range) except 429
+	if strings.Contains(errStr, "HTTP 4") && !strings.Contains(errStr, "HTTP 429") {
+		return false
+	}
+
+	// Don't retry on file system errors
+	if strings.Contains(errStr, "permission denied") ||
+	   strings.Contains(errStr, "no such file") ||
+	   strings.Contains(errStr, "disk full") {
+		return false
+	}
+
+	// Default to retrying for unknown errors
+	return true
 }
 
 // getUserAgent returns a user agent string

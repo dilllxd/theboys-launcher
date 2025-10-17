@@ -432,6 +432,28 @@ function renderSettingsView(container) {
         <div class="settings-grid">
           <div class="setting-item">
             <label class="setting-label">Memory Allocation</label>
+            <div class="memory-presets">
+              <button class="preset-btn ${settings.memoryMB <= 2048 ? 'active' : ''}"
+                      onclick="applyMemoryPreset(1024, 2048)" data-preset="low">
+                Low (1-2GB)
+              </button>
+              <button class="preset-btn ${settings.memoryMB > 2048 && settings.memoryMB <= 4096 ? 'active' : ''}"
+                      onclick="applyMemoryPreset(2048, 4096)" data-preset="medium">
+                Medium (2-4GB)
+              </button>
+              <button class="preset-btn ${settings.memoryMB > 4096 && settings.memoryMB <= 8192 ? 'active' : ''}"
+                      onclick="applyMemoryPreset(4096, 8192)" data-preset="high">
+                High (4-8GB)
+              </button>
+              <button class="preset-btn ${settings.memoryMB > 8192 ? 'active' : ''}"
+                      onclick="applyMemoryPreset(6144, 12288)" data-preset="ultra">
+                Ultra (6-12GB)
+              </button>
+              <button class="preset-btn ${settings.autoDetectMemory ? 'active' : ''}"
+                      onclick="autoDetectMemory()" id="auto-detect-btn">
+                Auto-Detect
+              </button>
+            </div>
             <div class="memory-inputs">
               <input type="number" id="min-memory" min="512" max="32768" step="512"
                      value="${settings.minMemory || 2048}" class="memory-input">
@@ -440,7 +462,7 @@ function renderSettingsView(container) {
                      value="${settings.maxMemory || 4096}" class="memory-input">
               <span class="memory-unit">MB</span>
             </div>
-            <span class="setting-description">Minimum and maximum memory allocation (in MB)</span>
+            <span class="setting-description">Memory allocation for Minecraft. Click presets or enter custom values.</span>
           </div>
 
           <div class="setting-item">
@@ -1054,6 +1076,77 @@ function confirmResetConfiguration() {
     if (confirm('This is your final warning. All configuration will be lost. Continue?')) {
       resetSettings();
     }
+  }
+}
+
+// Memory management functions
+function applyMemoryPreset(minMB, maxMB) {
+  document.getElementById('min-memory').value = minMB;
+  document.getElementById('max-memory').value = maxMB;
+
+  // Update active preset button
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  const activeBtn = document.querySelector(`[onclick="applyMemoryPreset(${minMB}, ${maxMB})"]`);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+  }
+
+  // Clear auto-detect button
+  document.getElementById('auto-detect-btn').classList.remove('active');
+
+  showNotification(`Memory preset applied: ${minMB}MB - ${maxMB}MB`, 'success');
+}
+
+async function autoDetectMemory() {
+  updateStatus('Detecting optimal memory settings...');
+  startOperation('memory-detect', 'Detecting Memory');
+
+  try {
+    // This would call a backend function to auto-detect memory
+    // For now, simulate the detection process
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Simulate detection based on available memory
+    const totalMemory = navigator.deviceMemory ? navigator.deviceMemory * 1024 : 8192; // Convert GB to MB
+
+    let minMB, maxMB;
+    if (totalMemory >= 32768) { // 32GB+
+      minMB = 4096;
+      maxMB = 12288;
+    } else if (totalMemory >= 16384) { // 16GB+
+      minMB = 3072;
+      maxMB = 8192;
+    } else if (totalMemory >= 8192) { // 8GB+
+      minMB = 2048;
+      maxMB = 6144;
+    } else if (totalMemory >= 4096) { // 4GB+
+      minMB = 1024;
+      maxMB = 3072;
+    } else {
+      minMB = 512;
+      maxMB = 2048;
+    }
+
+    document.getElementById('min-memory').value = minMB;
+    document.getElementById('max-memory').value = maxMB;
+
+    // Update active preset button
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.getElementById('auto-detect-btn').classList.add('active');
+
+    completeOperation('memory-detect');
+    showNotification(`Auto-detected optimal memory: ${minMB}MB - ${maxMB}MB`, 'success');
+    updateStatus('Memory detection completed');
+
+  } catch (error) {
+    completeOperation('memory-detect');
+    console.error('Memory detection failed:', error);
+    showError('Failed to auto-detect memory settings');
   }
 }
 
