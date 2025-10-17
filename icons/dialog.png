@@ -1,0 +1,18 @@
+# TheBoys Launcher
+
+This file serves as a placeholder for Windows installer dialog images.
+
+## Instructions
+
+To replace this placeholder with your actual dialog image:
+
+1. Create a dialog image with the following specifications:
+   - Dimensions: 493 x 312 pixels
+   - Format: PNG
+   - Purpose: Displayed in MSI installer welcome dialogs
+
+2. Save it as `icons/dialog.png` replacing this file
+
+## Current Status
+
+This is a placeholder file. Replace it with your actual installer dialog image for professional-looking Windows installers.

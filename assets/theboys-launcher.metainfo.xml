@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.theboys.launcher</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>TheBoys Launcher</name>
+  <summary>A Minecraft modpack launcher</summary>
+
+  <description>
+    <p>
+      TheBoys Launcher is a modern, portable Minecraft bootstrapper that makes it easy to manage and launch modpacks.
+      Features include automatic modpack installation, update management, and a clean user interface.
+    </p>
+    <p>
+      Built with Rust and Tauri for maximum performance and cross-platform compatibility.
+      Supports Windows, macOS, and Linux with native integrations for each platform.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">theboys-launcher.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://releases.theboys-launcher.com/screenshots/main-window.png</image>
+      <caption>Main launcher interface</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://releases.theboys-launcher.com/screenshots/modpack-manager.png</image>
+      <caption>Modpack management screen</caption>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/theboys/launcher</url>
+  <url type="bugtracker">https://github.com/theboys/launcher/issues</url>
+  <url type="help">https://docs.theboys-launcher.com</url>
+
+  <provides>
+    <binary>theboys-launcher</binary>
+    <mediatype>application/x-tbmod</mediatype>
+    <mediatype>application/x-tbprofile</mediatype>
+  </provides>
+
+  <releases>
+    <release version="1.1.0" date="2024-10-17">
+      <description>
+        <p>Initial Tauri rewrite release with:</p>
+        <ul>
+          <li>Complete rewrite from Go to Rust + Tauri</li>
+          <li>Modern UI with React and TypeScript</li>
+          <li>Cross-platform packaging support</li>
+          <li>Auto-updater functionality</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-info">mild</content_attribute>
+    <content_attribute id="money-purchasing">mild</content_attribute>
+  </content_rating>
+
+  <categories>
+    <category>Game</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>minecraft</keyword>
+    <keyword>modpack</keyword>
+    <keyword>launcher</keyword>
+    <keyword>game</keyword>
+    <keyword>gaming</keyword>
+  </keywords>
+</component>

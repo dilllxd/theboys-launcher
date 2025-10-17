@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "identifier": "main",
+  "description": "Main application capabilities",
+  "platforms": ["linux", "macOS", "windows"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-create-dir",
+    "fs:allow-remove-dir",
+    "fs:allow-remove-file",
+    "fs:allow-rename-file",
+    "fs:allow-exists",
+    "fs:allow-metadata",
+    "fs:allow-scope",
+    "fs:scope-appdata",
+    "fs:scope-appconfig",
+    "fs:scope-applog",
+    "fs:scope-appcache",
+    "fs:scope-resource",
+    "fs:scope-applocal-data"
+  ]
+}

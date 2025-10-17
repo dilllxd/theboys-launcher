@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"Main application capabilities","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open"],"platforms":["linux","macOS","windows"]}}

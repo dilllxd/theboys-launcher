@@ -1,0 +1,22 @@
+[Desktop Entry]
+Version=1.1.0
+Type=Application
+Name=TheBoys Launcher
+Name[en]=TheBoys Launcher
+Comment=A Minecraft modpack launcher
+Comment[en]=A Minecraft modpack launcher
+GenericName=Game Launcher
+GenericName[en]=Game Launcher
+Exec=theboys-launcher %U
+Icon=theboys-launcher
+Terminal=false
+StartupWMClass=theboys-launcher
+Categories=Game;Utility;
+MimeType=application/x-tbmod;application/x-tbprofile;
+Keywords=minecraft;modpack;launcher;game;
+Actions=NewInstance;
+
+[Desktop Action NewInstance]
+Name=Launch New Instance
+Name[en]=Launch New Instance
+Exec=theboys-launcher --new-instance

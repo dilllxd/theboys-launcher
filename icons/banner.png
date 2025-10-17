@@ -1,0 +1,18 @@
+# TheBoys Launcher
+
+This file serves as a placeholder for Windows installer banners.
+
+## Instructions
+
+To replace this placeholder with your actual banner image:
+
+1. Create a banner image with the following specifications:
+   - Dimensions: 493 x 58 pixels
+   - Format: PNG
+   - Purpose: Displayed at the top of the MSI installer
+
+2. Save it as `icons/banner.png` replacing this file
+
+## Current Status
+
+This is a placeholder file. Replace it with your actual installer banner for professional-looking Windows installers.
