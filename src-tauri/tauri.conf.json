@@ -47,9 +47,6 @@
     "copyright": "Copyright c 2024 TheBoys Team. All rights reserved.",
     "licenseFile": "LICENSE",
     "windows": {
-      "wix": {
-        "skipWebview": false
-      },
       "nsis": {
         "displayLanguageSelector": true
       }
