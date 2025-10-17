@@ -175,7 +175,7 @@ fn main() {
             clear_performance_cache,
             // Tauri Updater Integration commands
             check_and_install_update,
-            // check_tauri_update, // Temporarily disabled due to async issues
+            check_tauri_update,
             start_update_download,
             install_downloaded_update,
             get_update_info,

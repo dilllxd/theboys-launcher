@@ -2369,14 +2369,26 @@ pub async fn check_and_install_update(
 #[tauri::command]
 pub async fn check_tauri_update(
     app_handle: tauri::AppHandle,
-) -> Result<Option<tauri_plugin_updater::Update>, String> {
+) -> LauncherResult<Option<UpdateVersionInfo>> {
     info!("Checking for Tauri updates");
 
-    let updater = app_handle.updater().map_err(|e| format!("Updater initialization failed: {}", e))?;
+    let updater = app_handle.updater().map_err(|e| LauncherError::UpdateFailed(format!("Updater initialization failed: {}", e)))?;
     match updater.check().await {
         Ok(Some(update)) => {
             info!("Update available: {} (body: {})", update.version, update.body.as_ref().unwrap_or(&String::new()));
-            Ok(Some(update))
+
+            let current_version = env!("CARGO_PKG_VERSION").to_string();
+            let update_info = UpdateVersionInfo {
+                current_version,
+                available_version: update.version.clone(),
+                release_date: update.date.map(|d| d.to_string()),
+                release_notes: update.body.clone(),
+                download_url: None, // Tauri updater handles this internally
+                mandatory: false, // Could be configured in the update response
+                signature: None,
+            };
+
+            Ok(Some(update_info))
         },
         Ok(None) => {
             info!("No update available");
