@@ -274,13 +274,23 @@ func (u *Updater) InstallUpdate(updatePath string) error {
 		return fmt.Errorf("failed to get current executable path: %w", err)
 	}
 
-	// Create update script
+	// Check if we're running from an installed location
+	isInstalled := u.platform.IsInstalled()
+	installPath, _ := u.platform.GetInstallationPath()
+
+	u.logger.Info("Current executable: %s", currentExe)
+	u.logger.Info("Running from installed location: %v", isInstalled)
+	if installPath != "" {
+		u.logger.Info("Installation path: %s", installPath)
+	}
+
+	// Create update script with installation awareness
 	var scriptPath string
 	switch runtime.GOOS {
 	case "windows":
-		scriptPath = u.createWindowsUpdateScript(currentExe, updatePath)
+		scriptPath = u.createWindowsUpdateScript(currentExe, updatePath, isInstalled, installPath)
 	case "darwin", "linux":
-		scriptPath = u.createUnixUpdateScript(currentExe, updatePath)
+		scriptPath = u.createUnixUpdateScript(currentExe, updatePath, isInstalled, installPath)
 	default:
 		return fmt.Errorf("unsupported platform for update")
 	}
@@ -305,23 +315,79 @@ func (u *Updater) InstallUpdate(updatePath string) error {
 }
 
 // createWindowsUpdateScript creates a batch script for Windows updates
-func (u *Updater) createWindowsUpdateScript(currentExe, updatePath string) string {
-	scriptContent := fmt.Sprintf(`@echo off
-echo Updating TheBoys Launcher...
+func (u *Updater) createWindowsUpdateScript(currentExe, updatePath string, isInstalled bool, installPath string) string {
+	var scriptContent string
+
+	if isInstalled && installPath != "" {
+		// Update installed application
+		scriptContent = fmt.Sprintf(`@echo off
+echo Updating TheBoys Launcher (Installed Version)...
+echo Current: %s
+echo Update: %s
+echo Install Path: %s
 timeout /t 2 /nobreak >nul
+
+:: Check if we have admin rights for system installation
+net session >nul 2>&1
+if %%errorlevel%% equ 0 (
+    echo Running with administrator privileges
+    move /Y "%s" "%s.old.bak" >nul 2>&1
+    move /Y "%s" "%s" >nul
+    if %%errorlevel%% neq 0 (
+        echo Failed to update installed version
+        move /Y "%s.old.bak" "%s" >nul 2>&1
+        pause
+        exit /b 1
+    )
+    del "%s.old.bak" >nul 2>&1
+    echo Successfully updated installed version
+    start "" "%s"
+) else (
+    echo No administrator privileges detected
+    echo Please run TheBoys Launcher as administrator to update
+    pause
+    exit /b 1
+)
+
+del "%%~f0"
+`,
+			currentExe, updatePath, installPath,
+			currentExe, currentExe+".old.bak",
+			updatePath, currentExe,
+			currentExe+".old.bak", currentExe,
+			currentExe)
+	} else {
+		// Update portable/non-installed application
+		scriptContent = fmt.Sprintf(`@echo off
+echo Updating TheBoys Launcher (Portable Version)...
+echo Current: %s
+echo Update: %s
+timeout /t 2 /nobreak >nul
+
 move /Y "%s" "%s.old" >nul
 move /Y "%s" "%s" >nul
-start "" "%s"
-del "%s.old"
-del "%s"
-`,
-		currentExe, currentExe+".old",
-		updatePath, currentExe,
-		currentExe,
-		currentExe+".old",
-		filepath.Join(os.TempDir(), "update.bat"))
+if %%errorlevel%% neq 0 (
+    echo Update failed, restoring backup
+    move /Y "%s.old" "%s" >nul
+    pause
+    exit /b 1
+)
 
-	scriptPath := filepath.Join(os.TempDir(), "update.bat")
+del "%s.old" >nul 2>&1
+echo Successfully updated portable version
+start "" "%s"
+
+del "%%~f0"
+`,
+			currentExe, updatePath,
+			currentExe, currentExe+".old",
+			updatePath, currentExe,
+			currentExe+".old", currentExe,
+			currentExe+".old",
+			currentExe)
+	}
+
+	scriptPath := filepath.Join(os.TempDir(), "theboys-update.bat")
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0644); err != nil {
 		u.logger.Error("Failed to create update script: %v", err)
 		return ""
@@ -331,22 +397,100 @@ del "%s"
 }
 
 // createUnixUpdateScript creates a shell script for Unix updates
-func (u *Updater) createUnixUpdateScript(currentExe, updatePath string) string {
-	scriptContent := fmt.Sprintf(`#!/bin/bash
-echo "Updating TheBoys Launcher..."
+func (u *Updater) createUnixUpdateScript(currentExe, updatePath string, isInstalled bool, installPath string) string {
+	var scriptContent string
+
+	if isInstalled && installPath != "" {
+		// Update installed application
+		scriptContent = fmt.Sprintf(`#!/bin/bash
+echo "Updating TheBoys Launcher (Installed Version)..."
+echo "Current: %s"
+echo "Update: %s"
+echo "Install Path: %s"
+
+# Check write permissions
+if [ ! -w "$(dirname "%s")" ]; then
+    echo "Error: No write permissions to installation directory"
+    echo "Please run with appropriate privileges (sudo on system installations)"
+    echo "Or reinstall using your package manager"
+    read -p "Press Enter to continue..."
+    exit 1
+fi
+
 sleep 2
-mv "%s" "%s.old"
-mv "%s" "%s"
+
+# Create backup
+mv "%s" "%s.old.bak" || {
+    echo "Failed to create backup"
+    exit 1
+}
+
+# Install update
+mv "%s" "%s" || {
+    echo "Failed to install update, restoring backup"
+    mv "%s.old.bak" "%s"
+    exit 1
+}
+
+# Set permissions
 chmod +x "%s"
-exec "%s" --cleanup-after-update "%s.old" "%s"
+
+# Clean up
+rm -f "%s.old.bak" 2>/dev/null
+
+echo "Successfully updated installed version"
+exec "%s" --cleanup-after-update "%s.old.bak" "%s"
+
 rm -f "$0"
 `,
-		currentExe, currentExe+".old",
-		updatePath, currentExe,
-		currentExe,
-		currentExe, currentExe+".old", currentExe)
+			currentExe, updatePath, installPath, currentExe,
+			currentExe, currentExe+".old.bak",
+			updatePath, currentExe,
+			currentExe+".old.bak", currentExe,
+			currentExe,
+			currentExe+".old.bak", currentExe)
+	} else {
+		// Update portable/non-installed application
+		scriptContent = fmt.Sprintf(`#!/bin/bash
+echo "Updating TheBoys Launcher (Portable Version)..."
+echo "Current: %s"
+echo "Update: %s"
 
-	scriptPath := filepath.Join(os.TempDir(), "update.sh")
+sleep 2
+
+# Create backup
+mv "%s" "%s.old" || {
+    echo "Failed to create backup"
+    exit 1
+}
+
+# Install update
+mv "%s" "%s" || {
+    echo "Failed to install update, restoring backup"
+    mv "%s.old" "%s"
+    exit 1
+}
+
+# Set permissions
+chmod +x "%s"
+
+# Clean up
+rm -f "%s.old" 2>/dev/null
+
+echo "Successfully updated portable version"
+exec "%s" --cleanup-after-update "%s.old" "%s"
+
+rm -f "$0"
+`,
+			currentExe, updatePath,
+			currentExe, currentExe+".old",
+			updatePath, currentExe,
+			currentExe+".old", currentExe,
+			currentExe,
+			currentExe+".old", currentExe)
+	}
+
+	scriptPath := filepath.Join(os.TempDir(), "theboys-update.sh")
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		u.logger.Error("Failed to create update script: %v", err)
 		return ""

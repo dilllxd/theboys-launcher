@@ -133,6 +133,40 @@ dev: deps
 		exit 1; \
 	fi
 
+# Run development build (quick build and run)
+.PHONY: run
+run: quick
+	@echo "Running TheBoys Launcher (development build)..."
+	@if [ -f "$(APP_NAME)" ]; then \
+		./$(APP_NAME); \
+	else \
+		echo "Executable not found. Run 'make quick' first."; \
+		exit 1; \
+	fi
+
+# Run with specific mode
+.PHONY: run-gui
+run-gui: quick
+	@echo "Running TheBoys Launcher in GUI mode..."
+	@./$(APP_NAME)
+
+.PHONY: run-cli
+run-cli: quick
+	@echo "Running TheBoys Launcher in CLI mode..."
+	@./$(APP_NAME) --cli
+
+# Run with development options
+.PHONY: run-dev
+run-dev: quick
+	@echo "Running TheBoys Launcher in development mode..."
+	@THEBOYS_DEV=1 ./$(APP_NAME)
+
+# Run tests in development mode
+.PHONY: test-run
+test-run: quick
+	@echo "Running TheBoys Launcher with test data..."
+	@THEBOYS_TEST=1 ./$(APP_NAME) --cli --list-modpacks
+
 # Run tests
 .PHONY: test
 test:

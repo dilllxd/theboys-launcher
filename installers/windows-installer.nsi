@@ -161,26 +161,71 @@ LangString DESC_SecAssociations ${LANG_ENGLISH} "Open .modpack files automatical
 Function .onInit
     ; Check for previous installation
     ReadRegStr $R0 HKLM "Software\${APPID}" "InstallPath"
-    StrCmp $R0 "" done
+    StrCmp $R0 "" check_portable
+
+    ; Found previous installation
+    ReadRegStr $R1 HKLM "Software\${APPID}" "Version"
 
     MessageBox MB_YESNO|MB_ICONQUESTION \
-        "${APPNAME} is already installed. $\n$\nDo you want to uninstall the previous version before installing the new one?" \
-        IDYES uninst
-    Abort
+        "${APPNAME} v$R1 is already installed on this system. $\n$\nDo you want to upgrade to the new version (${APPVERSION})? $\n$\nClick Yes to upgrade, No to install alongside." \
+        IDYES upgrade_existing
+    IDNO install_alongside
 
-    uninst:
+    upgrade_existing:
+        ; Uninstall previous version
         ClearErrors
-        ExecWait '$R0\Uninstall.exe _?=$INSTDIR'
-        IfErrors uninst_failed
-
-        ; Remove previous installation directory
-        RMDir /r "$R0"
+        ExecWait '$R0\Uninstall.exe _?=$R0'
+        IfErrors upgrade_failed
         Goto done
 
-    uninst_failed:
-        MessageBox MB_OK|MB_ICONEXCLAMATION \
-            "Unable to uninstall the previous version of ${APPNAME}. $\n$\nPlease uninstall it manually and run the installer again."
+    upgrade_failed:
+        MessageBox MB_YESNO|MB_ICONEXCLAMATION \
+            "Unable to automatically uninstall the previous version. $\n$\nDo you want to continue with the installation anyway?" \
+            IDYES install_alongside
         Abort
+
+    check_portable:
+        ; Check for portable installation in current directory
+        IfFileExists "$EXEDIR\TheBoysLauncher.exe" 0 check_user_dir
+        IfFileExists "$EXEDIR\.theboys-installed" 0 check_user_dir
+
+        ; Found portable installation
+        MessageBox MB_YESNO|MB_ICONQUESTION \
+            "A portable installation of ${APPNAME} was detected in the current directory. $\n$\nDo you want to migrate it to a proper installation? $\n$\nClick Yes to migrate (recommended) or No to keep both." \
+            IDYES migrate_portable
+        Goto install_alongside
+
+    migrate_portable:
+        ; Create migration script
+        FileOpen $2 "$INSTDIR\migrate-portable.bat" w
+        FileWrite $2 "@echo off$\r$\n"
+        FileWrite $2 "echo Migrating portable installation...$\r$\n"
+        FileWrite $2 "mkdir \"%APPDATA%\.theboys-launcher\" 2>nul$\r$\n"
+        FileWrite $2 "if exist \"$EXEDIR\instances\" xcopy /E /I /Y \"$EXEDIR\instances\" \"%APPDATA%\.theboys-launcher\instances\"$\r$\n"
+        FileWrite $2 "if exist \"$EXEDIR\config\" xcopy /E /I /Y \"$EXEDIR\config\" \"%APPDATA%\.theboys-launcher\config\"$\r$\n"
+        FileWrite $2 "if exist \"$EXEDIR\prism\" xcopy /E /I /Y \"$EXEDIR\prism\" \"%APPDATA%\.theboys-launcher\prism\"$\r$\n"
+        FileWrite $2 "if exist \"$EXEDIR\util\" xcopy /E /I /Y \"$EXEDIR\util\" \"%APPDATA%\.theboys-launcher\util\"$\r$\n"
+        FileWrite $2 "echo Migration completed. Press any key to continue...$\r$\n"
+        FileWrite $2 "pause >nul$\r$\n"
+        FileWrite $2 "del \"%~f0\"$\r$\n"
+        FileClose $2
+        Goto done
+
+    check_user_dir:
+        ; Check for existing user directory
+        IfFileExists "$APPDATA\.theboys-launcher" 0 done
+        MessageBox MB_YESNO|MB_ICONQUESTION \
+            "Existing user data was found in: $\n$APPDATA\.theboys-launcher$\n$\nDo you want to continue with the installation? $\n$\nYour existing instances and settings will be preserved." \
+            IDNO abort_install
+        Goto done
+
+    abort_install:
+        Abort
+
+    install_alongside:
+        ; Install alongside existing version
+        StrCpy $INSTDIR "$PROGRAMFILES\${APPNAME} ${APPVERSION}"
+        Goto done
 
     done:
 FunctionEnd
