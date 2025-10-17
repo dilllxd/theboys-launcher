@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -45,7 +45,15 @@
     "shortDescription": "A Minecraft modpack launcher",
     "longDescription": "TheBoys Launcher - A portable Minecraft bootstrapper for Windows, macOS, and Linux",
     "copyright": "Copyright c 2024 TheBoys Team. All rights reserved.",
-    "licenseFile": "LICENSE"
+    "licenseFile": "LICENSE",
+    "windows": {
+      "wix": {
+        "skipWebview": false
+      },
+      "nsis": {
+        "displayLanguageSelector": true
+      }
+    }
   },
   "plugins": {
     "updater": {
