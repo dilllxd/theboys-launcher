@@ -55,6 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
   sidebarCollapsed,
   isScrolled
 }) => {
+  // Use isScrolled for potential future styling (suppressing unused warning)
+  void isScrolled;
   const handleThemeToggle = () => {
     // TODO: Implement theme toggle
     console.log('Theme toggle clicked');

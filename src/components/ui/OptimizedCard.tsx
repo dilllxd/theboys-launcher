@@ -123,7 +123,6 @@ export const OptimizedCard = memo<OptimizedCardProps>(({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !isLoaded) {
-            setIsVisible(true);
             // Small delay for better UX
             setTimeout(() => setIsLoaded(true), 100);
           }
