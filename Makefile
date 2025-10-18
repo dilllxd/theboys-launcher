@@ -81,7 +81,12 @@ frontend:
 .PHONY: build-current
 build-current: clean deps frontend
 	@echo "Building for current platform..."
-	go build -ldflags="$(LDFLAGS)" -o $(EXE_NAME) ./cmd/launcher
+	@if command -v wails >/dev/null 2>&1; then \
+		wails build -tags dev -ldflags="$(LDFLAGS)" -o $(EXE_NAME); \
+	else \
+		echo "❌ Wails CLI not found. Please run 'make install-wails' first."; \
+		exit 1; \
+	fi
 	@echo "Build complete: $(EXE_NAME)"
 
 # Build for all platforms
@@ -135,11 +140,16 @@ dev: deps
 		exit 1; \
 	fi
 
-# Run development build (quick build and run)
+# Run development build (uses wails dev for proper development)
 .PHONY: run
-run: quick
-	@echo "Running TheBoys Launcher (development build)..."
-	@$(EXE_NAME)
+run: deps
+	@echo "Running TheBoys Launcher in development mode..."
+	@if command -v wails >/dev/null 2>&1; then \
+		wails dev; \
+	else \
+		echo "❌ Wails CLI not found. Please run 'make install-wails' first."; \
+		exit 1; \
+	fi
 
 # Run with specific mode
 .PHONY: run-gui
@@ -301,7 +311,12 @@ package-macos: build-macos
 .PHONY: quick
 quick: frontend
 	@echo "Quick build for current platform..."
-	go build -ldflags="$(LDFLAGS)" -o $(EXE_NAME) ./cmd/launcher
+	@if command -v wails >/dev/null 2>&1; then \
+		wails build -tags dev -skipfrontend -ldflags="$(LDFLAGS)" -o $(EXE_NAME); \
+	else \
+		echo "❌ Wails CLI not found. Please run 'make install-wails' first."; \
+		exit 1; \
+	fi
 	@echo "Quick build complete: $(EXE_NAME)"
 
 # Display version info
