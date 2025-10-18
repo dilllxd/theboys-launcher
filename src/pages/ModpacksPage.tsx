@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { invoke } from '../types/mock-tauri';
+import { api } from '../utils/api';
 import {
   Modpack,
   InstalledModpack,
@@ -265,9 +265,9 @@ export const ModpacksPage: React.FC = () => {
       setError(null);
 
       const [modpacksData, installedData, defaultData] = await Promise.all([
-        invoke('get_available_modpacks'),
-        invoke('get_installed_modpacks'),
-        invoke('get_default_modpack')
+        api.getAvailableModpacks(),
+        api.getInstalledModpacks(),
+        api.getDefaultModpack()
       ]);
 
       setModpacks(modpacksData);
@@ -276,11 +276,11 @@ export const ModpacksPage: React.FC = () => {
 
       // Check for updates
       if (installedData.length > 0) {
-        const updatesData = await invoke('check_all_modpack_updates');
+        const updatesData = await api.checkAllModpackUpdates();
         setUpdates(updatesData);
       }
     } catch (err) {
-      setError(err as string);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setLoading(false);
     }
@@ -311,9 +311,7 @@ export const ModpacksPage: React.FC = () => {
 
   const handleInstallModpack = async (modpack: Modpack) => {
     try {
-      const downloadId = await invoke('download_modpack', {
-        modpackId: modpack.id
-      });
+      const downloadId = await api.downloadModpack(modpack.id);
 
       // TODO: Show download progress dialog
       console.log('Download started:', downloadId);
@@ -322,31 +320,29 @@ export const ModpacksPage: React.FC = () => {
       setTimeout(loadModpacks, 2000);
     } catch (err) {
       console.error('Failed to install modpack:', err);
-      setError(err as string);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 
   const handleUpdateModpack = async (modpack: Modpack) => {
     try {
-      const downloadId = await invoke('download_modpack', {
-        modpackId: modpack.id
-      });
+      const downloadId = await api.downloadModpack(modpack.id);
 
       console.log('Update started:', downloadId);
       setTimeout(loadModpacks, 2000);
     } catch (err) {
       console.error('Failed to update modpack:', err);
-      setError(err as string);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 
   const handleSetDefault = async (modpackId: string) => {
     try {
-      await invoke('select_default_modpack', { modpackId });
+      await api.selectDefaultModpack(modpackId);
       await loadModpacks();
     } catch (err) {
       console.error('Failed to set default modpack:', err);
-      setError(err as string);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 

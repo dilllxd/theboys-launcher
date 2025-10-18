@@ -1,0 +1,24 @@
+[
+  {
+    "id": "winterpack",
+    "displayName": "WinterPack",
+    "packUrl": "https://raw.githubusercontent.com/dilllxd/winterpack-modpack/main/pack.toml",
+    "instanceName": "WinterPack",
+    "description": "Official WinterPack release with a cozy winter experience and beautiful snow-covered landscapes.",
+    "minecraftVersion": "1.20.1",
+    "modloader": "fabric",
+    "loaderVersion": "0.14.24",
+    "version": "1.2.0"
+  },
+  {
+    "id": "examplepack",
+    "displayName": "ExamplePack (Dev Preview)",
+    "packUrl": "https://raw.githubusercontent.com/dilllxd/examplepack-modpack/main/pack.toml",
+    "instanceName": "ExamplePack",
+    "description": "Development preview slot for staging new modpacks and experimental features.",
+    "minecraftVersion": "1.20.1",
+    "modloader": "forge",
+    "loaderVersion": "47.3.0",
+    "version": "0.1.0"
+  }
+]
