@@ -136,12 +136,17 @@ dev: deps
 	@echo "Note: Press Ctrl+C to stop the development server"
 	@wails dev
 
-# Run development build (uses wails dev for proper development)
+# Run development build (uses wails dev with external frontend for proper development)
 .PHONY: run
 run: deps
 	@echo "Running TheBoys Launcher in development mode..."
-	@echo "Note: Press Ctrl+C to stop the development server"
-	@wails dev
+	@echo "Starting frontend development server first..."
+	@echo "This will preserve our mock bindings and provide better development experience"
+	@cd frontend && npm run dev & \
+		sleep 3 && \
+		cd .. && \
+		echo "Starting Wails backend with external frontend..." && \
+		wails dev -frontenddevserverurl http://localhost:5173
 
 # Run with specific mode
 .PHONY: run-gui

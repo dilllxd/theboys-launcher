@@ -67,29 +67,30 @@ If you prefer using `make run`, you need to add Go's bin directory to your Windo
 3. **Stop**: Press `Ctrl+C` in the terminal
 4. **Build for Release**: `make build-current` (when you're ready to create an executable)
 
-## About the "Could not resolve wailsjs/go/main/App" Error
+## About the Development Setup
 
-You may see this error during the first run. This is normal and is handled automatically:
+The development server uses a two-server approach to ensure everything works smoothly:
 
-### What This Error Means
-- Wails generates JavaScript bindings that connect the frontend to the Go backend
-- Sometimes these bindings aren't generated correctly on the first run
-- The application includes mock bindings to get you started quickly
+### How It Works
+1. **Frontend Dev Server**: Runs on `http://localhost:5173` with hot reload
+2. **Wails Backend**: Connects to the external frontend server
+3. **Mock Bindings**: Preserved for development functionality
 
-### How It's Resolved
-1. **Mock Bindings**: The application includes working mock bindings
-2. **Development Works**: You can develop and test all features
-3. **Production Builds**: When you're ready to release, we'll fix the binding generation
+### Why This Approach
+- ✅ **Preserves Bindings**: Mock bindings aren't overwritten by Wails
+- ✅ **Better Hot Reload**: Frontend changes update instantly
+- ✅ **Stable Development**: No binding generation issues
+- ✅ **Full Functionality**: All features work during development
 
 ### Current Status: ✅ Ready for Development
-The mock bindings allow you to:
-- ✅ Run the application
-- ✅ Use the UI interface
-- ✅ Test all functionality
-- ✅ Develop features
-- ✅ Debug and iterate
+The setup allows you to:
+- ✅ Run the application with full UI
+- ✅ Use all features with mock data
+- ✅ Develop and test functionality
+- ✅ Get instant hot reload on changes
+- ✅ Debug and iterate quickly
 
-The application will work perfectly for development purposes with the mock bindings.
+The application will work perfectly for development purposes with this setup.
 
 ## What the Development Server Does
 

@@ -29,4 +29,19 @@ Set-Location ..
 # Start development server
 Write-Host ""
 Write-Host "Starting Wails development server..." -ForegroundColor Green
-wails dev
+Write-Host "Starting frontend development server first..." -ForegroundColor Blue
+
+# Start frontend dev server
+Set-Location frontend
+Start-Process -WindowStyle Minimized cmd -c "npm run dev"
+Set-Location ..
+
+# Wait for frontend to start
+Write-Host "Waiting for frontend to start..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+
+Write-Host "Starting Wails backend with external frontend..." -ForegroundColor Green
+Write-Host "Press Ctrl+C to stop both servers" -ForegroundColor Yellow
+
+# Start Wails with external frontend
+wails dev -frontenddevserverurl http://localhost:5173

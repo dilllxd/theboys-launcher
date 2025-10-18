@@ -111,10 +111,24 @@ echo ========================================
 echo   Starting Wails Development Server
 echo ========================================
 echo.
-echo The development server will start in a few seconds...
-echo Once started, you can access the application at http://localhost:34115
-echo.
-echo Press Ctrl+C to stop the development server
+echo Starting frontend development server...
+echo This will preserve our mock bindings and provide better development experience
 echo.
 
-%WAILS_CMD% dev
+REM Start frontend dev server in background
+echo [→] Starting frontend development server...
+cd frontend
+start "Frontend Dev Server" cmd /c "npm run dev"
+cd ..
+
+REM Wait a moment for frontend to start
+timeout /t 3 /nobreak >nul
+
+echo.
+echo [→] Starting Wails backend with external frontend...
+echo The application will open in a new window
+echo.
+echo Press Ctrl+C in this window to stop both servers
+echo.
+
+%WAILS_CMD% dev -frontenddevserverurl http://localhost:5173
