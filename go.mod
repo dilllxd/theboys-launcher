@@ -1,4 +1,4 @@
-module winterpack-launcher
+module theboys-launcher
 
 go 1.25.0
 
