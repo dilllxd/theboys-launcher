@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { api } from '../utils/api';
 import { DownloadProgress } from '../types/launcher';
 
 export const useDownloads = () => {
@@ -11,8 +11,8 @@ export const useDownloads = () => {
   const loadDownloads = useCallback(async () => {
     try {
       setError(null);
-      const allDownloads = await invoke<DownloadProgress[]>('get_all_downloads');
-      setDownloads(allDownloads);
+      const allDownloads = await api.getAllDownloads();
+      setDownloads(allDownloads || []);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load downloads';
       setError(errorMessage);
@@ -25,7 +25,7 @@ export const useDownloads = () => {
   // Get specific download progress
   const getDownloadProgress = useCallback(async (downloadId: string): Promise<DownloadProgress | null> => {
     try {
-      const progress = await invoke<DownloadProgress | null>('get_download_progress', { downloadId });
+      const progress = await api.getDownloadProgress(downloadId);
       return progress;
     } catch (err) {
       console.error('Failed to get download progress:', err);
@@ -55,7 +55,7 @@ export const useDownloads = () => {
   const pauseDownload = useCallback(async (downloadId: string): Promise<boolean> => {
     try {
       setError(null);
-      await invoke('pause_download', { downloadId });
+      await api.pauseDownload(downloadId);
       await loadDownloads();
       return true;
     } catch (err) {
@@ -70,7 +70,7 @@ export const useDownloads = () => {
   const resumeDownload = useCallback(async (downloadId: string): Promise<boolean> => {
     try {
       setError(null);
-      await invoke('resume_download', { downloadId });
+      await api.resumeDownload(downloadId);
       await loadDownloads();
       return true;
     } catch (err) {
@@ -85,7 +85,7 @@ export const useDownloads = () => {
   const cancelDownload = useCallback(async (downloadId: string): Promise<boolean> => {
     try {
       setError(null);
-      await invoke('cancel_download', { downloadId });
+      await api.cancelDownload(downloadId);
       await loadDownloads();
       return true;
     } catch (err) {
@@ -100,7 +100,7 @@ export const useDownloads = () => {
   const removeDownload = useCallback(async (downloadId: string): Promise<boolean> => {
     try {
       setError(null);
-      await invoke('remove_download', { downloadId });
+      await api.removeDownload(downloadId);
       await loadDownloads();
       return true;
     } catch (err) {
@@ -160,7 +160,7 @@ export const useDownloads = () => {
   const setMaxConcurrentDownloads = useCallback(async (maxConcurrent: number): Promise<boolean> => {
     try {
       setError(null);
-      await invoke('set_max_concurrent_downloads', { maxConcurrent });
+      await api.setMaxConcurrentDownloads(maxConcurrent);
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to set max concurrent downloads';
