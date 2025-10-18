@@ -64,6 +64,7 @@ fn main() {
             save_settings,
             reset_settings,
             detect_system_info,
+            get_system_info,
             validate_setting,
             browse_for_java,
             browse_for_prism,

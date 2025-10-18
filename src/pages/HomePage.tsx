@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { Card, Button } from '../components/ui';
 
@@ -61,19 +62,31 @@ const StatusDescription = styled.p`
 `;
 
 export const HomePage: React.FC = () => {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = React.useState(false);
 
   const handleLaunchMinecraft = async () => {
     setIsLoading(true);
     try {
-      // TODO: Implement Minecraft launch logic
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('Minecraft launched!');
+      // Navigate to instances page to launch
+      navigate('/instances');
     } catch (error) {
       console.error('Failed to launch Minecraft:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleBrowseModpacks = () => {
+    navigate('/modpacks');
+  };
+
+  const handleManageInstances = () => {
+    navigate('/instances');
+  };
+
+  const handleOpenSettings = () => {
+    navigate('/settings');
   };
 
   return (
@@ -102,7 +115,7 @@ export const HomePage: React.FC = () => {
           <StatusDescription>
             Browse and install from our curated collection of modpacks
           </StatusDescription>
-          <Button variant="outline">Browse Modpacks</Button>
+          <Button variant="outline" onClick={handleBrowseModpacks}>Browse Modpacks</Button>
         </StatusCard>
 
         <StatusCard interactive>
@@ -111,7 +124,7 @@ export const HomePage: React.FC = () => {
           <StatusDescription>
             Manage your Minecraft instances and configurations
           </StatusDescription>
-          <Button variant="outline">Manage Instances</Button>
+          <Button variant="outline" onClick={handleManageInstances}>Manage Instances</Button>
         </StatusCard>
 
         <StatusCard interactive>
@@ -120,7 +133,7 @@ export const HomePage: React.FC = () => {
           <StatusDescription>
             Configure launcher settings and preferences
           </StatusDescription>
-          <Button variant="outline">Open Settings</Button>
+          <Button variant="outline" onClick={handleOpenSettings}>Open Settings</Button>
         </StatusCard>
       </QuickActionsGrid>
     </HomeContainer>

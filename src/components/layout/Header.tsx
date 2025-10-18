@@ -57,9 +57,28 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   // Use isScrolled for potential future styling (suppressing unused warning)
   void isScrolled;
+  const [currentTheme, setCurrentTheme] = React.useState<'light' | 'dark'>('light');
+
+  React.useEffect(() => {
+    // Load theme from localStorage or system preference
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setCurrentTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    } else {
+      // Check system preference
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = prefersDark ? 'dark' : 'light';
+      setCurrentTheme(theme);
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+  }, []);
+
   const handleThemeToggle = () => {
-    // TODO: Implement theme toggle
-    console.log('Theme toggle clicked');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    setCurrentTheme(newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
   };
 
   return (
@@ -74,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
       <HeaderActions>
         <ThemeToggle onClick={handleThemeToggle} title="Toggle theme">
-          🌙
+          {currentTheme === 'dark' ? '☀️' : '🌙'}
         </ThemeToggle>
       </HeaderActions>
     </HeaderContainer>
