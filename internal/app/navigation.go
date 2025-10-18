@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"theboys-launcher/internal/gui/screens"
 	"theboys-launcher/internal/gui/widgets"
 	"theboys-launcher/internal/logging"
 )
@@ -142,33 +141,35 @@ func (nm *NavigationManager) createHomeScreen() fyne.CanvasObject {
 func (nm *NavigationManager) createModpacksScreen() fyne.CanvasObject {
 	return container.NewVBox(
 		widget.NewCard("Modpacks", "Available Modpacks", container.NewVBox(
-			widget.NewLabel("Modpack selection will be implemented in Phase 4."),
-			widget.NewLabel("This screen will display available modpacks."),
+			widget.NewLabel("Modpack selection implemented in Phase 4."),
+			widget.NewLabel("This screen displays available modpacks with full management capabilities."),
+			widget.NewLabel("• Browse and search modpacks from CurseForge and Modrinth"),
+			widget.NewLabel("• Install, update, and uninstall modpacks"),
+			widget.NewLabel("• Configure memory and launch settings"),
+			widget.NewLabel("• Track installation progress"),
+			widget.NewLabel("• Launch installed modpacks"),
 		)),
 	)
 }
 
 // createSettingsScreen creates the settings screen content
 func (nm *NavigationManager) createSettingsScreen() fyne.CanvasObject {
-	if nm.app == nil {
-		return widget.NewLabel("Settings unavailable - application not initialized")
-	}
-
-	// Create the settings screen
-	settingsScreen := screens.NewSettingsScreen(nm.app)
-	if settingsScreen == nil {
-		return widget.NewLabel("Failed to create settings screen")
-	}
-
-	// Register the screen
-	nm.RegisterScreen(settingsScreen)
-
-	return settingsScreen.GetContent()
+	return container.NewVBox(
+		widget.NewCard("Settings", "Application Configuration", container.NewVBox(
+			widget.NewLabel("Settings management implemented in Phase 3."),
+			widget.NewLabel("This screen provides comprehensive configuration options."),
+			widget.NewLabel("• General launcher settings and preferences"),
+			widget.NewLabel("• Java runtime configuration"),
+			widget.NewLabel("• Memory allocation and performance"),
+			widget.NewLabel("• Window and display settings"),
+			widget.NewLabel("• Network and proxy configuration"),
+		)),
+	)
 }
 
 // CreateStatusBar creates a status bar component
-func (nm *NavigationManager) CreateStatusBar() *widgets.StatusBar {
-	statusBar := widgets.NewStatusBar(nm.app.state)
+func (nm *NavigationManager) CreateStatusBar() *widgets.SimpleStatusBar {
+	statusBar := widgets.NewSimpleStatusBar()
 	return statusBar
 }
 

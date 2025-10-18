@@ -17,7 +17,7 @@ type MainWindow struct {
 	appState     *app.State
 	content      fyne.CanvasObject
 	navigation   *app.NavigationManager
-	statusBar    *widgets.StatusBar
+	statusBar    *widgets.SimpleStatusBar
 	loading      *widgets.LoadingOverlay
 }
 
@@ -42,7 +42,7 @@ func NewMainWindow(fyneApp fyne.App, appState *app.State) *MainWindow {
 	mainWindow.appState = appState
 
 	// Create status bar
-	mainWindow.statusBar = widgets.NewStatusBar(appState)
+	mainWindow.statusBar = widgets.NewSimpleStatusBar()
 
 	// Create loading overlay
 	mainWindow.loading = widgets.CreateLoadingOverlay("Loading...", window.Canvas())

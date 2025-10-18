@@ -82,7 +82,7 @@ func (a *Application) GetState() *State {
 }
 
 // GetMainWindow returns the main window
-func (a *Application) GetMainWindow() *windows.MainWindow {
+func (a *Application) GetMainWindow() fyne.Window {
 	return a.mainWin
 }
 

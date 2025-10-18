@@ -4,8 +4,8 @@ package app
 import (
 	"sync"
 
-	"winterpack-launcher/internal/config"
-	"winterpack-launcher/internal/logging"
+	"theboys-launcher/internal/config"
+	"theboys-launcher/internal/logging"
 )
 
 // State represents the application state
