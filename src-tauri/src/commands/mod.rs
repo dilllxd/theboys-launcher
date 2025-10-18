@@ -11,10 +11,11 @@ use crate::api_response::{ApiResponse, HealthResponse};
 use tauri::{State, AppHandle};
 use tauri_plugin_updater::UpdaterExt;
 use std::sync::{Arc, Mutex};
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use chrono;
+use uuid;
 
 // Application state shared across commands
 pub struct AppState {
@@ -57,10 +58,10 @@ pub async fn get_app_version() -> ApiResponse<String> {
 
 /// Get current launcher settings
 #[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> LauncherResult<LauncherSettings> {
+pub async fn get_settings(state: State<'_, AppState>) -> ApiResponse<LauncherSettings> {
     info!("Getting current settings");
     let settings = state.settings.lock().unwrap().clone();
-    Ok(settings)
+    ApiResponse::success(settings)
 }
 
 /// Save launcher settings
@@ -68,12 +69,16 @@ pub async fn get_settings(state: State<'_, AppState>) -> LauncherResult<Launcher
 pub async fn save_settings(
     settings: LauncherSettings,
     state: State<'_, AppState>,
-) -> LauncherResult<()> {
-    info!("Saving settings: memory={}MB, theme={}, java={:?}, prism={:?}",
-          settings.memory_mb, settings.theme, settings.java_path, settings.prism_path);
-
-    // Validate settings using the config validation
-    config::validate_settings(&settings)?;
+) -> ApiResponse<()> {
+    match config::validate_settings(&settings) {
+        Ok(_) => {
+            info!("Settings validation passed");
+        }
+        Err(e) => {
+            error!("Settings validation failed: {}", e);
+            return ApiResponse::error(format!("Invalid settings: {}", e));
+        }
+    }
 
     // Update state
     {
@@ -82,66 +87,120 @@ pub async fn save_settings(
     }
 
     // Save to config file
-    config::save_settings(&settings)?;
-
-    info!("Settings saved successfully");
-    Ok(())
+    match config::save_settings(&settings) {
+        Ok(_) => {
+            info!("Settings saved successfully");
+            ApiResponse::success(())
+        }
+        Err(e) => {
+            error!("Failed to save settings: {}", e);
+            ApiResponse::error(format!("Failed to save settings: {}", e))
+        }
+    }
 }
 
 /// Get available modpacks from the remote configuration
 #[tauri::command]
-pub async fn get_available_modpacks() -> LauncherResult<Vec<Modpack>> {
+pub async fn get_available_modpacks() -> ApiResponse<Vec<Modpack>> {
     info!("Fetching available modpacks");
-    modpack_manager().get_modpacks().await
+    match modpack_manager().get_modpacks().await {
+        Ok(modpacks) => ApiResponse::success(modpacks),
+        Err(e) => {
+            error!("Failed to fetch modpacks: {}", e);
+            ApiResponse::error(format!("Failed to fetch modpacks: {}", e))
+        }
+    }
 }
 
 /// Get installed modpacks
 #[tauri::command]
-pub async fn get_installed_modpacks() -> LauncherResult<Vec<InstalledModpack>> {
+pub async fn get_installed_modpacks() -> ApiResponse<Vec<InstalledModpack>> {
     info!("Getting installed modpacks");
-    modpack_manager().get_installed_modpacks().await
+    match modpack_manager().get_installed_modpacks().await {
+        Ok(modpacks) => ApiResponse::success(modpacks),
+        Err(e) => {
+            error!("Failed to get installed modpacks: {}", e);
+            ApiResponse::error(format!("Failed to get installed modpacks: {}", e))
+        }
+    }
 }
 
 /// Check for updates for a specific modpack
 #[tauri::command]
-pub async fn check_modpack_updates(modpack_id: String) -> LauncherResult<Option<ModpackUpdate>> {
+pub async fn check_modpack_updates(modpack_id: String) -> ApiResponse<Option<ModpackUpdate>> {
     info!("Checking updates for modpack: {}", modpack_id);
-    modpack_manager().check_modpack_updates(&modpack_id).await
+    match modpack_manager().check_modpack_updates(&modpack_id).await {
+        Ok(update) => ApiResponse::success(update),
+        Err(e) => {
+            error!("Failed to check modpack updates: {}", e);
+            ApiResponse::error(format!("Failed to check modpack updates: {}", e))
+        }
+    }
 }
 
 /// Check for updates for all installed modpacks
 #[tauri::command]
-pub async fn check_all_modpack_updates() -> LauncherResult<Vec<ModpackUpdate>> {
+pub async fn check_all_modpack_updates() -> ApiResponse<Vec<ModpackUpdate>> {
     info!("Checking updates for all installed modpacks");
-    modpack_manager().check_all_updates().await
+    match modpack_manager().check_all_updates().await {
+        Ok(updates) => ApiResponse::success(updates),
+        Err(e) => {
+            error!("Failed to check all modpack updates: {}", e);
+            ApiResponse::error(format!("Failed to check all modpack updates: {}", e))
+        }
+    }
 }
 
 /// Select a modpack as the default
 #[tauri::command]
-pub async fn select_default_modpack(modpack_id: String) -> LauncherResult<()> {
+pub async fn select_default_modpack(modpack_id: String) -> ApiResponse<()> {
     info!("Setting default modpack: {}", modpack_id);
-    modpack_manager().select_default_modpack(&modpack_id).await
+    match modpack_manager().select_default_modpack(&modpack_id).await {
+        Ok(_) => ApiResponse::success(()),
+        Err(e) => {
+            error!("Failed to set default modpack: {}", e);
+            ApiResponse::error(format!("Failed to set default modpack: {}", e))
+        }
+    }
 }
 
 /// Get the current default modpack
 #[tauri::command]
-pub async fn get_default_modpack() -> LauncherResult<Option<Modpack>> {
+pub async fn get_default_modpack() -> ApiResponse<Option<Modpack>> {
     info!("Getting default modpack");
-    modpack_manager().get_default_modpack().await
+    match modpack_manager().get_default_modpack().await {
+        Ok(modpack) => ApiResponse::success(modpack),
+        Err(e) => {
+            error!("Failed to get default modpack: {}", e);
+            ApiResponse::error(format!("Failed to get default modpack: {}", e))
+        }
+    }
 }
 
 /// Get a specific modpack by ID
 #[tauri::command]
-pub async fn get_modpack(modpack_id: String) -> LauncherResult<Option<Modpack>> {
+pub async fn get_modpack(modpack_id: String) -> ApiResponse<Option<Modpack>> {
     info!("Getting modpack: {}", modpack_id);
-    modpack_manager().get_modpack(&modpack_id).await
+    match modpack_manager().get_modpack(&modpack_id).await {
+        Ok(modpack) => ApiResponse::success(modpack),
+        Err(e) => {
+            error!("Failed to get modpack: {}", e);
+            ApiResponse::error(format!("Failed to get modpack: {}", e))
+        }
+    }
 }
 
 /// Clear modpack cache
 #[tauri::command]
-pub async fn clear_modpack_cache() -> LauncherResult<()> {
+pub async fn clear_modpack_cache() -> ApiResponse<()> {
     info!("Clearing modpack cache");
-    modpack_manager().clear_cache().await
+    match modpack_manager().clear_cache().await {
+        Ok(_) => ApiResponse::success(()),
+        Err(e) => {
+            error!("Failed to clear modpack cache: {}", e);
+            ApiResponse::error(format!("Failed to clear modpack cache: {}", e))
+        }
+    }
 }
 
 /// Download a modpack
@@ -149,15 +208,27 @@ pub async fn clear_modpack_cache() -> LauncherResult<()> {
 pub async fn download_modpack(
     modpack_id: String,
     state: State<'_, AppState>,
-) -> LauncherResult<String> {
+) -> ApiResponse<String> {
     info!("Starting download for modpack: {}", modpack_id);
 
     // Get modpack info
-    let modpacks = get_available_modpacks().await?;
+    let modpacks_result = get_available_modpacks().await;
+    let modpacks = match modpacks_result {
+        ApiResponse { success: true, data: Some(m), .. } => m,
+        ApiResponse { success: false, error: e, .. } => {
+            return ApiResponse::error(format!("Failed to get available modpacks: {}", e));
+        }
+        _ => return ApiResponse::error("Failed to get available modpacks".to_string()),
+    };
+
     let modpack = modpacks
         .into_iter()
-        .find(|m| m.id == modpack_id)
-        .ok_or_else(|| LauncherError::ModpackNotFound(modpack_id.clone()))?;
+        .find(|m| m.id == modpack_id);
+
+    let modpack = match modpack {
+        Some(m) => m,
+        None => return ApiResponse::error(format!("Modpack not found: {}", modpack_id)),
+    };
 
     // Start download in background
     let download_id = format!("download-{}-{}", modpack_id, uuid::Uuid::new_v4());
@@ -177,14 +248,28 @@ pub async fn download_modpack(
     }
 
     // Start the actual download
-    let download_id = download_manager().start_download(
+    let destination = determine_modpack_destination(&modpack).await
+        .map_err(|e| {
+            error!("Failed to determine modpack destination: {}", e);
+            format!("Failed to determine destination: {}", e)
+        })?;
+
+    let download_result = download_manager().start_download(
         modpack.display_name.clone(),
         modpack.pack_url.clone(),
-        determine_modpack_destination(&modpack).await?
-    ).await?;
+        destination
+    ).await;
+
+    let download_id = match download_result {
+        Ok(id) => id,
+        Err(e) => {
+            error!("Failed to start modpack download: {}", e);
+            return ApiResponse::error(format!("Failed to start download: {}", e));
+        }
+    };
 
     info!("Modpack download started successfully: {} (ID: {})", modpack.display_name, download_id);
-    Ok(download_id)
+    ApiResponse::success(download_id)
 }
 
 /// Launch Minecraft with specified instance
@@ -275,29 +360,44 @@ pub async fn install_prism_launcher(
 
 /// Get system information
 #[tauri::command]
-pub async fn get_system_info() -> LauncherResult<SystemInfo> {
+pub async fn get_system_info() -> ApiResponse<SystemInfo> {
     info!("Getting system information");
 
-    let sys_info = system::get_system_info()?;
-    Ok(sys_info)
+    match system::get_system_info() {
+        Ok(sys_info) => ApiResponse::success(sys_info),
+        Err(e) => {
+            error!("Failed to get system info: {}", e);
+            ApiResponse::error(format!("Failed to get system info: {}", e))
+        }
+    }
 }
 
 /// Get download progress for a specific download
 #[tauri::command]
 pub async fn get_download_progress(
     download_id: String,
-) -> LauncherResult<Option<DownloadProgress>> {
+) -> ApiResponse<Option<DownloadProgress>> {
     info!("Getting download progress for: {}", download_id);
-    let progress = download_manager().get_progress(&download_id).await;
-    Ok(progress)
+    match download_manager().get_progress(&download_id).await {
+        Ok(progress) => ApiResponse::success(progress),
+        Err(e) => {
+            error!("Failed to get download progress: {}", e);
+            ApiResponse::error(format!("Failed to get download progress: {}", e))
+        }
+    }
 }
 
 /// Get all active downloads
 #[tauri::command]
-pub async fn get_all_downloads() -> LauncherResult<Vec<DownloadProgress>> {
+pub async fn get_all_downloads() -> ApiResponse<Vec<DownloadProgress>> {
     info!("Getting all active downloads");
-    let downloads = download_manager().get_all_downloads().await;
-    Ok(downloads)
+    match download_manager().get_all_downloads().await {
+        Ok(downloads) => ApiResponse::success(downloads),
+        Err(e) => {
+            error!("Failed to get all downloads: {}", e);
+            ApiResponse::error(format!("Failed to get all downloads: {}", e))
+        }
+    }
 }
 
 /// Download a file
@@ -306,13 +406,19 @@ pub async fn download_file(
     name: String,
     url: String,
     destination: String,
-) -> LauncherResult<String> {
+) -> ApiResponse<String> {
     info!("Starting download: {} from {} to {}", name, url, destination);
 
-    let download_id = download_manager().start_download(name, url, destination).await?;
-
-    info!("Download started with ID: {}", download_id);
-    Ok(download_id)
+    match download_manager().start_download(name, url, destination).await {
+        Ok(download_id) => {
+            info!("Download started with ID: {}", download_id);
+            ApiResponse::success(download_id)
+        },
+        Err(e) => {
+            error!("Failed to start download: {}", e);
+            ApiResponse::error(format!("Failed to start download: {}", e))
+        }
+    }
 }
 
 /// Cancel an ongoing download
@@ -452,33 +558,44 @@ pub async fn download_packwiz_bootstrap() -> LauncherResult<String> {
 #[tauri::command]
 pub async fn reset_settings(
     state: State<'_, AppState>,
-) -> LauncherResult<LauncherSettings> {
+) -> ApiResponse<LauncherSettings> {
     info!("Resetting settings to defaults");
 
-    let default_settings = config::reset_settings()?;
+    match config::reset_settings() {
+        Ok(default_settings) => {
+            // Update state
+            {
+                let mut state_settings = state.settings.lock().unwrap();
+                *state_settings = default_settings.clone();
+            }
 
-    // Update state
-    {
-        let mut state_settings = state.settings.lock().unwrap();
-        *state_settings = default_settings.clone();
+            info!("Settings reset to defaults successfully");
+            ApiResponse::success(default_settings)
+        }
+        Err(e) => {
+            error!("Failed to reset settings: {}", e);
+            ApiResponse::error(format!("Failed to reset settings: {}", e))
+        }
     }
-
-    info!("Settings reset to defaults successfully");
-    Ok(default_settings)
 }
 
 /// Detect system information for settings optimization
 #[tauri::command]
-pub async fn detect_system_info() -> LauncherResult<crate::models::SystemInfo> {
+pub async fn detect_system_info() -> ApiResponse<crate::models::SystemInfo> {
     info!("Detecting system information for settings");
 
-    let sys_info = system::get_system_info()?;
-
-    info!("System info detected: {} {} with {}GB RAM, {} cores, Java installed: {}",
-          sys_info.os, sys_info.arch, sys_info.total_memory_mb / 1024,
-          sys_info.cpu_cores, sys_info.java_installed);
-
-    Ok(sys_info)
+    match system::get_system_info() {
+        Ok(sys_info) => {
+            info!("System info detected: {} {} with {}GB RAM, {} cores, Java installed: {}",
+                  sys_info.os, sys_info.arch, sys_info.total_memory_mb / 1024,
+                  sys_info.cpu_cores, sys_info.java_installed);
+            ApiResponse::success(sys_info)
+        }
+        Err(e) => {
+            error!("Failed to detect system info: {}", e);
+            ApiResponse::error(format!("Failed to detect system info: {}", e))
+        }
+    }
 }
 
 /// Browse for Java installation
@@ -846,25 +963,37 @@ fn determine_platform() -> &'static str {
 
 /// Initialize Java Manager and detect installations
 #[tauri::command]
-pub async fn detect_java_installations() -> LauncherResult<Vec<JavaInstallation>> {
+pub async fn detect_java_installations() -> ApiResponse<Vec<JavaInstallation>> {
     info!("Detecting Java installations with Java Manager");
 
-    java_manager().initialize().await?;
-    let installations = java_manager().get_installed_versions();
-
-    info!("Found {} Java installations", installations.len());
-    Ok(installations)
+    match java_manager().initialize().await {
+        Ok(_) => {
+            let installations = java_manager().get_installed_versions();
+            info!("Found {} Java installations", installations.len());
+            ApiResponse::success(installations)
+        },
+        Err(e) => {
+            error!("Failed to initialize Java manager: {}", e);
+            ApiResponse::error(format!("Failed to initialize Java manager: {}", e))
+        }
+    }
 }
 
 /// Get all managed Java installations
 #[tauri::command]
-pub async fn get_managed_java_installations() -> LauncherResult<Vec<JavaInstallation>> {
+pub async fn get_managed_java_installations() -> ApiResponse<Vec<JavaInstallation>> {
     info!("Getting managed Java installations");
 
-    java_manager().initialize().await?;
-    let installations = java_manager().get_managed_installations();
-
-    Ok(installations)
+    match java_manager().initialize().await {
+        Ok(_) => {
+            let installations = java_manager().get_managed_installations();
+            ApiResponse::success(installations)
+        },
+        Err(e) => {
+            error!("Failed to initialize Java manager: {}", e);
+            ApiResponse::error(format!("Failed to initialize Java manager: {}", e))
+        }
+    }
 }
 
 /// Get required Java version for a Minecraft version
@@ -1110,13 +1239,19 @@ pub async fn get_prism_download_info(version: Option<String>) -> LauncherResult<
 #[tauri::command]
 pub async fn create_instance(
     config: InstanceConfig,
-) -> LauncherResult<Instance> {
+) -> ApiResponse<Instance> {
     info!("Creating new instance: {} with modloader {}", config.name, config.loader_type.as_str());
 
-    let instance = instance_manager().create_instance(&config).await?;
-
-    info!("Instance created successfully: {} with ID {}", instance.name, instance.id);
-    Ok(instance)
+    match instance_manager().create_instance(&config).await {
+        Ok(instance) => {
+            info!("Instance created successfully: {} with ID {}", instance.name, instance.id);
+            ApiResponse::success(instance)
+        },
+        Err(e) => {
+            error!("Failed to create instance: {}", e);
+            ApiResponse::error(format!("Failed to create instance: {}", e))
+        }
+    }
 }
 
 /// Create a new instance from a modpack
@@ -1218,77 +1353,110 @@ pub async fn install_modpack_to_instance(
 
 /// Get all instances
 #[tauri::command]
-pub async fn get_instances() -> LauncherResult<Vec<Instance>> {
+pub async fn get_instances() -> ApiResponse<Vec<Instance>> {
     info!("Getting all instances");
 
-    let instances = instance_manager().get_instances().await?;
-
-    info!("Found {} instances", instances.len());
-    Ok(instances)
+    match instance_manager().get_instances().await {
+        Ok(instances) => {
+            info!("Found {} instances", instances.len());
+            ApiResponse::success(instances)
+        },
+        Err(e) => {
+            error!("Failed to get instances: {}", e);
+            ApiResponse::error(format!("Failed to get instances: {}", e))
+        }
+    }
 }
 
 /// Get a specific instance by ID
 #[tauri::command]
-pub async fn get_instance(instance_id: String) -> LauncherResult<Option<Instance>> {
+pub async fn get_instance(instance_id: String) -> ApiResponse<Option<Instance>> {
     info!("Getting instance: {}", instance_id);
 
-    let instance = instance_manager().get_instance(&instance_id).await?;
-
-    match &instance {
-        Some(inst) => info!("Found instance: {} ({})", inst.name, instance_id),
-        None => info!("Instance not found: {}", instance_id),
+    match instance_manager().get_instance(&instance_id).await {
+        Ok(instance) => {
+            match &instance {
+                Some(inst) => info!("Found instance: {} ({})", inst.name, instance_id),
+                None => info!("Instance not found: {}", instance_id),
+            }
+            ApiResponse::success(instance)
+        },
+        Err(e) => {
+            error!("Failed to get instance: {}", e);
+            ApiResponse::error(format!("Failed to get instance: {}", e))
+        }
     }
-
-    Ok(instance)
 }
 
 /// Get instance by name
 #[tauri::command]
-pub async fn get_instance_by_name(name: String) -> LauncherResult<Option<Instance>> {
+pub async fn get_instance_by_name(name: String) -> ApiResponse<Option<Instance>> {
     info!("Getting instance by name: {}", name);
 
-    let instance = instance_manager().get_instance_by_name(&name).await?;
-
-    match &instance {
-        Some(inst) => info!("Found instance: {} (ID: {})", inst.name, inst.id),
-        None => info!("Instance not found: {}", name),
+    match instance_manager().get_instance_by_name(&name).await {
+        Ok(instance) => {
+            match &instance {
+                Some(inst) => info!("Found instance: {} (ID: {})", inst.name, inst.id),
+                None => info!("Instance not found: {}", name),
+            }
+            ApiResponse::success(instance)
+        },
+        Err(e) => {
+            error!("Failed to get instance by name: {}", e);
+            ApiResponse::error(format!("Failed to get instance by name: {}", e))
+        }
     }
-
-    Ok(instance)
 }
 
 /// Update instance settings
 #[tauri::command]
 pub async fn update_instance(
     instance: Instance,
-) -> LauncherResult<()> {
+) -> ApiResponse<()> {
     info!("Updating instance: {} ({})", instance.name, instance.id);
 
-    instance_manager().update_instance(&instance).await?;
-
-    info!("Instance updated successfully: {}", instance.name);
-    Ok(())
+    match instance_manager().update_instance(&instance).await {
+        Ok(_) => {
+            info!("Instance updated successfully: {}", instance.name);
+            ApiResponse::success(())
+        },
+        Err(e) => {
+            error!("Failed to update instance: {}", e);
+            ApiResponse::error(format!("Failed to update instance: {}", e))
+        }
+    }
 }
 
 /// Delete an instance
 #[tauri::command]
 pub async fn delete_instance(
     instance_id: String,
-) -> LauncherResult<()> {
+) -> ApiResponse<()> {
     info!("Deleting instance: {}", instance_id);
 
     // Get instance info before deletion for logging
-    let instance_info = instance_manager().get_instance(&instance_id).await?;
+    let instance_info = match instance_manager().get_instance(&instance_id).await {
+        Ok(info) => info,
+        Err(e) => {
+            error!("Failed to get instance info for deletion: {}", e);
+            return ApiResponse::error(format!("Failed to get instance info: {}", e));
+        }
+    };
 
-    instance_manager().delete_instance(&instance_id).await?;
-
-    if let Some(instance) = instance_info {
-        info!("Instance deleted successfully: {}", instance.name);
-    } else {
-        info!("Instance deleted (was already missing): {}", instance_id);
+    match instance_manager().delete_instance(&instance_id).await {
+        Ok(_) => {
+            if let Some(instance) = instance_info {
+                info!("Instance deleted successfully: {}", instance.name);
+            } else {
+                info!("Instance deleted (was already missing): {}", instance_id);
+            }
+            ApiResponse::success(())
+        },
+        Err(e) => {
+            error!("Failed to delete instance: {}", e);
+            ApiResponse::error(format!("Failed to delete instance: {}", e))
+        }
     }
-
-    Ok(())
 }
 
 /// Launch an instance
@@ -1296,13 +1464,19 @@ pub async fn delete_instance(
 pub async fn launch_instance(
     instance_id: String,
     state: State<'_, AppState>,
-) -> LauncherResult<String> {
+) -> ApiResponse<String> {
     info!("Launching instance: {}", instance_id);
 
-    let instance = instance_manager().get_instance(&instance_id).await?
-        .ok_or_else(|| LauncherError::InstanceNotFound(
-            format!("Instance {} not found", instance_id)
-        ))?;
+    let instance = match instance_manager().get_instance(&instance_id).await {
+        Ok(Some(inst)) => inst,
+        Ok(None) => {
+            return ApiResponse::error(format!("Instance {} not found", instance_id));
+        },
+        Err(e) => {
+            error!("Failed to get instance for launch: {}", e);
+            return ApiResponse::error(format!("Failed to get instance: {}", e));
+        }
+    };
 
     // Get launcher settings
     let settings = state.settings.lock().unwrap().clone();
@@ -1339,10 +1513,16 @@ pub async fn launch_instance(
     };
 
     // Launch the instance
-    let launch_id = state.launch_manager.launch_instance(launch_config).await?;
-
-    info!("Instance launched successfully: {} (Launch ID: {})", instance.name, launch_id);
-    Ok(launch_id)
+    match state.launch_manager.launch_instance(launch_config).await {
+        Ok(launch_id) => {
+            info!("Instance launched successfully: {} (Launch ID: {})", instance.name, launch_id);
+            ApiResponse::success(launch_id)
+        },
+        Err(e) => {
+            error!("Failed to launch instance: {}", e);
+            ApiResponse::error(format!("Failed to launch instance: {}", e))
+        }
+    }
 }
 
 /// Validate an instance
