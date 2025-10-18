@@ -3,6 +3,7 @@
 
 # Variables
 APP_NAME := theboys-launcher
+EXE_NAME := $(APP_NAME)$(if $(filter windows,$(shell go env GOOS)),.exe,)
 VERSION ?= dev
 BUILD_DIR := build
 DIST_DIR := dist
@@ -54,6 +55,7 @@ clean:
 	rm -f $(APP_NAME)-*
 	rm -f TheBoysLauncher.exe
 	rm -f theboys-launcher-*
+	rm -f $(EXE_NAME)
 
 # Install dependencies
 .PHONY: deps
@@ -79,8 +81,8 @@ frontend:
 .PHONY: build-current
 build-current: clean deps frontend
 	@echo "Building for current platform..."
-	go build -ldflags="$(LDFLAGS)" -o $(APP_NAME) ./cmd/launcher
-	@echo "Build complete: $(APP_NAME)"
+	go build -ldflags="$(LDFLAGS)" -o $(EXE_NAME) ./cmd/launcher
+	@echo "Build complete: $(EXE_NAME)"
 
 # Build for all platforms
 .PHONY: build-all
@@ -137,35 +139,30 @@ dev: deps
 .PHONY: run
 run: quick
 	@echo "Running TheBoys Launcher (development build)..."
-	@if [ -f "$(APP_NAME)" ]; then \
-		./$(APP_NAME); \
-	else \
-		echo "Executable not found. Run 'make quick' first."; \
-		exit 1; \
-	fi
+	@$(EXE_NAME)
 
 # Run with specific mode
 .PHONY: run-gui
 run-gui: quick
 	@echo "Running TheBoys Launcher in GUI mode..."
-	@./$(APP_NAME)
+	@$(EXE_NAME)
 
 .PHONY: run-cli
 run-cli: quick
 	@echo "Running TheBoys Launcher in CLI mode..."
-	@./$(APP_NAME) --cli
+	@$(EXE_NAME) --cli
 
 # Run with development options
 .PHONY: run-dev
 run-dev: quick
 	@echo "Running TheBoys Launcher in development mode..."
-	@THEBOYS_DEV=1 ./$(APP_NAME)
+	@THEBOYS_DEV=1 $(EXE_NAME)
 
 # Run tests in development mode
 .PHONY: test-run
 test-run: quick
 	@echo "Running TheBoys Launcher with test data..."
-	@THEBOYS_TEST=1 ./$(APP_NAME) --cli --list-modpacks
+	@THEBOYS_TEST=1 $(EXE_NAME) --cli --list-modpacks
 
 # Run tests
 .PHONY: test
@@ -304,8 +301,8 @@ package-macos: build-macos
 .PHONY: quick
 quick: frontend
 	@echo "Quick build for current platform..."
-	go build -ldflags="$(LDFLAGS)" -o $(APP_NAME) ./cmd/launcher
-	@echo "Quick build complete: $(APP_NAME)"
+	go build -ldflags="$(LDFLAGS)" -o $(EXE_NAME) ./cmd/launcher
+	@echo "Quick build complete: $(EXE_NAME)"
 
 # Display version info
 .PHONY: version
