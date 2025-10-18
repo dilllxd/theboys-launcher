@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"theboys-launcher/internal/gui/screens"
 	"theboys-launcher/internal/gui/widgets"
 	"theboys-launcher/internal/logging"
 )
@@ -149,12 +150,20 @@ func (nm *NavigationManager) createModpacksScreen() fyne.CanvasObject {
 
 // createSettingsScreen creates the settings screen content
 func (nm *NavigationManager) createSettingsScreen() fyne.CanvasObject {
-	return container.NewVBox(
-		widget.NewCard("Settings", "Application Settings", container.NewVBox(
-			widget.NewLabel("Settings will be implemented in Phase 3."),
-			widget.NewLabel("This screen will display application settings."),
-		)),
-	)
+	if nm.app == nil {
+		return widget.NewLabel("Settings unavailable - application not initialized")
+	}
+
+	// Create the settings screen
+	settingsScreen := screens.NewSettingsScreen(nm.app)
+	if settingsScreen == nil {
+		return widget.NewLabel("Failed to create settings screen")
+	}
+
+	// Register the screen
+	nm.RegisterScreen(settingsScreen)
+
+	return settingsScreen.GetContent()
 }
 
 // CreateStatusBar creates a status bar component
