@@ -140,8 +140,8 @@ func (pm *ProcessManager) forceKillProcess(proc *ManagedProcess) {
 			pm.logger.Warn("Failed to force kill Windows process %d: %v", proc.PID, err)
 		}
 	} else {
-		// Unix-like systems: Use SIGKILL
-		if err := syscall.Kill(proc.PID, syscall.SIGKILL); err != nil {
+		// Unix-like systems: Use platform-specific termination
+		if err := pm.forceKillUnixProcess(proc.PID); err != nil {
 			pm.logger.Warn("Failed to force kill Unix process %d: %v", proc.PID, err)
 		}
 	}
@@ -203,9 +203,8 @@ func (pm *ProcessManager) IsProcessRunning(pid int) bool {
 		// Windows: Check using tasklist
 		return pm.checkWindowsProcess(pid)
 	} else {
-		// Unix-like systems: Send signal 0 (doesn't kill the process)
-		err := syscall.Kill(pid, 0)
-		return err == nil
+		// Unix-like systems: Use platform-specific process check
+		return pm.checkUnixProcess(pid)
 	}
 }
 
@@ -305,7 +304,7 @@ func (pm *ProcessManager) WaitForExit() {
 func (pm *ProcessManager) Shutdown() {
 	pm.logger.Info("Triggering graceful shutdown")
 	select {
-	case pm.shutdownChan <- syscall.SIGTERM:
+	case pm.shutdownChan <- os.Interrupt:
 		pm.logger.Debug("Shutdown signal sent")
 	default:
 		pm.logger.Debug("Shutdown already in progress")
@@ -332,3 +331,24 @@ func (pm *ProcessManager) GetProcessInfo() map[string]interface{} {
 
 	return info
 }
+
+// forceKillUnixProcess forcefully kills a Unix process using SIGKILL
+func (pm *ProcessManager) forceKillUnixProcess(pid int) error {
+	if runtime.GOOS == "windows" {
+		pm.logger.Warn("Unix process termination not available on Windows")
+		return fmt.Errorf("Unix process termination not available on Windows")
+	}
+	// Unix systems - use the Unix-specific function
+	return KillUnixProcess(pid)
+}
+
+// checkUnixProcess checks if a Unix process is running using signal 0
+func (pm *ProcessManager) checkUnixProcess(pid int) bool {
+	if runtime.GOOS == "windows" {
+		pm.logger.Warn("Unix process checking not available on Windows")
+		return false
+	}
+	// Unix systems - use the Unix-specific function
+	return IsUnixProcessRunning(pid)
+}
+
