@@ -311,16 +311,22 @@ export const ModpacksPage: React.FC = () => {
 
   const handleInstallModpack = async (modpack: Modpack) => {
     try {
+      console.log('Starting installation for modpack:', modpack.id, modpack.displayName);
       const downloadId = await api.downloadModpack(modpack.id);
 
       // TODO: Show download progress dialog
       console.log('Download started:', downloadId);
 
+      // Show success message to user
+      alert(`Download started for ${modpack.displayName}! Download ID: ${downloadId}`);
+
       // Refresh modpacks after a delay
       setTimeout(loadModpacks, 2000);
     } catch (err) {
       console.error('Failed to install modpack:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      alert(`Failed to install modpack: ${errorMessage}`);
     }
   };
 
@@ -406,8 +412,9 @@ export const ModpacksPage: React.FC = () => {
         <ModpackActions>
           {status === 'available' && (
             <Button
-              onClick={(e?: React.MouseEvent) => {
-                e?.stopPropagation();
+              onClick={(e: React.MouseEvent) => {
+                console.log('Install button clicked for modpack:', modpack.id);
+                e.stopPropagation();
                 handleInstallModpack(modpack);
               }}
             >
@@ -575,6 +582,7 @@ export const ModpacksPage: React.FC = () => {
               {getModpackStatus(selectedModpack) === 'available' && (
                 <Button
                   onClick={() => {
+                    console.log('Modal install button clicked for modpack:', selectedModpack.id);
                     handleInstallModpack(selectedModpack);
                     setShowDetailsModal(false);
                   }}

@@ -113,6 +113,14 @@ export const api = {
     invokeCommand<import('../types/launcher').DownloadProgress | null>('get_download_progress', { downloadId }),
   cancelDownload: (downloadId: string) =>
     invokeCommand<void>('cancel_download', { downloadId }),
+  pauseDownload: (downloadId: string) =>
+    invokeCommand<void>('pause_download', { downloadId }),
+  resumeDownload: (downloadId: string) =>
+    invokeCommand<void>('resume_download', { downloadId }),
+  removeDownload: (downloadId: string) =>
+    invokeCommand<void>('remove_download', { downloadId }),
+  setMaxConcurrentDownloads: (maxConcurrent: number) =>
+    invokeCommand<void>('set_max_concurrent_downloads', { maxConcurrent }),
 
   // Instance Management
   createInstance: (config: import('../types/launcher').InstanceConfig) =>

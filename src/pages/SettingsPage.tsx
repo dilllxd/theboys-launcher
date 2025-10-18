@@ -271,10 +271,11 @@ export const SettingsPage: React.FC = () => {
     try {
       const info = await api.detectSystemInfo();
       setSystemInfo(info);
-      setJavaVersions(info.javaVersions);
+      setJavaVersions(info.javaVersions || []);
     } catch (error) {
       toast.error('Failed to load system information');
       console.error('Failed to load system info:', error);
+      setJavaVersions([]);
     } finally {
       setIsLoading(false);
     }
