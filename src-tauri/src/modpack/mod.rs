@@ -1,4 +1,4 @@
-use crate::models::{LauncherResult, Modpack, InstalledModpack, ModpackUpdate, Modloader, LauncherError};
+use crate::models::{LauncherResult, Modpack, ModpackJson, InstalledModpack, ModpackUpdate, Modloader, LauncherError};
 use reqwest;
 use serde_json;
 use std::collections::HashMap;
@@ -80,13 +80,15 @@ impl ModpackManager {
         }
 
         let text = response.text().await?;
-        let modpacks: Vec<Modpack> = serde_json::from_str(&text)
+        let modpacks_json: Vec<ModpackJson> = serde_json::from_str(&text)
             .map_err(|e| LauncherError::Serialization(format!("Failed to parse modpacks.json: {}", e)))?;
 
-        if modpacks.is_empty() {
+        if modpacks_json.is_empty() {
             return Err(LauncherError::ModpackNotFound("No modpacks found in remote configuration".to_string()));
         }
 
+        // Convert simplified JSON to full Modpack structs
+        let modpacks: Vec<Modpack> = modpacks_json.into_iter().map(Modpack::from).collect();
         Ok(modpacks)
     }
 

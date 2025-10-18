@@ -45,6 +45,16 @@ export const api = {
   // Modpacks
   getAvailableModpacks: () =>
     invokeCommand<import('../types/launcher').Modpack[]>('get_available_modpacks'),
+  getInstalledModpacks: () =>
+    invokeCommand<import('../types/launcher').InstalledModpack[]>('get_installed_modpacks'),
+  getDefaultModpack: () =>
+    invokeCommand<import('../types/launcher').Modpack | null>('get_default_modpack'),
+  checkModpackUpdates: (modpackId: string) =>
+    invokeCommand<import('../types/launcher').ModpackUpdate | null>('check_modpack_updates', { modpackId }),
+  checkAllModpackUpdates: () =>
+    invokeCommand<import('../types/launcher').ModpackUpdate[]>('check_all_modpack_updates'),
+  selectDefaultModpack: (modpackId: string) =>
+    invokeCommand<void>('select_default_modpack', { modpackId }),
   downloadModpack: (modpackId: string) =>
     invokeCommand<string>('download_modpack', { modpackId }),
 

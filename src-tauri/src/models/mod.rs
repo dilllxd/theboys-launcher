@@ -1,7 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Represents a modpack configuration
+/// Represents a modpack configuration from JSON (simplified structure)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModpackJson {
+    pub id: String,
+    pub displayName: String,
+    pub packUrl: String,
+    pub instanceName: String,
+    pub description: String,
+    #[serde(default)]
+    pub minecraftVersion: Option<String>,
+    #[serde(default)]
+    pub modloader: Option<String>,
+    #[serde(default)]
+    pub loaderVersion: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// Represents a modpack configuration (full structure with defaults)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Modpack {
     pub id: String,
@@ -14,6 +32,25 @@ pub struct Modpack {
     pub minecraft_version: String,
     pub modloader: Modloader,
     pub loader_version: String,
+}
+
+impl From<ModpackJson> for Modpack {
+    fn from(json: ModpackJson) -> Self {
+        Self {
+            id: json.id,
+            display_name: json.displayName,
+            pack_url: json.packUrl,
+            instance_name: json.instanceName,
+            description: json.description,
+            default: false, // Will be updated by select_default_modpack if needed
+            version: json.version.unwrap_or_else(|| "1.0.0".to_string()),
+            minecraft_version: json.minecraftVersion.unwrap_or_else(|| "1.20.1".to_string()),
+            modloader: json.modloader
+                .map(|s| Modloader::from_str(&s))
+                .unwrap_or(Modloader::Vanilla),
+            loader_version: json.loaderVersion.unwrap_or_else(|| "0.0.0".to_string()),
+        }
+    }
 }
 
 /// Modloader types
