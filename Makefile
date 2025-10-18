@@ -133,23 +133,15 @@ build-macos: clean deps frontend
 .PHONY: dev
 dev: deps
 	@echo "Starting development server..."
-	@if command -v wails >/dev/null 2>&1; then \
-		wails dev; \
-	else \
-		echo "Wails CLI not found. Run 'make install-wails' first."; \
-		exit 1; \
-	fi
+	@echo "Note: Press Ctrl+C to stop the development server"
+	@wails dev
 
 # Run development build (uses wails dev for proper development)
 .PHONY: run
 run: deps
 	@echo "Running TheBoys Launcher in development mode..."
-	@if command -v wails >/dev/null 2>&1; then \
-		wails dev; \
-	else \
-		echo "❌ Wails CLI not found. Please run 'make install-wails' first."; \
-		exit 1; \
-	fi
+	@echo "Note: Press Ctrl+C to stop the development server"
+	@wails dev
 
 # Run with specific mode
 .PHONY: run-gui
