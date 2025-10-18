@@ -1,33 +1,18 @@
+//go:build linux
+// +build linux
+
 package platform
 
 import (
 	"os/exec"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"theboys-launcher/pkg/types"
 )
 
-// LinuxPlatform provides Linux-specific implementations
-type LinuxPlatform struct {
-	CommonPlatform
-}
 
-// NewPlatform creates a new platform-specific implementation
-func NewPlatform() Platform {
-	switch runtime.GOOS {
-	case "windows":
-		return &WindowsPlatform{CommonPlatform{}}
-	case "darwin":
-		return &DarwinPlatform{CommonPlatform{}}
-	case "linux":
-		return &LinuxPlatform{CommonPlatform{}}
-	default:
-		return &LinuxPlatform{CommonPlatform{}}
-	}
-}
 
 // DetectJavaInstallations finds Java installations on Linux
 func (p *LinuxPlatform) DetectJavaInstallations() ([]types.JavaInstallation, error) {

@@ -1,3 +1,6 @@
+//go:build darwin
+// +build darwin
+
 package platform
 
 import (
@@ -10,10 +13,6 @@ import (
 	"theboys-launcher/pkg/types"
 )
 
-// DarwinPlatform provides macOS-specific implementations
-type DarwinPlatform struct {
-	CommonPlatform
-}
 
 // DetectJavaInstallations finds Java installations on macOS
 func (p *DarwinPlatform) DetectJavaInstallations() ([]types.JavaInstallation, error) {

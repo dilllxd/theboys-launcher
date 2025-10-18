@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package platform
 
 import (
@@ -10,10 +13,6 @@ import (
 	"theboys-launcher/pkg/types"
 )
 
-// WindowsPlatform provides Windows-specific implementations
-type WindowsPlatform struct {
-	CommonPlatform
-}
 
 // DetectJavaInstallations finds Java installations on Windows
 func (p *WindowsPlatform) DetectJavaInstallations() ([]types.JavaInstallation, error) {
