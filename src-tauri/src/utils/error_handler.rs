@@ -98,6 +98,17 @@ impl ErrorHandler {
                 "Try launching with reduced memory settings".to_string(),
             ],
         );
+
+        // API error recovery strategies
+        self.recovery_strategies.insert(
+            "Api".to_string(),
+            vec![
+                "Check your internet connection".to_string(),
+                "Try again in a few moments".to_string(),
+                "Verify the API endpoint is accessible".to_string(),
+                "If the problem persists, contact support".to_string(),
+            ],
+        );
     }
 
     /// Handle and enhance an error with context
@@ -242,6 +253,7 @@ impl ErrorHandler {
             LauncherError::NotFound(msg) => ("NotFound".to_string(), format!("Resource not found: {}", msg)),
             LauncherError::UpdateFailed(msg) => ("UpdateFailed".to_string(), format!("Update failed: {}", msg)),
             LauncherError::Config(msg) => ("Config".to_string(), format!("Configuration error: {}", msg)),
+            LauncherError::Api(msg) => ("Api".to_string(), format!("API error: {}", msg)),
         }
     }
 
@@ -258,6 +270,8 @@ impl ErrorHandler {
             "DownloadFailed".to_string()
         } else if technical_details.contains("Launch") {
             "LaunchFailed".to_string()
+        } else if technical_details.contains("API") {
+            "Api".to_string()
         } else {
             "Unknown".to_string()
         }
@@ -283,6 +297,7 @@ impl ErrorHandler {
             LauncherError::NotFound(_) => format!("Required resource not found while {}", operation),
             LauncherError::UpdateFailed(_) => format!("Update failed while {}", operation),
             LauncherError::Config(_) => format!("Configuration error while {}", operation),
+            LauncherError::Api(_) => format!("API error while {}", operation),
         }
     }
 
