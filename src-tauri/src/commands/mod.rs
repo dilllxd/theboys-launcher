@@ -58,10 +58,10 @@ pub async fn get_app_version() -> ApiResponse<String> {
 
 /// Get current launcher settings
 #[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> ApiResponse<LauncherSettings> {
+pub async fn get_settings(state: State<'_, AppState>) -> Result<ApiResponse<LauncherSettings>, String> {
     info!("Getting current settings");
     let settings = state.settings.lock().unwrap().clone();
-    ApiResponse::success(settings)
+    Ok(ApiResponse::success(settings))
 }
 
 /// Save launcher settings
@@ -69,14 +69,14 @@ pub async fn get_settings(state: State<'_, AppState>) -> ApiResponse<LauncherSet
 pub async fn save_settings(
     settings: LauncherSettings,
     state: State<'_, AppState>,
-) -> ApiResponse<()> {
+) -> Result<ApiResponse<()>, String> {
     match config::validate_settings(&settings) {
         Ok(_) => {
             info!("Settings validation passed");
         }
         Err(e) => {
             error!("Settings validation failed: {}", e);
-            return ApiResponse::error(format!("Invalid settings: {}", e));
+            return Ok(ApiResponse::error(format!("Invalid settings: {}", e)));
         }
     }
 
@@ -90,11 +90,11 @@ pub async fn save_settings(
     match config::save_settings(&settings) {
         Ok(_) => {
             info!("Settings saved successfully");
-            ApiResponse::success(())
+            Ok(ApiResponse::success(()))
         }
         Err(e) => {
             error!("Failed to save settings: {}", e);
-            ApiResponse::error(format!("Failed to save settings: {}", e))
+            Ok(ApiResponse::error(format!("Failed to save settings: {}", e)))
         }
     }
 }
@@ -208,17 +208,17 @@ pub async fn clear_modpack_cache() -> ApiResponse<()> {
 pub async fn download_modpack(
     modpack_id: String,
     state: State<'_, AppState>,
-) -> ApiResponse<String> {
+) -> Result<ApiResponse<String>, String> {
     info!("Starting download for modpack: {}", modpack_id);
 
     // Get modpack info
     let modpacks_result = get_available_modpacks().await;
     let modpacks = match modpacks_result {
         ApiResponse { success: true, data: Some(m), .. } => m,
-        ApiResponse { success: false, error: e, .. } => {
-            return ApiResponse::error(format!("Failed to get available modpacks: {}", e));
+        ApiResponse { success: false, error: Some(e), .. } => {
+            return Ok(ApiResponse::error(format!("Failed to get available modpacks: {}", e)));
         }
-        _ => return ApiResponse::error("Failed to get available modpacks".to_string()),
+        _ => return Ok(ApiResponse::error("Failed to get available modpacks".to_string())),
     };
 
     let modpack = modpacks
@@ -227,7 +227,7 @@ pub async fn download_modpack(
 
     let modpack = match modpack {
         Some(m) => m,
-        None => return ApiResponse::error(format!("Modpack not found: {}", modpack_id)),
+        None => return Ok(ApiResponse::error(format!("Modpack not found: {}", modpack_id))),
     };
 
     // Start download in background
@@ -264,12 +264,12 @@ pub async fn download_modpack(
         Ok(id) => id,
         Err(e) => {
             error!("Failed to start modpack download: {}", e);
-            return ApiResponse::error(format!("Failed to start download: {}", e));
+            return Ok(ApiResponse::error(format!("Failed to start download: {}", e)));
         }
     };
 
     info!("Modpack download started successfully: {} (ID: {})", modpack.display_name, download_id);
-    ApiResponse::success(download_id)
+    Ok(ApiResponse::success(download_id))
 }
 
 /// Launch Minecraft with specified instance
@@ -378,26 +378,16 @@ pub async fn get_download_progress(
     download_id: String,
 ) -> ApiResponse<Option<DownloadProgress>> {
     info!("Getting download progress for: {}", download_id);
-    match download_manager().get_progress(&download_id).await {
-        Ok(progress) => ApiResponse::success(progress),
-        Err(e) => {
-            error!("Failed to get download progress: {}", e);
-            ApiResponse::error(format!("Failed to get download progress: {}", e))
-        }
-    }
+    let progress = download_manager().get_progress(&download_id).await;
+    ApiResponse::success(progress)
 }
 
 /// Get all active downloads
 #[tauri::command]
 pub async fn get_all_downloads() -> ApiResponse<Vec<DownloadProgress>> {
     info!("Getting all active downloads");
-    match download_manager().get_all_downloads().await {
-        Ok(downloads) => ApiResponse::success(downloads),
-        Err(e) => {
-            error!("Failed to get all downloads: {}", e);
-            ApiResponse::error(format!("Failed to get all downloads: {}", e))
-        }
-    }
+    let downloads = download_manager().get_all_downloads().await;
+    ApiResponse::success(downloads)
 }
 
 /// Download a file
@@ -558,7 +548,7 @@ pub async fn download_packwiz_bootstrap() -> LauncherResult<String> {
 #[tauri::command]
 pub async fn reset_settings(
     state: State<'_, AppState>,
-) -> ApiResponse<LauncherSettings> {
+) -> Result<ApiResponse<LauncherSettings>, String> {
     info!("Resetting settings to defaults");
 
     match config::reset_settings() {
@@ -570,11 +560,11 @@ pub async fn reset_settings(
             }
 
             info!("Settings reset to defaults successfully");
-            ApiResponse::success(default_settings)
+            Ok(ApiResponse::success(default_settings))
         }
         Err(e) => {
             error!("Failed to reset settings: {}", e);
-            ApiResponse::error(format!("Failed to reset settings: {}", e))
+            Ok(ApiResponse::error(format!("Failed to reset settings: {}", e)))
         }
     }
 }
@@ -1264,7 +1254,14 @@ pub async fn create_instance_from_modpack(
     info!("Creating instance from modpack: {}", modpack_id);
 
     // Get modpack information
-    let modpacks = get_available_modpacks().await?;
+    let modpacks_result = get_available_modpacks().await;
+    let modpacks = match modpacks_result {
+        ApiResponse { success: true, data: Some(m), .. } => m,
+        ApiResponse { success: false, error: Some(e), .. } => {
+            return Err(LauncherError::Api(format!("Failed to get available modpacks: {}", e)));
+        }
+        _ => return Err(LauncherError::Api("Failed to get available modpacks".to_string())),
+    };
     let modpack = modpacks
         .into_iter()
         .find(|m| m.id == modpack_id)
@@ -1333,7 +1330,14 @@ pub async fn install_modpack_to_instance(
         ))?;
 
     // Get modpack information
-    let modpacks = get_available_modpacks().await?;
+    let modpacks_result = get_available_modpacks().await;
+    let modpacks = match modpacks_result {
+        ApiResponse { success: true, data: Some(m), .. } => m,
+        ApiResponse { success: false, error: Some(e), .. } => {
+            return Err(LauncherError::Api(format!("Failed to get available modpacks: {}", e)));
+        }
+        _ => return Err(LauncherError::Api("Failed to get available modpacks".to_string())),
+    };
     let modpack = modpacks
         .into_iter()
         .find(|m| m.id == modpack_id)
@@ -1464,17 +1468,17 @@ pub async fn delete_instance(
 pub async fn launch_instance(
     instance_id: String,
     state: State<'_, AppState>,
-) -> ApiResponse<String> {
+) -> Result<ApiResponse<String>, String> {
     info!("Launching instance: {}", instance_id);
 
     let instance = match instance_manager().get_instance(&instance_id).await {
         Ok(Some(inst)) => inst,
         Ok(None) => {
-            return ApiResponse::error(format!("Instance {} not found", instance_id));
+            return Ok(ApiResponse::error(format!("Instance {} not found", instance_id)));
         },
         Err(e) => {
             error!("Failed to get instance for launch: {}", e);
-            return ApiResponse::error(format!("Failed to get instance: {}", e));
+            return Ok(ApiResponse::error(format!("Failed to get instance: {}", e)));
         }
     };
 
@@ -1516,11 +1520,11 @@ pub async fn launch_instance(
     match state.launch_manager.launch_instance(launch_config).await {
         Ok(launch_id) => {
             info!("Instance launched successfully: {} (Launch ID: {})", instance.name, launch_id);
-            ApiResponse::success(launch_id)
+            Ok(ApiResponse::success(launch_id))
         },
         Err(e) => {
             error!("Failed to launch instance: {}", e);
-            ApiResponse::error(format!("Failed to launch instance: {}", e))
+            Ok(ApiResponse::error(format!("Failed to launch instance: {}", e)))
         }
     }
 }

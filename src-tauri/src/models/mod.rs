@@ -329,6 +329,9 @@ pub enum LauncherError {
 
     #[error("Not found: {0}")]
     NotFound(String),
+
+    #[error("API error: {0}")]
+    Api(String),
 }
 
 impl From<reqwest::Error> for LauncherError {
