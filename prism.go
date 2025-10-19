@@ -15,7 +15,7 @@ import (
 // -------------------- Prism + Instance --------------------
 
 func ensurePrism(dir string) (bool, error) {
-	if exists(filepath.Join(dir, "PrismLauncher.exe")) {
+	if exists(filepath.Join(dir, PrismExeName)) {
 		return false, nil
 	}
 	url, err := fetchLatestPrismPortableURL()

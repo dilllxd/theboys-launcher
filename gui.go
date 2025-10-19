@@ -368,7 +368,7 @@ func (g *GUI) buildSidebar() fyne.CanvasObject {
 	g.updateMemorySummaryLabel()
 	info := widget.NewCard("Status", "", container.NewVBox(
 		g.memorySummaryLabel,
-		widget.NewLabel(fmt.Sprintf("Signed in as: %s", os.Getenv("USERNAME"))),
+		widget.NewLabel(fmt.Sprintf("Signed in as: %s", getCurrentUser())),
 	))
 
 	content := container.NewVBox(

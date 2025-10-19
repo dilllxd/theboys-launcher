@@ -93,35 +93,8 @@ func slugifyID(s string) string {
 func versionFileNameFor(mp Modpack) string { return "." + slugifyID(mp.ID) + "-version" }
 func backupPrefixFor(mp Modpack) string    { return slugifyID(mp.ID) + "-backup-" }
 
-// getLauncherHome returns the launcher's home directory in the user's home folder
-func getLauncherHome() string {
-	if runtime.GOOS != "windows" {
-		// Fallback to current directory for non-Windows systems
-		if exePath, err := os.Executable(); err == nil {
-			return filepath.Dir(exePath)
-		}
-		return "."
-	}
-
-	// Get launcher directory (same as exe location)
-	exePath, err := os.Executable()
-	if err != nil {
-		// Fallback to current directory
-		return "."
-	}
-	launcherHome := filepath.Dir(exePath)
-
-	// Ensure the directory exists
-	if err := os.MkdirAll(launcherHome, 0755); err != nil {
-		// Fallback to current directory if we can't create home directory
-		if exePath, err := os.Executable(); err == nil {
-			return filepath.Dir(exePath)
-		}
-		return "."
-	}
-
-	return launcherHome
-}
+// getLauncherHome is now implemented in platform-specific files
+// This function is handled by platform_windows.go and platform_darwin.go
 
 // -------------------- Helpers --------------------
 

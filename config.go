@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
 // -------------------- CONFIG: EDIT THESE --------------------
@@ -15,12 +12,11 @@ import (
 const (
 	launcherName      = "TheBoysLauncher"
 	launcherShortName = "TheBoysLauncher"
-	launcherExeName   = "TheBoysLauncher.exe"
+	launcherExeName   = "TheBoysLauncher" // Base name without extension
 
 	// Self-update source (GitHub Releases of this EXE)
-	UPDATE_OWNER      = "dilllxd"
-	UPDATE_REPO       = "theboys-launcher"
-	UPDATE_ASSET      = launcherExeName
+	UPDATE_OWNER = "dilllxd"
+	UPDATE_REPO  = "theboys-launcher"
 	remoteModpacksURL = "https://raw.githubusercontent.com/dilllxd/theboys-launcher/refs/heads/main/modpacks.json"
 
 	envCacheBust = "THEBOYS_CACHEBUST"
@@ -178,45 +174,8 @@ func MemoryForModpack(modpack Modpack) int {
 	return settings.MemoryMB
 }
 
-// totalRAMMB returns total system memory in MB
-func totalRAMMB() int {
-	// Use Windows GlobalMemoryStatusEx API to get total physical memory
-	// Define the structure ourselves since it's not in the basic windows package
-	type memoryStatusEx struct {
-		DwLength                uint32
-		DwMemoryLoad            uint32
-		UllTotalPhys            uint64
-		UllAvailPhys            uint64
-		UllTotalPageFile        uint64
-		UllAvailPageFile        uint64
-		UllTotalVirtual         uint64
-		UllAvailVirtual         uint64
-		UllAvailExtendedVirtual uint64
-	}
-
-	var memStatus memoryStatusEx
-	memStatus.DwLength = uint32(unsafe.Sizeof(memStatus))
-
-	// Call the Windows API directly
-	kernel32 := windows.NewLazyDLL("kernel32.dll")
-	globalMemoryStatusEx := kernel32.NewProc("GlobalMemoryStatusEx")
-
-	ret, _, _ := globalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
-	if ret == 0 {
-		// Fallback to default if API call fails
-		return 16384 // 16GB default
-	}
-
-	// Convert bytes to megabytes
-	totalMB := int(memStatus.UllTotalPhys / (1024 * 1024))
-
-	// Validate the result seems reasonable
-	if totalMB < 1024 || totalMB > 1024*1024 { // Less than 1GB or more than 1TB
-		return 16384 // Use default if result seems invalid
-	}
-
-	return totalMB
-}
+// totalRAMMB is now implemented in platform-specific files
+// This function is handled by platform_windows.go and platform_darwin.go
 
 func min(a, b int) int {
 	if a < b {

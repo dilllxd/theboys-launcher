@@ -48,9 +48,9 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	// Determine required Java version based on Minecraft version
 	requiredJavaVersion := getJavaVersionForMinecraft(packInfo.Minecraft)
 	jreDir := filepath.Join(prismJavaDir, "jre"+requiredJavaVersion)
-	javaBin := filepath.Join(jreDir, "bin", "java.exe")
-	javawBin := filepath.Join(jreDir, "bin", "javaw.exe")
-	bootstrapExe := filepath.Join(utilDir, "packwiz-installer-bootstrap.exe")
+	javaBin := filepath.Join(jreDir, "bin", JavaBinName)
+	javawBin := filepath.Join(jreDir, "bin", JavawBinName)
+	bootstrapExe := filepath.Join(utilDir, "packwiz-installer-bootstrap"+getExecutableExtension())
 	bootstrapJar := filepath.Join(utilDir, "packwiz-installer-bootstrap.jar")
 
 	// Create util directory for miscellaneous files
@@ -89,7 +89,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		}
 		_ = flattenOneLevel(jreDir)
 		if !exists(javaBin) || !exists(javawBin) {
-			fail(fmt.Errorf("Java %s installation looks incomplete (bin/java.exe or bin/javaw.exe not found)", requiredJavaVersion))
+			fail(fmt.Errorf("Java %s installation looks incomplete (bin/%s or bin/%s not found)", requiredJavaVersion, JavaBinName, JavawBinName))
 		}
 		logf("%s", successLine(fmt.Sprintf("Java %s installed", requiredJavaVersion)))
 	} else {
@@ -335,7 +335,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		logf("%s", warnLine(fmt.Sprintf("Failed to update Prism Java path: %v", err)))
 	}
 
-	prismExe := filepath.Join(prismDir, "PrismLauncher.exe")
+	prismExe := filepath.Join(prismDir, PrismExeName)
 	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
 	launch.Env = append(os.Environ(),

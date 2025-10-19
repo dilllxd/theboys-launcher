@@ -28,7 +28,7 @@ func selfUpdate(root, exePath string, report func(string)) error {
 
 	notify("Checking for launcher updates...")
 
-	tag, assetURL, err := fetchLatestAsset(UPDATE_OWNER, UPDATE_REPO, UPDATE_ASSET)
+	tag, assetURL, err := fetchLatestAsset(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension())
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")

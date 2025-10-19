@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -52,9 +51,8 @@ func main() {
 		return
 	}
 
-	if runtime.GOOS != "windows" {
-		fail(errors.New("Windows only"))
-	}
+	// Platform check now handled by platform abstraction
+	// Windows hard block removed for cross-platform support
 
 	root := getLauncherHome()
 
@@ -95,24 +93,8 @@ func main() {
 
 	go func() {
 		<-c
-		logf("%s", warnLine("Launcher interrupted, force-closing Prism Launcher and Minecraft..."))
-
-		// Force close all Prism processes
-		cmd := exec.Command("taskkill", "/F", "/IM", "PrismLauncher.exe")
-		cmd.Run()
-
-		// Force close any Java processes (likely Minecraft)
-		javaCmd := exec.Command("taskkill", "/F", "/IM", "java.exe")
-		javaCmd.Run()
-
-		// Also close the specific Prism process we launched if we have it
-		if prismProcess != nil && prismProcess.Pid > 0 {
-			killCmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", prismProcess.Pid))
-			killCmd.Run()
-			logf("Force-closed Prism process %d and related processes", prismProcess.Pid)
-		}
-
-		logf("All game processes force-closed")
+		// Use platform-specific process management
+		forceCloseAllProcesses(prismProcess)
 		os.Exit(1)
 	}()
 

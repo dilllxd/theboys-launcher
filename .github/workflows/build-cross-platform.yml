@@ -1,0 +1,231 @@
+name: Cross-Platform Build
+
+# Trigger on pushes and pull requests to macos-support branch
+on:
+  push:
+    branches: [ macos-support ]
+  pull_request:
+    branches: [ macos-support ]
+
+jobs:
+  # Windows build job
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build Windows executable
+      run: |
+        mkdir -p build/windows
+        go build -ldflags="-s -w -H=windowsgui -X main.version=v3.0.1-ci" -o build/windows/TheBoysLauncher.exe .
+
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: TheBoysLauncher-Windows
+        path: build/windows/TheBoysLauncher.exe
+
+    - name: Display build info
+      run: |
+        echo "Windows build completed!"
+        Get-ChildItem build/windows/ | Format-Table Name, Length
+
+  # macOS Intel build job
+  build-macos-intel:
+    name: Build macOS Intel
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install build dependencies
+      run: |
+        # Install create-dmg for DMG creation (optional for testing)
+        brew install create-dmg || echo "create-dmg install failed, continuing..."
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build macOS Intel executable
+      run: |
+        mkdir -p build/amd64
+        export GOOS=darwin GOARCH=amd64 CGO_ENABLED=1
+        go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o build/amd64/TheBoysLauncher .
+
+    - name: Create macOS app bundle
+      run: |
+        chmod +x scripts/create-app-bundle.sh
+        ./scripts/create-app-bundle.sh amd64 v3.0.1-ci
+
+    - name: Upload macOS Intel artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: TheBoysLauncher-macOS-Intel
+        path: build/amd64/TheBoysLauncher.app
+
+    - name: Display build info
+      run: |
+        echo "macOS Intel build completed!"
+        ls -la build/amd64/
+        if [ -d "build/amd64/TheBoysLauncher.app" ]; then
+          echo "App bundle created successfully!"
+          du -sh build/amd64/TheBoysLauncher.app
+        fi
+
+  # macOS Apple Silicon build job
+  build-macos-arm64:
+    name: Build macOS Apple Silicon
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build macOS Apple Silicon executable
+      run: |
+        mkdir -p build/arm64
+        export GOOS=darwin GOARCH=arm64 CGO_ENABLED=1
+        go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o build/arm64/TheBoysLauncher .
+
+    - name: Create macOS app bundle
+      run: |
+        chmod +x scripts/create-app-bundle.sh
+        ./scripts/create-app-bundle.sh arm64 v3.0.1-ci
+
+    - name: Upload macOS Apple Silicon artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: TheBoysLauncher-macOS-AppleSilicon
+        path: build/arm64/TheBoysLauncher.app
+
+    - name: Display build info
+      run: |
+        echo "macOS Apple Silicon build completed!"
+        ls -la build/arm64/
+        if [ -d "build/arm64/TheBoysLauncher.app" ]; then
+          echo "App bundle created successfully!"
+          du -sh build/arm64/TheBoysLauncher.app
+        fi
+
+  # Create Universal macOS binary
+  build-macos-universal:
+    name: Build macOS Universal
+    runs-on: macos-latest
+    needs: [build-macos-intel, build-macos-arm64]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download Intel build
+      uses: actions/download-artifact@v3
+      with:
+        name: TheBoysLauncher-macOS-Intel
+        path: build/amd64/
+
+    - name: Download Apple Silicon build
+      uses: actions/download-artifact@v3
+      with:
+        name: TheBoysLauncher-macOS-AppleSilicon
+        path: build/arm64/
+
+    - name: Create Universal binary
+      run: |
+        mkdir -p build/universal
+        # Create universal binary from executables inside app bundles
+        lipo -create build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher -output build/universal/TheBoysLauncher
+
+        # Create universal app bundle
+        cp -R build/amd64/TheBoysLauncher.app build/universal/TheBoysLauncher.app
+        cp build/universal/TheBoysLauncher build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
+
+    - name: Create Universal app bundle
+      run: |
+        chmod +x scripts/create-app-bundle.sh
+        ./scripts/create-app-bundle.sh universal v3.0.1-ci
+
+    - name: Upload Universal artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: TheBoysLauncher-macOS-Universal
+        path: build/universal/TheBoysLauncher.app
+
+    - name: Display build info
+      run: |
+        echo "macOS Universal build completed!"
+        ls -la build/universal/
+        if [ -d "build/universal/TheBoysLauncher.app" ]; then
+          echo "Universal app bundle created successfully!"
+          du -sh build/universal/TheBoysLauncher.app
+          file build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
+        fi
+
+  # Build status summary
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos-intel, build-macos-arm64, build-macos-universal]
+    if: always()
+
+    steps:
+    - name: Build Summary
+      run: |
+        echo "## Cross-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Platform | Status | Artifact |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Windows | ${{ needs.build-windows.result }} | TheBoysLauncher-Windows |" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS Intel | ${{ needs.build-macos-intel.result }} | TheBoysLauncher-macOS-Intel |" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS Apple Silicon | ${{ needs.build-macos-arm64.result }} | TheBoysLauncher-macOS-AppleSilicon |" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS Universal | ${{ needs.build-macos-universal.result }} | TheBoysLauncher-macOS-Universal |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "All builds completed for the macos-support branch! 🎉" >> $GITHUB_STEP_SUMMARY
