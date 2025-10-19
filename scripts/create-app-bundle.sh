@@ -60,8 +60,8 @@ fi
 
 # Create app bundle structure
 echo "Creating app bundle structure..."
-mkdir -p "$APP_DIR/Contents/MacOS"
-mkdir -p "$APP_DIR/Contents/Resources"
+mkdir -p "$APP_DIR/Contents/MacOS" || { echo "Failed to create MacOS directory"; exit 1; }
+mkdir -p "$APP_DIR/Contents/Resources" || { echo "Failed to create Resources directory"; exit 1; }
 
 # Create Info.plist
 echo "Creating Info.plist..."
@@ -114,21 +114,8 @@ echo "Copying executable..."
 cp "$SOURCE_DIR/TheBoysLauncher" "$APP_DIR/Contents/MacOS/"
 chmod +x "$APP_DIR/Contents/MacOS/TheBoysLauncher"
 
-# Create icon placeholder (if icon doesn't exist)
-ICON_PATH="$APP_DIR/Contents/Resources/AppIcon.icns"
-if [ ! -f "resources/darwin/AppIcon.icns" ]; then
-    echo "Creating placeholder icon..."
-    # Create a simple placeholder icon using sips if available
-    if command -v sips &> /dev/null; then
-        # Create a simple 512x512 placeholder
-        mkdir -p "resources/darwin/TheBoysLauncher.iconset"
-        # This would require an actual image file, so we'll just create the directory structure
-        touch "resources/darwin/TheBoysLauncher.iconset/icon_512x512.png"
-    fi
-else
-    echo "Copying icon..."
-    cp "resources/darwin/AppIcon.icns" "$ICON_PATH"
-fi
+# Skip icon creation for now (will be implemented later)
+echo "Skipping icon creation (no icon available)"
 
 # Set proper permissions
 echo "Setting permissions..."
