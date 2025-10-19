@@ -39,7 +39,7 @@ jobs:
         go build -ldflags="-s -w -H=windowsgui -X main.version=v3.0.1-ci" -o build/windows/TheBoysLauncher.exe .
 
     - name: Upload Windows artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-Windows
         path: build/windows/TheBoysLauncher.exe
@@ -91,7 +91,7 @@ jobs:
         ./scripts/create-app-bundle.sh amd64 v3.0.1-ci
 
     - name: Upload macOS Intel artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-macOS-Intel
         path: build/amd64/TheBoysLauncher.app
@@ -142,7 +142,7 @@ jobs:
         ./scripts/create-app-bundle.sh arm64 v3.0.1-ci
 
     - name: Upload macOS Apple Silicon artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-macOS-AppleSilicon
         path: build/arm64/TheBoysLauncher.app
@@ -167,13 +167,13 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download Intel build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: TheBoysLauncher-macOS-Intel
         path: build/amd64/
 
     - name: Download Apple Silicon build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: TheBoysLauncher-macOS-AppleSilicon
         path: build/arm64/
@@ -194,7 +194,7 @@ jobs:
         ./scripts/create-app-bundle.sh universal v3.0.1-ci
 
     - name: Upload Universal artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-macOS-Universal
         path: build/universal/TheBoysLauncher.app
