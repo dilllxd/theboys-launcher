@@ -1,0 +1,36 @@
+name: Build Test
+
+# Lightweight build test for quick verification
+on:
+  push:
+    branches: [ macos-support ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test-compilation:
+    name: Test Compilation
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Test compilation (no output)
+      run: |
+        # Just test compilation, create no output files
+        go build -o /dev/null .
+
+    - name: Test cross-compilation to macOS
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        # Test cross-compilation on Linux
+        GOOS=darwin GOARCH=amd64 go build -o /dev/null .
+        GOOS=darwin GOARCH=arm64 go build -o /dev/null .
