@@ -181,12 +181,18 @@ jobs:
     - name: Create Universal binary
       run: |
         mkdir -p build/universal
-        # Create universal binary from executables inside app bundles
-        lipo -create build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher -output build/universal/TheBoysLauncher
+        # Check what files we actually have
+        echo "=== AMD64 build contents ==="
+        ls -la build/amd64/
+        echo "=== ARM64 build contents ==="
+        ls -la build/arm64/
 
-        # Create universal app bundle
-        cp -R build/amd64/TheBoysLauncher.app build/universal/TheBoysLauncher.app
-        cp build/universal/TheBoysLauncher build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
+        # Create universal binary from raw executables
+        lipo -create build/amd64/TheBoysLauncher build/arm64/TheBoysLauncher -output build/universal/TheBoysLauncher
+
+        # Verify universal binary
+        file build/universal/TheBoysLauncher
+        lipo -info build/universal/TheBoysLauncher
 
     - name: Create Universal app bundle
       run: |
