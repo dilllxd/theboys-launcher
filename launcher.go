@@ -242,7 +242,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	cmd.Dir = mcDir // critical: minecraft directory so packwiz installs mods in correct place
 	cmd.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
-		"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+		"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 	)
 
 	logf("DEBUG: Packwiz command: %s", cmd.String())
@@ -276,7 +276,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 				retryCmd.Dir = mcDir // also run from minecraft directory
 				retryCmd.Env = append(os.Environ(),
 					"JAVA_HOME="+jreDir,
-					"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+					"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 				)
 
 				// Set platform-specific process attributes for retry
@@ -327,12 +327,12 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		logf("%s", warnLine(fmt.Sprintf("Failed to update Prism Java path: %v", err)))
 	}
 
-	prismExe := filepath.Join(prismDir, PrismExeName)
+	prismExe := getPrismExecutablePath(prismDir)
 	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
 	launch.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
-		"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+		"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 	)
 	launch.Stdout, launch.Stderr = out, out
 
@@ -344,7 +344,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		launchFallback.Dir = prismDir
 		launchFallback.Env = append(os.Environ(),
 			"JAVA_HOME="+jreDir,
-			"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+			"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 		)
 		launchFallback.Stdout, launchFallback.Stderr = out, out
 		if err := launchFallback.Start(); err != nil {

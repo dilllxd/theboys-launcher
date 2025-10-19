@@ -15,7 +15,7 @@ import (
 // -------------------- Prism + Instance --------------------
 
 func ensurePrism(dir string) (bool, error) {
-	if exists(filepath.Join(dir, PrismExeName)) {
+	if exists(getPrismExecutablePath(dir)) {
 		return false, nil
 	}
 	url, err := fetchLatestPrismPortableURL()
@@ -81,8 +81,10 @@ type prismRelease struct {
 	} `json:"assets"`
 }
 
-// Prefer MinGW w64 portable on amd64; fall back to MSVC portable.
-// On arm64, use MSVC arm64 portable.
+// Cross-platform Prism download with platform-specific patterns:
+// - Windows: MinGW w64 portable (amd64), MSVC portable (arm64)
+// - macOS: tar.gz archives with architecture-specific builds
+// - Linux: tar.gz archives as fallback
 func fetchLatestPrismPortableURL() (string, error) {
 	// Use GitHub's releases page to find the latest Prism Launcher without API
 	releasesURL := "https://github.com/PrismLauncher/PrismLauncher/releases"
@@ -121,24 +123,43 @@ func fetchLatestPrismPortableURL() (string, error) {
 
 	latestTag := tagMatches[1]
 
-	// Build priority patterns by arch
+	// Build priority patterns by platform and arch
 	var patterns []string
 
-	if runtime.GOARCH == "amd64" {
-		// 1) MinGW w64 portable zip
-		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MinGW-w64-Portable-%s.zip", latestTag))
-		// 2) MSVC portable zip
-		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MSVC-Portable-%s.zip", latestTag))
-	} else if runtime.GOARCH == "arm64" {
-		// MSVC arm64 portable zip
-		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MSVC-arm64-Portable-%s.zip", latestTag))
+	if runtime.GOOS == "windows" {
+		if runtime.GOARCH == "amd64" {
+			// 1) MinGW w64 portable zip
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MinGW-w64-Portable-%s.zip", latestTag))
+			// 2) MSVC portable zip
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MSVC-Portable-%s.zip", latestTag))
+		} else if runtime.GOARCH == "arm64" {
+			// MSVC arm64 portable zip
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-Windows-MSVC-arm64-Portable-%s.zip", latestTag))
+		}
+		// Fallbacks for unexpected naming: generic portable zips
+		patterns = append(patterns,
+			fmt.Sprintf("PrismLauncher-Windows-Portable-%s.zip", latestTag),
+			fmt.Sprintf("PrismLauncher-Windows-%s.zip", latestTag),
+		)
+	} else if runtime.GOOS == "darwin" {
+		if runtime.GOARCH == "arm64" {
+			// macOS ARM64 (Apple Silicon) - prioritize arm64 builds
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-arm64-%s.tar.gz", latestTag))
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-arm64-%s.tar.gz", latestTag))
+		} else {
+			// macOS Intel (amd64/x86_64)
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-%s.tar.gz", latestTag))
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-%s.tar.gz", latestTag))
+			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-x86_64-%s.tar.gz", latestTag))
+		}
+		// Fallbacks for macOS
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-darwin-%s.tar.gz", latestTag))
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-%s.tar.gz", latestTag)) // Linux as last resort
+	} else {
+		// Linux fallback
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-%s.tar.gz", latestTag))
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-linux-%s.tar.gz", latestTag))
 	}
-
-	// Fallbacks for unexpected naming: generic portable zips
-	patterns = append(patterns,
-		fmt.Sprintf("PrismLauncher-Windows-Portable-%s.zip", latestTag),
-		fmt.Sprintf("PrismLauncher-Windows-%s.zip", latestTag),
-	)
 
 	// Try each pattern to find a working download URL
 	for _, assetName := range patterns {
