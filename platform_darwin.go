@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
-	"unsafe"
 )
 
 // macOS memory detection using sysctl

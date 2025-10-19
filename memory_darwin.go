@@ -26,7 +26,7 @@ func getSystemMemoryInfo() (*DarwinMemoryInfo, error) {
 	size := uint64(8)
 
 	// Get total physical memory
-	_, err := syscall.Syscall6(
+	_, _, err := syscall.Syscall6(
 		syscall.SYS___SYSCTL,
 		uintptr(unsafe.Pointer(&[]byte("hw.memsize")[0])),
 		uintptr(len("hw.memsize")),
@@ -42,7 +42,7 @@ func getSystemMemoryInfo() (*DarwinMemoryInfo, error) {
 	// Get free memory (vm page free count)
 	var freeCount uint64
 	size = uint64(8)
-	_, err = syscall.Syscall6(
+	_, _, err = syscall.Syscall6(
 		syscall.SYS___SYSCTL,
 		uintptr(unsafe.Pointer(&[]byte("vm.page_free_count")[0])),
 		uintptr(len("vm.page_free_count")),
