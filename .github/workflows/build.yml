@@ -53,21 +53,50 @@ jobs:
       timeout-minutes: 8
       run: |
         echo "Building macOS ${{ matrix.arch }}..."
-        export GOOS=darwin GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
+        export GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
         go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o build/${{ matrix.goarch }}/TheBoysLauncher .
 
         echo "✅ Build completed for macOS ${{ matrix.arch }}!"
 
+        # Verify the executable
+        echo "Verifying executable..."
+        file build/${{ matrix.goarch }}/TheBoysLauncher
+        lipo -info build/${{ matrix.goarch }}/TheBoysLauncher
+
     - name: Create macOS app bundle
       run: |
+        # Verify executable exists and is executable
+        if [ ! -f "build/${{ matrix.goarch }}/TheBoysLauncher" ]; then
+          echo "❌ Executable not found: build/${{ matrix.goarch }}/TheBoysLauncher"
+          exit 1
+        fi
+
+        # Check if executable is actually a Mach-O file
+        if ! file "build/${{ matrix.goarch }}/TheBoysLauncher" | grep -q "Mach-O"; then
+          echo "❌ Executable is not a valid Mach-O file"
+          file "build/${{ matrix.goarch }}/TheBoysLauncher"
+          exit 1
+        fi
+
+        echo "✅ Executable verified, creating app bundle..."
         chmod +x scripts/create-app-bundle.sh
         ./scripts/create-app-bundle.sh ${{ matrix.bundle_arch }} v3.0.1-ci
 
         if [ -d "build/${{ matrix.bundle_arch }}/TheBoysLauncher.app" ]; then
           echo "✅ App bundle created successfully!"
           ls -la build/${{ matrix.bundle_arch }}/TheBoysLauncher.app/Contents/MacOS/
-          file build/${{ matrix.bundle_arch }}/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
-          du -sh build/${{ matrix.bundle_arch }}/TheBoysLauncher.app
+
+          # Verify the bundled executable
+          BUNDLED_EXEC="build/${{ matrix.bundle_arch }}/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
+          if [ -f "$BUNDLED_EXEC" ]; then
+            file "$BUNDLED_EXEC"
+            lipo -info "$BUNDLED_EXEC" 2>/dev/null || echo "Single architecture binary"
+            du -sh "build/${{ matrix.bundle_arch }}/TheBoysLauncher.app"
+            echo "✅ App bundle executable verified!"
+          else
+            echo "❌ Bundled executable not found"
+            exit 1
+          fi
         else
           echo "❌ App bundle creation failed"
           exit 1
@@ -113,25 +142,49 @@ jobs:
       run: |
         mkdir -p build/universal
 
+        # Check what we actually downloaded
+        echo "=== Checking downloaded artifacts ==="
+        echo "AMD64 contents:"
+        ls -la build/amd64/
+        echo "ARM64 contents:"
+        ls -la build/arm64/
+
         # Extract raw executables from app bundles
-        if [ -f "build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher" ]; then
-          cp build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher build/amd64/TheBoysLauncher-raw
+        INTEL_EXEC="build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
+        ARM_EXEC="build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
+
+        if [ -f "$INTEL_EXEC" ]; then
+          echo "Found Intel executable in app bundle"
+          cp "$INTEL_EXEC" build/amd64/TheBoysLauncher-raw
+          file build/amd64/TheBoysLauncher-raw
+        else
+          echo "❌ Intel executable not found in app bundle"
+          echo "Looking for alternative Intel executable..."
+          find build/amd64/ -name "TheBoysLauncher" -type f 2>/dev/null || echo "No Intel executable found"
         fi
 
-        if [ -f "build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher" ]; then
-          cp build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher build/arm64/TheBoysLauncher-raw
+        if [ -f "$ARM_EXEC" ]; then
+          echo "Found ARM executable in app bundle"
+          cp "$ARM_EXEC" build/arm64/TheBoysLauncher-raw
+          file build/arm64/TheBoysLauncher-raw
+        else
+          echo "❌ ARM executable not found in app bundle"
+          echo "Looking for alternative ARM executable..."
+          find build/arm64/ -name "TheBoysLauncher" -type f 2>/dev/null || echo "No ARM executable found"
         fi
 
         # Create universal binary
         if [ -f "build/amd64/TheBoysLauncher-raw" ] && [ -f "build/arm64/TheBoysLauncher-raw" ]; then
+          echo "Both executables found, creating universal binary..."
           lipo -create build/amd64/TheBoysLauncher-raw build/arm64/TheBoysLauncher-raw -output build/universal/TheBoysLauncher
 
           echo "✅ Universal binary created!"
           file build/universal/TheBoysLauncher
           lipo -info build/universal/TheBoysLauncher
         else
-          echo "❌ Could not create universal binary"
-          ls -la build/amd64/ build/arm64/
+          echo "❌ Could not create universal binary - missing executables"
+          echo "Available files:"
+          find build/ -name "*TheBoysLauncher*" 2>/dev/null
           exit 1
         fi
 
