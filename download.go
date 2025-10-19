@@ -1,13 +1,17 @@
 package main
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -62,7 +66,82 @@ func downloadAndUnzipTo(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	return unzipBytesTo(b, dest)
+	return extractBytesTo(b, dest, url)
+}
+
+// extractBytesTo extracts archive bytes to destination, detecting format
+func extractBytesTo(b []byte, dest, url string) error {
+	// Determine format based on file extension and platform
+	if strings.HasSuffix(strings.ToLower(url), ".zip") {
+		return unzipBytesTo(b, dest)
+	} else if strings.HasSuffix(strings.ToLower(url), ".tar.gz") || strings.HasSuffix(strings.ToLower(url), ".tgz") {
+		return untarBytesTo(b, dest)
+	} else {
+		// Fallback: try zip first (Windows), then tar.gz (macOS/Linux)
+		if err := unzipBytesTo(b, dest); err != nil {
+			if runtime.GOOS != "windows" {
+				return untarBytesTo(b, dest)
+			}
+			return err
+		}
+		return nil
+	}
+}
+
+// untarBytesTo extracts a .tar.gz archive to destination
+func untarBytesTo(b []byte, dest string) error {
+	// First decompress gzip
+	gzReader, err := gzip.NewReader(bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Then extract tar
+	tarReader := tar.NewReader(gzReader)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		targetPath := filepath.Join(dest, header.Name)
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// Create directory
+			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+
+		case tar.TypeReg:
+			// Create file
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory for %s: %w", targetPath, err)
+			}
+
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+			}
+
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to write file %s: %w", targetPath, err)
+			}
+			outFile.Close()
+
+		default:
+			// Skip other file types (symlinks, etc.)
+			continue
+		}
+	}
+
+	return nil
 }
 
 func download(url string) ([]byte, error) {
