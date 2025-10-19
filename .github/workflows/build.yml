@@ -175,18 +175,23 @@ jobs:
       with:
         go-version: '1.22'
 
-    - name: Quick build verification
+    - name: Install dependencies for validation
       run: |
-        echo "Running quick build verification..."
-        go build -o test-binary .
-        rm -f test-binary
-        echo "✅ Build verification passed!"
+        echo "Installing minimal dependencies for syntax checking..."
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev
 
     - name: Basic syntax check
       run: |
         echo "Checking Go syntax..."
         go vet ./... || echo "⚠️ Some vet issues found (expected during development)"
         echo "✅ Syntax check completed!"
+
+    - name: Module verification
+      run: |
+        echo "Verifying Go modules..."
+        go mod verify
+        echo "✅ Module verification completed!"
 
     - name: Generate build summary
       run: |

@@ -83,11 +83,6 @@ func getArchitecture() string {
 	}
 }
 
-// macOS app bundle structure
-func getPrismExecutablePath(installDir string) string {
-	// macOS Prism Launcher is in an app bundle
-	return filepath.Join(installDir, "PrismLauncher.app", "Contents", "MacOS", "PrismLauncher")
-}
 
 // Check if path is an app bundle
 func isAppBundle(path string) bool {
