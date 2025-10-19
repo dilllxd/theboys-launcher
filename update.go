@@ -61,6 +61,12 @@ func selfUpdate(root, exePath string, report func(string)) error {
 		return err
 	}
 
+	// Remove quarantine attribute on macOS (no-op on Windows)
+	if err := removeQuarantineAttribute(tmpNew); err != nil {
+		notify(fmt.Sprintf("Warning: Failed to remove quarantine attribute: %v", err))
+		// Don't fail the update, just warn the user
+	}
+
 	notify("Update downloaded successfully")
 	logf("%s", successLine("Update downloaded successfully"))
 	notify("Preparing to restart with the new version...")

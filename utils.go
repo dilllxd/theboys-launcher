@@ -268,7 +268,14 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	return os.WriteFile(dst, input, 0644)
+	// Check if source file is executable and preserve permissions
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	// Preserve the same permissions as the source file
+	return os.WriteFile(dst, input, info.Mode())
 }
 
 func copyDir(src, dst string) error {
