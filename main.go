@@ -26,22 +26,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
 )
 
 func main() {
-	// VERY EARLY LOGGING - this should write even if everything else fails
-	exePath, _ := os.Executable()
-	launcherHome := filepath.Dir(exePath)
-	logDir := filepath.Join(launcherHome, "logs")
-	os.MkdirAll(logDir, 0755)
-
 	runtime.LockOSThread()
-
 	hideConsoleWindow()
+
+	// Get executable path for potential use by GUI
+	exePath, _ := os.Executable()
 
 	opts := parseOptions()
 
