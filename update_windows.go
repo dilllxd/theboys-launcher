@@ -4,8 +4,8 @@
 package main
 
 import (
-	"os/exec"
 	"golang.org/x/sys/windows"
+	"os/exec"
 )
 
 // setUpdateProcessAttributes sets Windows-specific process attributes for updates

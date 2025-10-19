@@ -129,7 +129,7 @@ func fetchPackwizBootstrapURL() (string, error) {
 	possibleAssets := []string{
 		fmt.Sprintf("packwiz-installer-bootstrap-%s.jar", latestTag),
 		fmt.Sprintf("packwiz-installer-bootstrap%s", getExecutableExtension()), // Platform-specific bootstrap
-		"packwiz-installer-bootstrap.jar",              // Generic fallback
+		"packwiz-installer-bootstrap.jar",                                      // Generic fallback
 	}
 
 	for _, assetName := range possibleAssets {

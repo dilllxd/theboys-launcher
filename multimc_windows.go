@@ -4,8 +4,8 @@
 package main
 
 import (
-	"os/exec"
 	"golang.org/x/sys/windows"
+	"os/exec"
 )
 
 // setMultiMCProcessAttributes sets Windows-specific process attributes for MultiMC
