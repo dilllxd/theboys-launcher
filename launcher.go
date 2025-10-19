@@ -251,11 +251,8 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	logf("DEBUG: Packwiz working directory: %s", cmd.Dir)
 	logf("DEBUG: Packwiz environment: JAVA_HOME=%s", jreDir)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setPackwizProcessAttributes(cmd)
 
 	var buf bytes.Buffer
 	mw := io.MultiWriter(out, &buf)
@@ -284,11 +281,8 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 					"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
 				)
 
-				// Hide console window on Windows for retry command too
-				retryCmd.SysProcAttr = &windows.SysProcAttr{
-					HideWindow:    true,
-					CreationFlags: windows.CREATE_NO_WINDOW,
-				}
+				// Set platform-specific process attributes for retry
+				setPackwizRetryProcessAttributes(retryCmd)
 
 				retryCmd.Stdout, retryCmd.Stderr = out, out
 				err = retryCmd.Run()

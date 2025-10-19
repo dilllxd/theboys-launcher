@@ -7,8 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/windows"
 )
 
 // -------------------- MultiMC Instance Creation --------------------
@@ -262,11 +260,8 @@ func installForgeForInstance(instDir, javaBin string, packInfo *PackInfo) error 
 		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
 	)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setMultiMCProcessAttributes(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -304,11 +299,8 @@ func installFabricForInstance(instDir, javaBin string, packInfo *PackInfo) error
 		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
 	)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setMultiMCProcessAttributes(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -346,11 +338,8 @@ func installQuiltForInstance(instDir, javaBin string, packInfo *PackInfo) error 
 		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
 	)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setMultiMCProcessAttributes(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -389,11 +378,8 @@ func installNeoForgeForInstance(instDir, javaBin string, packInfo *PackInfo) err
 		"PATH="+filepath.Dir(filepath.Dir(javaBin))+";"+os.Getenv("PATH"),
 	)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setMultiMCProcessAttributes(cmd)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

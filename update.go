@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/windows"
 )
 
 // -------------------- Self-update (no downgrades) --------------------
@@ -90,11 +88,8 @@ func replaceAndRestart(currentExe, newExe string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setUpdateProcessAttributes(cmd)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start new launcher: %w", err)
@@ -117,11 +112,8 @@ func performUpdateCleanup(oldExe, newExe string) {
 			// Try to remove the new exe and restart with old version
 			os.Remove(newExe)
 			fallbackCmd := exec.Command(oldExe)
-			// Hide console window on Windows
-			fallbackCmd.SysProcAttr = &windows.SysProcAttr{
-				HideWindow:    true,
-				CreationFlags: windows.CREATE_NO_WINDOW,
-			}
+			// Set platform-specific process attributes for fallback
+			setFallbackUpdateProcessAttributes(fallbackCmd)
 			_ = fallbackCmd.Start()
 		} else {
 			logf("Successfully copied new executable")
@@ -133,11 +125,8 @@ func performUpdateCleanup(oldExe, newExe string) {
 
 	// Start the (now updated) launcher
 	cmd := exec.Command(oldExe)
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes for restart
+	setRestartUpdateProcessAttributes(cmd)
 	if err := cmd.Start(); err != nil {
 		logf("Failed to restart launcher: %v", err)
 	}
