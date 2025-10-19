@@ -70,8 +70,30 @@ package-macos-universal: build-macos-universal
 package-macos: package-macos-intel package-macos-arm64 package-macos-universal
 	@echo "All macOS packages complete!"
 
-# Package all platforms
-package-all: build-windows package-macos
+# Create DMG installers
+.PHONY: dmg-macos dmg-macos-intel dmg-macos-arm64 dmg-macos-universal dmg-all
+
+# Create macOS Intel DMG
+dmg-macos-intel: package-macos-intel
+	@echo "Creating macOS Intel DMG..."
+	./scripts/create-dmg.sh amd64 $(VERSION)
+
+# Create macOS Apple Silicon DMG
+dmg-macos-arm64: package-macos-arm64
+	@echo "Creating macOS Apple Silicon DMG..."
+	./scripts/create-dmg.sh arm64 $(VERSION)
+
+# Create macOS Universal DMG
+dmg-macos-universal: package-macos-universal
+	@echo "Creating macOS Universal DMG..."
+	./scripts/create-dmg.sh universal $(VERSION)
+
+# Create all macOS DMGs
+dmg-macos: dmg-macos-intel dmg-macos-arm64 dmg-macos-universal
+	@echo "All macOS DMGs complete!"
+
+# Package all platforms with DMGs
+package-all: build-windows package-macos dmg-macos
 	@echo "All platform packages complete!"
 
 # Code signing removed - no longer supported

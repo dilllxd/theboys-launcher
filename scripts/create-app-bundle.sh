@@ -92,6 +92,17 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.games</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2024 TheBoys Launcher. All rights reserved.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
@@ -103,6 +114,8 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
             <string>Modpack Configuration</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
         </dict>
     </array>
 </dict>
@@ -114,8 +127,24 @@ echo "Copying executable..."
 cp "$SOURCE_DIR/TheBoysLauncher" "$APP_DIR/Contents/MacOS/"
 chmod +x "$APP_DIR/Contents/MacOS/TheBoysLauncher"
 
-# Skip icon creation for now (will be implemented later)
-echo "Skipping icon creation (no icon available)"
+# Create and add icon
+echo "Creating and adding icon..."
+if [ -f "icon.ico" ]; then
+    echo "Converting Windows icon to macOS format..."
+    if ./scripts/convert-icon.sh; then
+        if [ -f "resources/darwin/TheBoysLauncher.icns" ]; then
+            echo "Adding icon to app bundle..."
+            cp "resources/darwin/TheBoysLauncher.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+            echo "✓ Icon added successfully"
+        else
+            echo "⚠ Icon conversion failed, continuing without icon"
+        fi
+    else
+        echo "⚠ Icon conversion failed, continuing without icon"
+    fi
+else
+    echo "⚠ No icon.ico found, continuing without icon"
+fi
 
 # Set proper permissions
 echo "Setting permissions..."
