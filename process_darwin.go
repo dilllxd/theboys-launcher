@@ -87,7 +87,7 @@ func killJavaProcesses() error {
 // isMinecraftJavaProcess checks if a Java process is likely Minecraft-related
 func isMinecraftJavaProcess(pid string) bool {
 	// Get the command line for the process
-	cmd := exec.Command("ps", "-p", pid, "-o", "command="")
+	cmd := exec.Command("ps", "-p", pid, "-o", "command=")
 	output, err := cmd.Output()
 	if err != nil {
 		return false
