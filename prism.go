@@ -18,30 +18,99 @@ func ensurePrism(dir string) (bool, error) {
 	if exists(getPrismExecutablePath(dir)) {
 		return false, nil
 	}
-	url, err := fetchLatestPrismPortableURL()
-	if err != nil {
-		return false, err
-	}
-	logf("%s", stepLine(fmt.Sprintf("Downloading Prism portable build: %s", url)))
-	if err := downloadAndUnzipTo(url, dir); err != nil {
-		return false, err
-	}
-	// Force portable mode and disable automatic Java management
-	cfg := filepath.Join(dir, "prismlauncher.cfg")
-	prismConfig := `Portable=true
+
+	var url string
+	var err error
+
+	// Handle different platforms - macOS doesn't have portable builds
+	if runtime.GOOS == "darwin" {
+		// macOS: download universal ZIP to Applications folder
+		applicationsDir := "/Applications"
+		prismAppPath := filepath.Join(applicationsDir, "PrismLauncher.app")
+
+		// Check if Prism is already installed in Applications
+		if exists(prismAppPath) {
+			logf("%s", successLine("Prism Launcher found in Applications folder"))
+			return false, nil
+		}
+
+		// Download to temp directory first
+		tempDir := filepath.Join(os.TempDir(), "prism-download")
+		os.MkdirAll(tempDir, 0755)
+		defer os.RemoveAll(tempDir)
+
+		url, err = fetchLatestPrismPortableURL()
+		if err != nil {
+			return false, err
+		}
+
+		logf("%s", stepLine(fmt.Sprintf("Downloading Prism universal build: %s", url)))
+		if err := downloadAndUnzipTo(url, tempDir); err != nil {
+			return false, err
+		}
+
+		// Move the app bundle to Applications
+		tempAppPath := filepath.Join(tempDir, "PrismLauncher.app")
+		if !exists(tempAppPath) {
+			return false, fmt.Errorf("PrismLauncher.app not found in downloaded archive")
+		}
+
+		// Try to copy to Applications folder
+		if err := copyDir(tempAppPath, prismAppPath); err != nil {
+			return false, fmt.Errorf("failed to copy PrismLauncher to Applications folder: %w", err)
+		}
+
+		logf("%s", successLine("Prism Launcher installed in Applications folder"))
+
+		// Create local config directory for our customizations
+		configDir := getPrismConfigDir()
+		os.MkdirAll(configDir, 0755)
+
+		// macOS configuration (disable auto Java management)
+		cfg := filepath.Join(configDir, "prismlauncher.cfg")
+		prismConfig := `JavaDir=java
+IgnoreJavaWizard=true
+AutomaticJavaDownload=false
+AutomaticJavaSwitch=false
+UserAskedAboutAutomaticJavaDownload=true
+`
+		_ = os.WriteFile(cfg, []byte(prismConfig), 0644)
+	} else {
+		// Windows/Linux: download portable builds
+		url, err = fetchLatestPrismPortableURL()
+		if err != nil {
+			return false, err
+		}
+		logf("%s", stepLine(fmt.Sprintf("Downloading Prism portable build: %s", url)))
+		if err := downloadAndUnzipTo(url, dir); err != nil {
+			return false, err
+		}
+
+		// Force portable mode and disable automatic Java management
+		cfg := filepath.Join(dir, "prismlauncher.cfg")
+		prismConfig := `Portable=true
 JavaDir=java
 IgnoreJavaWizard=true
 AutomaticJavaDownload=false
 AutomaticJavaSwitch=false
 UserAskedAboutAutomaticJavaDownload=true
 `
-	_ = os.WriteFile(cfg, []byte(prismConfig), 0644)
+		_ = os.WriteFile(cfg, []byte(prismConfig), 0644)
+	}
+
 	return true, nil
 }
 
 // updatePrismJavaPath updates the JavaPath in prismlauncher.cfg
 func updatePrismJavaPath(prismDir, javaPath string) error {
-	cfgPath := filepath.Join(prismDir, "prismlauncher.cfg")
+	var cfgPath string
+	if runtime.GOOS == "darwin" {
+		// macOS: use our custom config directory
+		cfgPath = filepath.Join(getPrismConfigDir(), "prismlauncher.cfg")
+	} else {
+		// Windows/Linux: use portable config directory
+		cfgPath = filepath.Join(prismDir, "prismlauncher.cfg")
+	}
 
 	// Read current config
 	content, err := os.ReadFile(cfgPath)
@@ -142,19 +211,16 @@ func fetchLatestPrismPortableURL() (string, error) {
 			fmt.Sprintf("PrismLauncher-Windows-%s.zip", latestTag),
 		)
 	} else if runtime.GOOS == "darwin" {
-		if runtime.GOARCH == "arm64" {
-			// macOS ARM64 (Apple Silicon) - prioritize arm64 builds
-			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-arm64-%s.tar.gz", latestTag))
-			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-arm64-%s.tar.gz", latestTag))
-		} else {
-			// macOS Intel (amd64/x86_64)
-			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-%s.tar.gz", latestTag))
-			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-%s.tar.gz", latestTag))
-			patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-x86_64-%s.tar.gz", latestTag))
-		}
-		// Fallbacks for macOS
-		patterns = append(patterns, fmt.Sprintf("PrismLauncher-darwin-%s.tar.gz", latestTag))
-		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-%s.tar.gz", latestTag)) // Linux as last resort
+		// macOS has no portable builds, only universal ZIP files
+		// Priority order: main universal build first, then legacy
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-%s.zip", latestTag))
+
+		// Fallback: legacy version for older macOS (High Sierra to Catalina)
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-macOS-Legacy-%s.zip", latestTag))
+
+		// Last resort fallbacks
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-%s.zip", latestTag))
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-darwin-%s.zip", latestTag))
 	} else {
 		// Linux fallback
 		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-%s.tar.gz", latestTag))

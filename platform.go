@@ -57,6 +57,42 @@ func buildPathEnv(additionalPath string) string {
 	return additionalPath + separator + os.Getenv("PATH")
 }
 
+// getPrismConfigDir returns the Prism configuration directory
+func getPrismConfigDir() string {
+	if runtime.GOOS == "windows" {
+		// Use our launcher directory for Windows portable
+		return getLauncherHome()
+	}
+	// macOS/Linux: use Prism's standard config directory
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "PrismLauncher")
+	}
+	// Linux (assuming XDG_CONFIG_HOME or fallback)
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		configHome = filepath.Join(os.Getenv("HOME"), ".config")
+	}
+	return filepath.Join(configHome, "PrismLauncher")
+}
+
+// getPrismDataDir returns the Prism data directory
+func getPrismDataDir() string {
+	if runtime.GOOS == "windows" {
+		// Use our launcher directory for Windows portable
+		return getLauncherHome()
+	}
+	// macOS/Linux: use Prism's standard data directory
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "PrismLauncher")
+	}
+	// Linux (assuming XDG_DATA_HOME or fallback)
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		dataHome = filepath.Join(os.Getenv("HOME"), ".local", "share")
+	}
+	return filepath.Join(dataHome, "PrismLauncher")
+}
+
 func getJavaBinName() string {
 	if runtime.GOOS == "windows" {
 		return "java.exe"
