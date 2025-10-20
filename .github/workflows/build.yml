@@ -129,7 +129,13 @@ jobs:
               </Directory>
             </Directory>
             <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E70">
-              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" KeyPath="yes" />
+              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" />
+              <RemoveFile Id="RemoveMainExecutable" Name="TheBoysLauncher.exe" On="uninstall" />
+              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
+                <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
+                <RegistryValue Type="string" Name="Version" Value="$version" />
+                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
+              </RegistryKey>
               <Shortcut Id="ApplicationStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="TheBoys Launcher" Description="TheBoys Minecraft Modpack Launcher" Target="[#TheBoysLauncherEXE]" WorkingDirectory="INSTALLFOLDER" />
             </Component>
             <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E74">
