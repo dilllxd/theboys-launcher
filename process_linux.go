@@ -39,13 +39,6 @@ func killProcessByPID(pid int) error {
 }
 
 // killPrismProcesses kills all Prism Launcher processes on Linux
-func killProcessByName(processName string) error {
-	// Use pkill to kill processes by name
-	cmd := exec.Command("pkill", "-f", processName)
-	return cmd.Run()
-}
-
-// killPrismProcesses kills all Prism Launcher processes on Linux
 func killPrismProcesses() error {
 	// Kill Prism launcher processes
 	processes := []string{
