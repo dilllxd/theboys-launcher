@@ -69,7 +69,7 @@ jobs:
     - name: Upload macOS ${{ matrix.arch }} binary
       uses: actions/upload-artifact@v4
       with:
-        name: TheBoysLauncher-macOS-${{ matrix.arch }}
+        name: TheBoysLauncher-macOS-${{ matrix.arch }}-Binary
         path: ${{ matrix.output }}
         retention-days: 7
 
@@ -87,13 +87,13 @@ jobs:
     - name: Download Intel executable
       uses: actions/download-artifact@v4
       with:
-        name: TheBoysLauncher-macOS-Intel
+        name: TheBoysLauncher-macOS-Intel-Binary
         path: ./
 
     - name: Download Apple Silicon executable
       uses: actions/download-artifact@v4
       with:
-        name: TheBoysLauncher-macOS-Apple Silicon
+        name: TheBoysLauncher-macOS-AppleSilicon-Binary
         path: ./
 
     - name: Verify executables
