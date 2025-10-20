@@ -122,6 +122,31 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Extract version information
+      id: version
+      run: |
+        # Read version from version.env
+        if [[ -f "$VERSION_FILE" ]]; then
+          source "$VERSION_FILE"
+
+          # Construct full version string
+          FULL_VERSION="$VERSION"
+          if [[ -n "$PRERELEASE" ]]; then
+            FULL_VERSION="$FULL_VERSION-$PRERELEASE"
+          fi
+          if [[ -n "$BUILD_METADATA" ]]; then
+            FULL_VERSION="$FULL_VERSION+$BUILD_METADATA"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "📋 Version: $FULL_VERSION"
+        else
+          echo "❌ Version file not found: $VERSION_FILE"
+          exit 1
+        fi
+        fi
+
     - name: Download Intel executable
       uses: actions/download-artifact@v4
       with:
@@ -419,6 +444,7 @@ jobs:
 
             <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
               <ComponentRef Id="MainExecutable" />
+              <ComponentRef Id="RegistryEntries" />
               <ComponentRef Id="IconFile" />
               <ComponentRef Id="LicenseFile" />
               <ComponentRef Id="ApplicationShortcut" />
@@ -433,13 +459,12 @@ jobs:
               </Directory>
             </Directory>
 
-            <Component Id="MainExecutable" Directory="INSTALLFOLDER">
+            <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E70">
               <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" />
               <RemoveFile Id="RemoveMainExecutable" Name="TheBoysLauncher.exe" On="uninstall" />
               <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
                 <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
                 <RegistryValue Type="string" Name="Version" Value="${{ steps.version.outputs.full_version }}" />
-                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
               </RegistryKey>
               <Shortcut Id="ApplicationStartMenuShortcut"
                         Directory="ApplicationProgramsFolder"
@@ -450,17 +475,23 @@ jobs:
                         Icon="IconICO" />
             </Component>
 
-            <Component Id="IconFile" Directory="INSTALLFOLDER">
+            <Component Id="RegistryEntries" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E71">
+              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
+                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
+              </RegistryKey>
+            </Component>
+
+            <Component Id="IconFile" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E72">
               <File Id="IconICO" Source="icon.ico" />
               <RemoveFile Id="RemoveIconFile" Name="icon.ico" On="uninstall" />
             </Component>
 
-            <Component Id="LicenseFile" Directory="INSTALLFOLDER">
+            <Component Id="LicenseFile" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E73">
               <File Id="LicenseTXT" Source="LICENSE.txt" />
               <RemoveFile Id="RemoveLicenseFile" Name="LICENSE.txt" On="uninstall" />
             </Component>
 
-            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E74">
               <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
               <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
             </Component>
