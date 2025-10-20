@@ -261,15 +261,25 @@ jobs:
       run: go mod download
 
     - name: Build Windows executable
-      timeout-minutes: 5
+      timeout-minutes: 15
       run: |
         echo "Building Windows executable..."
-        go build -ldflags="-s -w -X main.version=v3.1.0" -o TheBoysLauncher.exe .
+        echo "Go version:"
+        go version
+        echo "Starting build..."
+        $buildStartTime = Get-Date
+
+        go build -v -ldflags="-s -w -X main.version=v3.1.0" -o TheBoysLauncher.exe .
+
+        $buildEndTime = Get-Date
+        $buildDuration = $buildEndTime - $buildStartTime
+        echo "Build completed in $($buildDuration.TotalSeconds) seconds"
 
         # Verify the binary was created
         if (Test-Path "TheBoysLauncher.exe") {
           echo "✅ Windows build successful!"
           Get-ChildItem TheBoysLauncher.exe
+          echo "Binary size: $((Get-Item TheBoysLauncher.exe).Length / 1MB) MB"
         } else {
           echo "❌ Windows build failed - no executable created"
           exit 1
