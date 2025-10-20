@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # macOS builds only - faster and more focused
+  # macOS builds - focus on working executables first
   build-macos:
     name: macOS ${{ matrix.arch }}
     runs-on: macos-latest
@@ -19,12 +19,12 @@ jobs:
         include:
           - arch: Intel
             goarch: amd64
+            output: TheBoysLauncher-amd64
             bundle_arch: amd64
-            artifact_name: TheBoysLauncher-macOS-Intel
           - arch: Apple Silicon
             goarch: arm64
+            output: TheBoysLauncher-arm64
             bundle_arch: arm64
-            artifact_name: TheBoysLauncher-macOS-AppleSilicon
 
     steps:
     - name: Checkout code
@@ -50,68 +50,32 @@ jobs:
       run: go mod download
 
     - name: Build macOS ${{ matrix.arch }}
-      timeout-minutes: 8
+      timeout-minutes: 5
       run: |
         echo "Building macOS ${{ matrix.arch }}..."
         export GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
-        go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o build/${{ matrix.goarch }}/TheBoysLauncher .
+        go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o ${{ matrix.output }} .
 
-        echo "✅ Build completed for macOS ${{ matrix.arch }}!"
-
-        # Verify the executable
-        echo "Verifying executable..."
-        file build/${{ matrix.goarch }}/TheBoysLauncher
-        lipo -info build/${{ matrix.goarch }}/TheBoysLauncher
-
-    - name: Create macOS app bundle
-      run: |
-        # Verify executable exists and is executable
-        if [ ! -f "build/${{ matrix.goarch }}/TheBoysLauncher" ]; then
-          echo "❌ Executable not found: build/${{ matrix.goarch }}/TheBoysLauncher"
-          exit 1
-        fi
-
-        # Check if executable is actually a Mach-O file
-        if ! file "build/${{ matrix.goarch }}/TheBoysLauncher" | grep -q "Mach-O"; then
-          echo "❌ Executable is not a valid Mach-O file"
-          file "build/${{ matrix.goarch }}/TheBoysLauncher"
-          exit 1
-        fi
-
-        echo "✅ Executable verified, creating app bundle..."
-        chmod +x scripts/create-app-bundle.sh
-        ./scripts/create-app-bundle.sh ${{ matrix.bundle_arch }} v3.0.1-ci
-
-        if [ -d "build/${{ matrix.bundle_arch }}/TheBoysLauncher.app" ]; then
-          echo "✅ App bundle created successfully!"
-          ls -la build/${{ matrix.bundle_arch }}/TheBoysLauncher.app/Contents/MacOS/
-
-          # Verify the bundled executable
-          BUNDLED_EXEC="build/${{ matrix.bundle_arch }}/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
-          if [ -f "$BUNDLED_EXEC" ]; then
-            file "$BUNDLED_EXEC"
-            lipo -info "$BUNDLED_EXEC" 2>/dev/null || echo "Single architecture binary"
-            du -sh "build/${{ matrix.bundle_arch }}/TheBoysLauncher.app"
-            echo "✅ App bundle executable verified!"
-          else
-            echo "❌ Bundled executable not found"
-            exit 1
-          fi
+        # Verify the binary was created and show info
+        if [[ -f "${{ matrix.output }}" ]]; then
+          echo "✓ macOS ${{ matrix.arch }} build successful!"
+          ls -la ${{ matrix.output }}
+          file ${{ matrix.output }}
         else
-          echo "❌ App bundle creation failed"
+          echo "❌ macOS ${{ matrix.arch }} build failed - no executable created"
           exit 1
         fi
 
-    - name: Upload macOS artifact
+    - name: Upload macOS ${{ matrix.arch }} binary
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact_name }}
-        path: build/${{ matrix.bundle_arch }}/TheBoysLauncher.app
+        name: TheBoysLauncher-macOS-${{ matrix.arch }}
+        path: ${{ matrix.output }}
         retention-days: 7
 
-  # Create Universal macOS binary
-  build-universal:
-    name: macOS Universal
+  # Create app bundles from working executables
+  create-bundles:
+    name: Create App Bundles
     runs-on: macos-latest
     needs: build-macos
     if: always() && needs.build-macos.result == 'success'
@@ -120,103 +84,139 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-
-    - name: Download Intel build
+    - name: Download Intel executable
       uses: actions/download-artifact@v4
       with:
         name: TheBoysLauncher-macOS-Intel
-        path: build/amd64/
+        path: ./
 
-    - name: Download Apple Silicon build
+    - name: Download Apple Silicon executable
       uses: actions/download-artifact@v4
       with:
-        name: TheBoysLauncher-macOS-AppleSilicon
-        path: build/arm64/
+        name: TheBoysLauncher-macOS-Apple Silicon
+        path: ./
+
+    - name: Verify executables
+      run: |
+        echo "Checking downloaded executables:"
+        ls -la TheBoysLauncher-*
+        echo ""
+        echo "Intel executable info:"
+        file TheBoysLauncher-amd64
+        echo ""
+        echo "ARM executable info:"
+        file TheBoysLauncher-arm64
+
+    - name: Create Intel app bundle
+      run: |
+        echo "Creating Intel app bundle..."
+        chmod +x scripts/create-app-bundle.sh
+        ./scripts/create-app-bundle.sh amd64 v3.0.1-ci
+
+        if [ -d "build/amd64/TheBoysLauncher.app" ]; then
+          echo "✅ Intel app bundle created!"
+          ls -la build/amd64/TheBoysLauncher.app/Contents/MacOS/
+          file build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
+        else
+          echo "❌ Intel app bundle creation failed"
+          exit 1
+        fi
+
+    - name: Create Apple Silicon app bundle
+      run: |
+        echo "Creating Apple Silicon app bundle..."
+        ./scripts/create-app-bundle.sh arm64 v3.0.1-ci
+
+        if [ -d "build/arm64/TheBoysLauncher.app" ]; then
+          echo "✅ Apple Silicon app bundle created!"
+          ls -la build/arm64/TheBoysLauncher.app/Contents/MacOS/
+          file build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
+        else
+          echo "❌ Apple Silicon app bundle creation failed"
+          exit 1
+        fi
 
     - name: Create Universal binary
-      timeout-minutes: 5
       run: |
+        echo "Creating Universal binary..."
         mkdir -p build/universal
 
-        # Check what we actually downloaded
-        echo "=== Checking downloaded artifacts ==="
-        echo "AMD64 contents:"
-        ls -la build/amd64/
-        echo "ARM64 contents:"
-        ls -la build/arm64/
-
-        # Extract raw executables from app bundles
-        INTEL_EXEC="build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
-        ARM_EXEC="build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher"
-
-        if [ -f "$INTEL_EXEC" ]; then
-          echo "Found Intel executable in app bundle"
-          cp "$INTEL_EXEC" build/amd64/TheBoysLauncher-raw
-          file build/amd64/TheBoysLauncher-raw
-        else
-          echo "❌ Intel executable not found in app bundle"
-          echo "Looking for alternative Intel executable..."
-          find build/amd64/ -name "TheBoysLauncher" -type f 2>/dev/null || echo "No Intel executable found"
-        fi
-
-        if [ -f "$ARM_EXEC" ]; then
-          echo "Found ARM executable in app bundle"
-          cp "$ARM_EXEC" build/arm64/TheBoysLauncher-raw
-          file build/arm64/TheBoysLauncher-raw
-        else
-          echo "❌ ARM executable not found in app bundle"
-          echo "Looking for alternative ARM executable..."
-          find build/arm64/ -name "TheBoysLauncher" -type f 2>/dev/null || echo "No ARM executable found"
-        fi
-
-        # Create universal binary
-        if [ -f "build/amd64/TheBoysLauncher-raw" ] && [ -f "build/arm64/TheBoysLauncher-raw" ]; then
-          echo "Both executables found, creating universal binary..."
-          lipo -create build/amd64/TheBoysLauncher-raw build/arm64/TheBoysLauncher-raw -output build/universal/TheBoysLauncher
+        # Create universal binary from raw executables
+        if [ -f "TheBoysLauncher-amd64" ] && [ -f "TheBoysLauncher-arm64" ]; then
+          lipo -create TheBoysLauncher-amd64 TheBoysLauncher-arm64 -output build/universal/TheBoysLauncher
 
           echo "✅ Universal binary created!"
           file build/universal/TheBoysLauncher
           lipo -info build/universal/TheBoysLauncher
         else
           echo "❌ Could not create universal binary - missing executables"
-          echo "Available files:"
-          find build/ -name "*TheBoysLauncher*" 2>/dev/null
+          ls -la TheBoysLauncher-*
           exit 1
         fi
 
     - name: Create Universal app bundle
       run: |
-        chmod +x scripts/create-app-bundle.sh
+        echo "Creating Universal app bundle..."
         ./scripts/create-app-bundle.sh universal v3.0.1-ci
 
-    - name: Verify Universal app bundle
-      run: |
         if [ -d "build/universal/TheBoysLauncher.app" ]; then
           echo "✅ Universal app bundle created!"
+          ls -la build/universal/TheBoysLauncher.app/Contents/MacOS/
           file build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
-          lipo -info build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
           du -sh build/universal/TheBoysLauncher.app
         else
           echo "❌ Universal app bundle creation failed"
           exit 1
         fi
 
+    - name: Create ZIP files for distribution
+      run: |
+        echo "Creating ZIP files for distribution..."
+
+        # Intel ZIP
+        cd build/amd64/
+        zip -r ../../TheBoysLauncher-Intel.zip TheBoysLauncher.app/
+        cd ../..
+
+        # Apple Silicon ZIP
+        cd build/arm64/
+        zip -r ../../TheBoysLauncher-AppleSilicon.zip TheBoysLauncher.app/
+        cd ../..
+
+        # Universal ZIP
+        cd build/universal/
+        zip -r ../../TheBoysLauncher-Universal.zip TheBoysLauncher.app/
+        cd ../..
+
+        echo "✅ ZIP files created:"
+        ls -la TheBoysLauncher-*.zip
+
+    - name: Upload Intel artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TheBoysLauncher-macOS-Intel
+        path: TheBoysLauncher-Intel.zip
+        retention-days: 7
+
+    - name: Upload Apple Silicon artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TheBoysLauncher-macOS-AppleSilicon
+        path: TheBoysLauncher-AppleSilicon.zip
+        retention-days: 7
+
     - name: Upload Universal artifact
       uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-macOS-Universal
-        path: build/universal/TheBoysLauncher.app
+        path: TheBoysLauncher-Universal.zip
         retention-days: 7
 
   # Quick validation
   validate:
     name: Quick Validation
     runs-on: ubuntu-latest
-    needs: [build-macos, build-universal]
+    needs: [build-macos, create-bundles]
     if: always()
 
     steps:
@@ -250,20 +250,19 @@ jobs:
       run: |
         echo "## 🚀 macOS Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| macOS Intel | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| macOS Apple Silicon | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| macOS Universal | ${{ needs.build-universal.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS Executables | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| App Bundles | ${{ needs.create-bundles.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        if [[ "${{ needs.build-macos.result }}" == "success" && "${{ needs.build-universal.result }}" == "success" ]]; then
+        if [[ "${{ needs.build-macos.result }}" == "success" && "${{ needs.create-bundles.result }}" == "success" ]]; then
           echo "🎉 **All macOS builds completed successfully!**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Available Artifacts:" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-Intel" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-AppleSilicon" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-Universal" >> $GITHUB_STEP_SUMMARY
+          echo "- TheBoysLauncher-macOS-Intel (ZIP)" >> $GITHUB_STEP_SUMMARY
+          echo "- TheBoysLauncher-macOS-AppleSilicon (ZIP)" >> $GITHUB_STEP_SUMMARY
+          echo "- TheBoysLauncher-macOS-Universal (ZIP)" >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ **Some builds failed** - Check the individual job logs for details." >> $GITHUB_STEP_SUMMARY
         fi

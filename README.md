@@ -23,9 +23,9 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 3. Launch from desktop shortcut or Start menu
 
 ### macOS
-1. Download the latest `TheBoys-Launcher-Universal.dmg` from [Releases](https://github.com/dilllxd/theboys-launcher/releases)
-2. Open the DMG file
-3. Drag TheBoys Launcher to Applications folder
+1. Download the latest `TheBoysLauncher-Universal.zip` from [Releases](https://github.com/dilllxd/theboys-launcher/releases)
+2. Extract the ZIP file
+3. Drag `TheBoysLauncher.app` to your Applications folder
 4. Launch from Applications (first launch may require bypassing Gatekeeper)
 
 **Note for macOS users**: The launcher is not signed, so you may need to right-click → Open or go to System Preferences → Security & Privacy to allow it to run.
