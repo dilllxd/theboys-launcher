@@ -1,5 +1,5 @@
 ; TheBoys Launcher Installer Script
-; Creates a professional Windows installer with shortcuts, uninstaller, and certificate installation
+; Creates a professional Windows installer with shortcuts and uninstaller
 
 #define MyAppName "TheBoysLauncher"
 #define MyAppVersion "2.0.0"
@@ -36,8 +36,7 @@ CreateUninstallRegKey=yes
 ; Ensure we can overwrite existing files
 DirExistsWarning=no
 
-; Sign the installer with our certificate (optional)
-; SignTool=signtool $p
+; Code signing removed - unsigned distributions
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -50,7 +49,7 @@ Name: "associate"; Description: "Associate .theboys files with {#MyAppName}"; Gr
 [Files]
 Source: "TheBoysLauncher.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "theboys-launcher-cert.pfx"; DestDir: "{app}"; Flags: ignoreversion; Tasks: ; OnlyBelowVersion: 0
+; Certificate file removed
 Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion; Tasks:
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 

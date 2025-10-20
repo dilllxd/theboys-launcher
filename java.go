@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -143,6 +144,26 @@ func getLWJGLVersionForMinecraft(mcVersion string) LWJGLInfo {
 
 // -------------------- Java URL discovery --------------------
 
+// getPlatformJavaParams returns platform-specific parameters for Adoptium API
+func getPlatformJavaParams() (osName, arch string) {
+	switch runtime.GOOS {
+	case "darwin":
+		osName = "mac"
+		if runtime.GOARCH == "arm64" {
+			arch = "aarch64"
+		} else {
+			arch = "x64"
+		}
+	case "windows":
+		osName = "windows"
+		arch = "x64"
+	default:
+		osName = "linux"
+		arch = "x64"
+	}
+	return osName, arch
+}
+
 // Prefer Adoptium API (stable), fall back to GitHub release asset.
 // We want: OS=windows, arch=x64, image_type=jre (or jdk for Java 16), vm=hotspot, latest for specified version.
 func fetchJREURL(javaVersion string) (string, error) {
@@ -153,7 +174,8 @@ func fetchJREURL(javaVersion string) (string, error) {
 	}
 
 	// 1) Primary: Adoptium API (v3) - most reliable method
-	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=x64&image_type=%s&os=windows", javaVersion, imageType)
+	osName, arch := getPlatformJavaParams()
+	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=%s&image_type=%s&os=%s", javaVersion, arch, imageType, osName)
 	req, _ := http.NewRequest("GET", adoptium, nil)
 	req.Header.Set("User-Agent", getUserAgent("Adoptium"))
 	req.Header.Set("Cache-Control", "no-cache")
@@ -214,12 +236,32 @@ func fetchJREURL(javaVersion string) (string, error) {
 		return "", fmt.Errorf("could not extract tag from GitHub redirect URL: %s", finalURL)
 	}
 
-	// Adoptium uses a predictable naming pattern for assets
-	tagWithoutJdk := strings.TrimPrefix(latestTag, "jdk")
-	// Remove hyphens from the tag part for the asset name (e.g., "8u462-b08" -> "8u462b08")
-	tagWithoutHyphens := strings.ReplaceAll(tagWithoutJdk, "-", "")
-	assetName := fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagWithoutHyphens)
+	// Generate platform-specific asset name
+	assetName := generateJavaAssetName(javaVersion, imageType, osName, arch, latestTag)
 	assetURL := fmt.Sprintf("https://github.com/adoptium/temurin%s-binaries/releases/download/%s/%s", javaVersion, latestTag, assetName)
 
 	return assetURL, nil
+}
+
+// generateJavaAssetName creates platform-specific asset names for Adoptium releases
+func generateJavaAssetName(javaVersion, imageType, osName, arch, tag string) string {
+	tagWithoutJdk := strings.TrimPrefix(tag, "jdk")
+	// Remove hyphens and replace + with _ for the asset name (e.g., "8u462-b08" -> "8u462b08", "17.0.16+8" -> "17.0.16_8")
+	tagCleaned := strings.ReplaceAll(tagWithoutJdk, "-", "")
+	tagCleaned = strings.ReplaceAll(tagCleaned, "+", "_")
+
+	switch osName {
+	case "windows":
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagCleaned)
+	case "mac":
+		if arch == "aarch64" {
+			return fmt.Sprintf("OpenJDK%sU-%s_aarch64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
+		}
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
+	case "linux":
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_linux_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
+	default:
+		// Fallback to Windows pattern
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagCleaned)
+	}
 }

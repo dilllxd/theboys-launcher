@@ -8,11 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/windows"
 )
 
 // -------------------- Launcher Logic --------------------
@@ -48,9 +47,9 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	// Determine required Java version based on Minecraft version
 	requiredJavaVersion := getJavaVersionForMinecraft(packInfo.Minecraft)
 	jreDir := filepath.Join(prismJavaDir, "jre"+requiredJavaVersion)
-	javaBin := filepath.Join(jreDir, "bin", "java.exe")
-	javawBin := filepath.Join(jreDir, "bin", "javaw.exe")
-	bootstrapExe := filepath.Join(utilDir, "packwiz-installer-bootstrap.exe")
+	javaBin := filepath.Join(jreDir, "bin", JavaBinName)
+	javawBin := filepath.Join(jreDir, "bin", JavawBinName)
+	bootstrapExe := filepath.Join(utilDir, "packwiz-installer-bootstrap"+getExecutableExtension())
 	bootstrapJar := filepath.Join(utilDir, "packwiz-installer-bootstrap.jar")
 
 	// Create util directory for miscellaneous files
@@ -87,9 +86,9 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		if err := downloadAndUnzipTo(jreURL, jreDir); err != nil {
 			fail(err)
 		}
-		_ = flattenOneLevel(jreDir)
+		_ = flattenJREExtraction(jreDir)
 		if !exists(javaBin) || !exists(javawBin) {
-			fail(fmt.Errorf("Java %s installation looks incomplete (bin/java.exe or bin/javaw.exe not found)", requiredJavaVersion))
+			fail(fmt.Errorf("Java %s installation looks incomplete (bin/%s or bin/%s not found)", requiredJavaVersion, JavaBinName, JavawBinName))
 		}
 		logf("%s", successLine(fmt.Sprintf("Java %s installed", requiredJavaVersion)))
 	} else {
@@ -244,18 +243,15 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	cmd.Dir = mcDir // critical: minecraft directory so packwiz installs mods in correct place
 	cmd.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
-		"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+		"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 	)
 
 	logf("DEBUG: Packwiz command: %s", cmd.String())
 	logf("DEBUG: Packwiz working directory: %s", cmd.Dir)
 	logf("DEBUG: Packwiz environment: JAVA_HOME=%s", jreDir)
 
-	// Hide console window on Windows
-	cmd.SysProcAttr = &windows.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
-	}
+	// Set platform-specific process attributes
+	setPackwizProcessAttributes(cmd)
 
 	var buf bytes.Buffer
 	mw := io.MultiWriter(out, &buf)
@@ -281,14 +277,11 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 				retryCmd.Dir = mcDir // also run from minecraft directory
 				retryCmd.Env = append(os.Environ(),
 					"JAVA_HOME="+jreDir,
-					"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+					"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 				)
 
-				// Hide console window on Windows for retry command too
-				retryCmd.SysProcAttr = &windows.SysProcAttr{
-					HideWindow:    true,
-					CreationFlags: windows.CREATE_NO_WINDOW,
-				}
+				// Set platform-specific process attributes for retry
+				setPackwizRetryProcessAttributes(retryCmd)
 
 				retryCmd.Stdout, retryCmd.Stderr = out, out
 				err = retryCmd.Run()
@@ -335,12 +328,28 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		logf("%s", warnLine(fmt.Sprintf("Failed to update Prism Java path: %v", err)))
 	}
 
-	prismExe := filepath.Join(prismDir, "PrismLauncher.exe")
+	prismExe := getPrismExecutablePath(prismDir)
+
+	// On macOS, check if Prism exists in the local directory, otherwise use /Applications
+	if runtime.GOOS == "darwin" && !exists(prismExe) {
+		applicationsPrism := filepath.Join("/Applications", "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
+		if exists(applicationsPrism) {
+			prismExe = applicationsPrism
+			logf("Using Prism Launcher from /Applications folder")
+		} else {
+			logf("Warning: Prism Launcher not found at %s or %s", prismExe, applicationsPrism)
+		}
+	}
+
+	logf("DEBUG: Using Prism executable: %s", prismExe)
+	logf("DEBUG: Working directory: %s", prismDir)
+
+	// Launch the instance directly (this should not show the Prism GUI)
 	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
 	launch.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
-		"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+		"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 	)
 	launch.Stdout, launch.Stderr = out, out
 
@@ -352,7 +361,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		launchFallback.Dir = prismDir
 		launchFallback.Env = append(os.Environ(),
 			"JAVA_HOME="+jreDir,
-			"PATH="+filepath.Join(jreDir, "bin")+";"+os.Getenv("PATH"),
+			"PATH="+buildPathEnv(filepath.Join(jreDir, "bin")),
 		)
 		launchFallback.Stdout, launchFallback.Stderr = out, out
 		if err := launchFallback.Start(); err != nil {
