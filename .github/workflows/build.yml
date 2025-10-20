@@ -739,7 +739,9 @@ jobs:
             echo "ERROR: TheBoysLauncher binary not found in app bundle"
             exit 1
           fi
-          cd ../../../../../..
+          cd ../../../../../..  # Return to release-assets directory
+          echo "About to delete build directory, current directory: $(pwd)"
+          ls -la TheBoysLauncher-macos  # Verify file exists before deletion
           rm -rf build
         elif [ -d "TheBoysLauncher.app" ]; then
           echo "Found app bundle in root"
@@ -760,7 +762,9 @@ jobs:
             echo "ERROR: TheBoysLauncher binary not found in app bundle"
             exit 1
           fi
-          cd ../../..
+          cd ../..  # Return to release-assets directory
+          echo "About to delete app bundle, current directory: $(pwd)"
+          ls -la TheBoysLauncher-macos  # Verify file exists before deletion
           rm -rf TheBoysLauncher.app
         else
           echo "ERROR: Could not find TheBoysLauncher.app in extracted ZIP"
