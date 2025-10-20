@@ -723,13 +723,31 @@ jobs:
         if [ -d "build/universal/TheBoysLauncher.app" ]; then
           echo "Found app bundle in build/universal/ structure"
           cd build/universal/TheBoysLauncher.app/Contents/MacOS
-          cp TheBoysLauncher ../../../../../TheBoysLauncher-macos
+          echo "Checking for binary in: $(pwd)"
+          ls -la
+          if [ -f "TheBoysLauncher" ]; then
+            echo "Binary found, copying..."
+            cp TheBoysLauncher ../../../../../TheBoysLauncher-macos
+            echo "Copy completed"
+          else
+            echo "ERROR: TheBoysLauncher binary not found in app bundle"
+            exit 1
+          fi
           cd ../../../../../..
           rm -rf build
         elif [ -d "TheBoysLauncher.app" ]; then
           echo "Found app bundle in root"
           cd TheBoysLauncher.app/Contents/MacOS
-          cp TheBoysLauncher ../../TheBoysLauncher-macos
+          echo "Checking for binary in: $(pwd)"
+          ls -la
+          if [ -f "TheBoysLauncher" ]; then
+            echo "Binary found, copying..."
+            cp TheBoysLauncher ../../TheBoysLauncher-macos
+            echo "Copy completed"
+          else
+            echo "ERROR: TheBoysLauncher binary not found in app bundle"
+            exit 1
+          fi
           cd ../../..
           rm -rf TheBoysLauncher.app
         else
@@ -742,6 +760,15 @@ jobs:
 
         echo "Final directory structure:"
         ls -la
+
+        # Verify the final binary exists
+        if [ -f "TheBoysLauncher-macos" ]; then
+          echo "✅ macOS binary extraction successful"
+          ls -la TheBoysLauncher-macos
+        else
+          echo "❌ ERROR: TheBoysLauncher-macos was not created"
+          exit 1
+        fi
 
     - name: Determine version
       id: version
