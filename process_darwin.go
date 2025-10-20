@@ -43,8 +43,8 @@ func killPrismProcesses() error {
 	// Kill both the app bundle and any standalone processes
 	processes := []string{
 		"PrismLauncher",
-		"PrismLauncher.app/Contents/MacOS/PrismLauncher",
-		"PrismLauncher.app",
+		"Prism Launcher.app/Contents/MacOS/PrismLauncher",
+		"Prism Launcher.app",
 	}
 
 	for _, process := range processes {

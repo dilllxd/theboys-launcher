@@ -39,8 +39,8 @@ func getPrismExecutablePath(prismDir string) string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(prismDir, "PrismLauncher.exe")
 	}
-	// macOS: executable is inside the app bundle
-	return filepath.Join(prismDir, "PrismLauncher.app", "Contents", "MacOS", "PrismLauncher")
+	// macOS: executable is inside the app bundle (note the space in the name)
+	return filepath.Join(prismDir, "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
 }
 
 // getPathSeparator returns the platform-specific PATH separator

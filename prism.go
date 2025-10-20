@@ -62,11 +62,11 @@ func ensurePrism(dir string) (bool, error) {
 			return nil
 		})
 
-		// Look for PrismLauncher.app in various locations
+		// Look for Prism Launcher.app in various locations
 		var tempAppPath string
 		possiblePaths := []string{
-			filepath.Join(tempDir, "PrismLauncher.app"),
-			filepath.Join(tempDir, "Prism Launcher.app"), // Note the space
+			filepath.Join(tempDir, "Prism Launcher.app"), // Correct name with space
+			filepath.Join(tempDir, "PrismLauncher.app"), // Fallback for no space
 			filepath.Join(tempDir, "PrismLauncher"), // Maybe it's just the app contents
 		}
 
