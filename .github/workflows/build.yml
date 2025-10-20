@@ -728,7 +728,13 @@ jobs:
           if [ -f "TheBoysLauncher" ]; then
             echo "Binary found, copying..."
             cp TheBoysLauncher ../../../../../TheBoysLauncher-macos
-            echo "Copy completed"
+            if [ $? -eq 0 ]; then
+              echo "✅ Copy completed successfully"
+              ls -la ../../../../../TheBoysLauncher-macos
+            else
+              echo "❌ ERROR: Copy operation failed"
+              exit 1
+            fi
           else
             echo "ERROR: TheBoysLauncher binary not found in app bundle"
             exit 1
@@ -743,7 +749,13 @@ jobs:
           if [ -f "TheBoysLauncher" ]; then
             echo "Binary found, copying..."
             cp TheBoysLauncher ../../TheBoysLauncher-macos
-            echo "Copy completed"
+            if [ $? -eq 0 ]; then
+              echo "✅ Copy completed successfully"
+              ls -la ../../TheBoysLauncher-macos
+            else
+              echo "❌ ERROR: Copy operation failed"
+              exit 1
+            fi
           else
             echo "ERROR: TheBoysLauncher binary not found in app bundle"
             exit 1
