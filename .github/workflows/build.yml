@@ -64,6 +64,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
+    - name: Install system dependencies (Linux)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-dev libglfw3-dev libx11-dev libxcursor-dev libxinerama-dev libxi-dev libxrandr-dev libxext-dev libxfixes-dev pkg-config
+
     - name: Install Go dependencies
       run: go mod download
 
