@@ -344,7 +344,15 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	logf("DEBUG: Using Prism executable: %s", prismExe)
 	logf("DEBUG: Working directory: %s", prismDir)
 
-	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
+	// Prepare launch arguments
+	launchArgs := []string{"--dir", ".", "--launch", modpack.InstanceName}
+
+	// On macOS, add --no-gui to prevent GUI from opening
+	if runtime.GOOS == "darwin" {
+		launchArgs = append(launchArgs, "--no-gui")
+	}
+
+	launch := exec.Command(prismExe, launchArgs...)
 	launch.Dir = prismDir
 	launch.Env = append(os.Environ(),
 		"JAVA_HOME="+jreDir,
@@ -356,7 +364,15 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	if err := launch.Start(); err != nil {
 		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
 		logf("%s", stepLine("Opening Prism Launcher UI instead"))
-		launchFallback := exec.Command(prismExe, "--dir", ".")
+		// Prepare fallback arguments
+		fallbackArgs := []string{"--dir", "."}
+
+		// On macOS, add --no-gui to prevent GUI from opening
+		if runtime.GOOS == "darwin" {
+			fallbackArgs = append(fallbackArgs, "--no-gui")
+		}
+
+		launchFallback := exec.Command(prismExe, fallbackArgs...)
 		launchFallback.Dir = prismDir
 		launchFallback.Env = append(os.Environ(),
 			"JAVA_HOME="+jreDir,

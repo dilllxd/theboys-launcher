@@ -107,6 +107,26 @@ jobs:
         echo "ARM executable info:"
         file TheBoysLauncher-arm64
 
+    - name: Prepare directories for app bundles
+      run: |
+        echo "Setting up directory structure for app bundles..."
+        mkdir -p build/amd64
+        mkdir -p build/arm64
+        mkdir -p build/universal
+
+        # Copy executables to expected locations with correct names
+        echo "Copying Intel executable..."
+        cp TheBoysLauncher-amd64 build/amd64/TheBoysLauncher
+        chmod +x build/amd64/TheBoysLauncher
+
+        echo "Copying Apple Silicon executable..."
+        cp TheBoysLauncher-arm64 build/arm64/TheBoysLauncher
+        chmod +x build/arm64/TheBoysLauncher
+
+        echo "Verifying copied executables:"
+        file build/amd64/TheBoysLauncher
+        file build/arm64/TheBoysLauncher
+
     - name: Create Intel app bundle
       run: |
         echo "Creating Intel app bundle..."

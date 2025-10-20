@@ -1073,8 +1073,7 @@ func (g *GUI) killRunningInstance(mod Modpack) {
 	pid := proc.Pid
 	logf("%s", infoLine(fmt.Sprintf("Attempting to kill %s (PID %d)", mod.DisplayName, pid)))
 
-	cmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
-	if err := cmd.Run(); err != nil {
+	if err := killProcessByPID(pid); err != nil {
 		logf("%s", warnLine(fmt.Sprintf("Failed to kill %s: %v", mod.DisplayName, err)))
 		g.updateStatus(fmt.Sprintf("Failed to kill %s", mod.DisplayName))
 		return
