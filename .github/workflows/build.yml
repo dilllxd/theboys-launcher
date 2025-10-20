@@ -472,8 +472,7 @@ jobs:
                         Description="TheBoys Minecraft Modpack Launcher"
                         Target="[#TheBoysLauncherEXE]"
                         WorkingDirectory="INSTALLFOLDER"
-                        Icon="IconICO"
-                        Advertise="yes" />
+                        Icon="IconICO" />
             </Component>
 
             <Component Id="IconFile" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E72">
