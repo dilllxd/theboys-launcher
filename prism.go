@@ -49,9 +49,36 @@ func ensurePrism(dir string) (bool, error) {
 			return false, err
 		}
 
-		// Move the app bundle to Applications
-		tempAppPath := filepath.Join(tempDir, "PrismLauncher.app")
-		if !exists(tempAppPath) {
+		// Debug: Show what was actually extracted
+		logf("DEBUG: Contents of extracted archive:")
+		filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				relPath, _ := filepath.Rel(tempDir, path)
+				logf("  %s", relPath)
+			}
+			return nil
+		})
+
+		// Look for PrismLauncher.app in various locations
+		var tempAppPath string
+		possiblePaths := []string{
+			filepath.Join(tempDir, "PrismLauncher.app"),
+			filepath.Join(tempDir, "Prism Launcher.app"), // Note the space
+			filepath.Join(tempDir, "PrismLauncher"), // Maybe it's just the app contents
+		}
+
+		for _, path := range possiblePaths {
+			if exists(path) {
+				tempAppPath = path
+				logf("DEBUG: Found Prism at: %s", path)
+				break
+			}
+		}
+
+		if tempAppPath == "" {
 			return false, fmt.Errorf("PrismLauncher.app not found in downloaded archive")
 		}
 
