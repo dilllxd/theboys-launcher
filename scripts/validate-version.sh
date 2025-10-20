@@ -106,18 +106,14 @@ fi
 
 # Check Go source files for version references (optional)
 echo -e "${BLUE}📁 Go source files${NC}"
-GO_FILES_COUNT=0
-GO_FILES_MATCHED=0
-while IFS= read -r -d '' file; do
-    ((GO_FILES_COUNT++))
-    if grep -q "main.version" "$file"; then
-        ((GO_FILES_MATCHED++))
-    fi
-done < <(find "$PROJECT_ROOT" -name "*.go" -type f -print0)
 
-if [[ $GO_FILES_COUNT -gt 0 ]]; then
-    if [[ $GO_FILES_MATCHED -gt 0 ]]; then
-        echo -e "${GREEN}✅ Found $GO_FILES_MATCHED Go file(s) with version references${NC}"
+# Use a simpler approach without process substitution
+if find "$PROJECT_ROOT" -name "*.go" -type f >/dev/null 2>&1; then
+    GO_FILES_WITH_VERSION=$(find "$PROJECT_ROOT" -name "*.go" -type f -exec grep -l "main.version" {} \; 2>/dev/null | wc -l)
+    GO_FILES_TOTAL=$(find "$PROJECT_ROOT" -name "*.go" -type f 2>/dev/null | wc -l)
+
+    if [[ $GO_FILES_WITH_VERSION -gt 0 ]]; then
+        echo -e "${GREEN}✅ Found $GO_FILES_WITH_VERSION Go file(s) with version references${NC}"
     else
         echo -e "${YELLOW}⚠️  No Go files found with main.version references${NC}"
     fi
@@ -128,8 +124,8 @@ fi
 # Check build scripts
 echo -e "${BLUE}📁 Build scripts${NC}"
 check_file_contains_version "Makefile" "VERSION=" "VERSION variable"
-check_file_contains_version "build.bat" "VERSION%" "VERSION variable"
-check_file_contains_version "build.ps1" "VERSION" "VERSION variable"
+check_file_contains_version "tools/build.bat" "VERSION%" "VERSION variable"
+check_file_contains_version "tools/build.ps1" "VERSION" "VERSION variable"
 
 echo ""
 echo -e "${BLUE}🎯 Version Summary:${NC}"
