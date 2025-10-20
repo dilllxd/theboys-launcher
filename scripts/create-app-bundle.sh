@@ -52,6 +52,25 @@ echo "Source: $SOURCE_DIR/TheBoysLauncher"
 echo "Target: $APP_DIR"
 
 # Check if source binary exists
+echo "DEBUG: Looking for source binary at: $SOURCE_DIR/TheBoysLauncher"
+echo "DEBUG: Current directory: $(pwd)"
+echo "DEBUG: Files in current directory:"
+ls -la
+echo ""
+echo "DEBUG: Files in build directory:"
+if [ -d "build" ]; then
+    ls -la build/
+else
+    echo "build directory does not exist"
+fi
+echo ""
+echo "DEBUG: Files in $SOURCE_DIR:"
+if [ -d "$SOURCE_DIR" ]; then
+    ls -la "$SOURCE_DIR/"
+else
+    echo "$SOURCE_DIR directory does not exist"
+fi
+
 if [ ! -f "$SOURCE_DIR/TheBoysLauncher" ]; then
     echo "Error: Source binary not found: $SOURCE_DIR/TheBoysLauncher"
     echo "Please build the binary first with: make build-$ARCH"

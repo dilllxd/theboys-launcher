@@ -434,30 +434,35 @@ jobs:
             </Directory>
 
             <Component Id="MainExecutable" Directory="INSTALLFOLDER">
-              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" KeyPath="yes" />
+              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" />
+              <RemoveFile Id="RemoveMainExecutable" Name="TheBoysLauncher.exe" On="uninstall" />
               <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
                 <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
                 <RegistryValue Type="string" Name="Version" Value="${{ steps.version.outputs.full_version }}" />
+                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
               </RegistryKey>
-            </Component>
-
-            <Component Id="IconFile" Directory="INSTALLFOLDER">
-              <File Id="IconICO" Source="icon.ico" />
-            </Component>
-
-            <Component Id="LicenseFile" Directory="INSTALLFOLDER">
-              <File Id="LicenseTXT" Source="LICENSE.txt" />
-            </Component>
-
-            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
               <Shortcut Id="ApplicationStartMenuShortcut"
+                        Directory="ApplicationProgramsFolder"
                         Name="TheBoys Launcher"
                         Description="TheBoys Minecraft Modpack Launcher"
                         Target="[#TheBoysLauncherEXE]"
                         WorkingDirectory="INSTALLFOLDER"
                         Icon="IconICO" />
+            </Component>
+
+            <Component Id="IconFile" Directory="INSTALLFOLDER">
+              <File Id="IconICO" Source="icon.ico" />
+              <RemoveFile Id="RemoveIconFile" Name="icon.ico" On="uninstall" />
+            </Component>
+
+            <Component Id="LicenseFile" Directory="INSTALLFOLDER">
+              <File Id="LicenseTXT" Source="LICENSE.txt" />
+              <RemoveFile Id="RemoveLicenseFile" Name="LICENSE.txt" On="uninstall" />
+            </Component>
+
+            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
               <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-              <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+              <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
             </Component>
 
             <Icon Id="IconICO" SourceFile="icon.ico" />
