@@ -2,7 +2,7 @@
 ; Creates a professional Windows installer with shortcuts and uninstaller
 
 #define MyAppName "TheBoysLauncher"
-#define MyAppVersion "3.0.1"
+#define MyAppVersion "3.2.0"  ; This will be updated by update-inno-version.ps1
 #define MyAppPublisher "Dylan"
 #define MyAppURL "https://github.com/dilllxd/theboys-launcher"
 #define MyAppExeName "TheBoysLauncher.exe"
@@ -21,10 +21,10 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={userappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=LICENSE.txt
-OutputDir=installer
+LicenseFile=..\LICENSE.txt
+OutputDir=..\installer
 OutputBaseFilename=TheBoysLauncher-Setup-{#MyAppVersion}
-SetupIconFile=icon.ico
+SetupIconFile=..\icon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -42,9 +42,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "associate"; Description: "Associate .theboys files with TheBoys Launcher"; GroupDescription: "File associations:"
 
 [Files]
-Source: "TheBoysLauncher.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion; Tasks:
+Source: "..\TheBoysLauncher.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion; Tasks:
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

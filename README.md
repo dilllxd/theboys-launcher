@@ -120,18 +120,48 @@ theboys-launcher/
 ├── multimc_windows.go         # Windows MultiMC handling
 ├── multimc_darwin.go          # macOS MultiMC handling
 ├── packwiz.go                 # Packwiz integration
-├── scripts/                   # Build and packaging scripts
-│   ├── create-app-bundle.sh   # macOS app bundle creation
-│   ├── convert-icon.sh        # Icon conversion for macOS
-│   ├── create-dmg.sh          # macOS DMG creation
-│   └── test-cross-platform.sh # Cross-platform testing
 ├── Makefile                   # Build system
 ├── go.mod                     # Go modules
-├── modpacks.json              # Modpack configurations
-└── resources/                 # Platform-specific resources
-    ├── windows/
-    ├── darwin/
-    └── common/
+├── version.env                # Centralized version configuration
+├── icon.ico                   # Application icon
+├── LICENSE.txt                # License file
+├── README.md                  # This file
+├── scripts/                   # Build and utility scripts
+│   ├── get-version.sh         # Version extraction (Unix)
+│   ├── get-version.ps1        # Version extraction (Windows)
+│   ├── set-version.sh         # Version updating (Unix)
+│   ├── set-version.ps1        # Version updating (Windows)
+│   ├── validate-version.sh    # Version validation
+│   ├── update-inno-version.ps1 # InnoSetup version sync
+│   ├── create-app-bundle.sh   # macOS app bundle creation
+│   ├── convert-icon.sh        # Icon conversion for macOS
+│   └── create-dmg.sh          # macOS DMG creation
+├── tools/                     # Development and build tools
+│   ├── build.bat              # Windows build script
+│   ├── build.ps1              # PowerShell build script
+│   ├── verify-build.bat       # Windows build verification
+│   ├── verify-build.sh        # Unix build verification
+│   └── update-version.ps1     # Legacy version script
+├── config/                    # Configuration files
+│   ├── TheBoysLauncher.iss    # InnoSetup installer script
+│   ├── modpacks.json          # Modpack configurations
+│   └── openssl.cnf            # OpenSSL configuration
+├── docs/                      # Documentation
+│   ├── BUILD.md               # Build instructions
+│   ├── INSTALL_MACOS.md       # macOS installation guide
+│   ├── MACOS_DEVELOPMENT_PLAN.md # macOS development notes
+│   ├── RELEASE_NOTES.md       # Release notes
+│   ├── TESTING_REPORT.md      # Testing reports
+│   └── ICON_README.md         # Icon documentation
+├── archive/                   # Archived files
+├── build/                     # Build output directory
+├── resources/                 # Platform-specific resources
+│   ├── windows/
+│   ├── darwin/
+│   └── common/
+└── .github/                   # GitHub workflows and templates
+    └── workflows/
+        └── build.yml          # CI/CD pipeline
 ```
 
 ## 🔧 Configuration

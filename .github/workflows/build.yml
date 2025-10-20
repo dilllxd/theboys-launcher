@@ -1,12 +1,17 @@
-name: macOS Build and Test
+name: Build and Release
 
-# Trigger on pushes and pull requests to macos-support branch
+# Trigger on pushes to main branch (for releases) and pull requests to macos-support branch
 on:
   push:
-    branches: [ macos-support ]
+    branches: [ main ]
+    tags: [ '*' ]
   pull_request:
     branches: [ macos-support ]
   workflow_dispatch:
+
+# Global environment variables
+env:
+  VERSION_FILE: version.env
 
 jobs:
   # macOS builds - focus on working executables first
@@ -29,6 +34,39 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Extract version information
+      id: version
+      run: |
+        # Read version from version.env
+        if [[ -f "$VERSION_FILE" ]]; then
+          source "$VERSION_FILE"
+
+          # Construct full version string
+          FULL_VERSION="$VERSION"
+          if [[ -n "$PRERELEASE" ]]; then
+            FULL_VERSION="$FULL_VERSION-$PRERELEASE"
+          fi
+          if [[ -n "$BUILD_METADATA" ]]; then
+            FULL_VERSION="$FULL_VERSION+$BUILD_METADATA"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          echo "patch=$PATCH" >> $GITHUB_OUTPUT
+
+          echo "📋 Version Information:"
+          echo "  Version: $VERSION"
+          echo "  Full Version: $FULL_VERSION"
+          echo "  Major: $MAJOR"
+          echo "  Minor: $MINOR"
+          echo "  Patch: $PATCH"
+        else
+          echo "❌ Version file not found: $VERSION_FILE"
+          exit 1
+        fi
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -54,7 +92,7 @@ jobs:
       run: |
         echo "Building macOS ${{ matrix.arch }}..."
         export GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
-        go build -ldflags="-s -w -X main.version=v3.1.0" -o ${{ matrix.output }} .
+        go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.full_version }}" -o ${{ matrix.output }} .
 
         # Verify the binary was created and show info
         if [[ -f "${{ matrix.output }}" ]]; then
@@ -131,7 +169,7 @@ jobs:
       run: |
         echo "Creating Intel app bundle..."
         chmod +x scripts/create-app-bundle.sh
-        ./scripts/create-app-bundle.sh amd64 v3.1.0
+        ./scripts/create-app-bundle.sh amd64 ${{ steps.version.outputs.full_version }}
 
         if [ -d "build/amd64/TheBoysLauncher.app" ]; then
           echo "✅ Intel app bundle created!"
@@ -145,7 +183,7 @@ jobs:
     - name: Create Apple Silicon app bundle
       run: |
         echo "Creating Apple Silicon app bundle..."
-        ./scripts/create-app-bundle.sh arm64 v3.1.0
+        ./scripts/create-app-bundle.sh arm64 ${{ steps.version.outputs.full_version }}
 
         if [ -d "build/arm64/TheBoysLauncher.app" ]; then
           echo "✅ Apple Silicon app bundle created!"
@@ -177,7 +215,7 @@ jobs:
     - name: Create Universal app bundle
       run: |
         echo "Creating Universal app bundle..."
-        ./scripts/create-app-bundle.sh universal v3.1.0
+        ./scripts/create-app-bundle.sh universal ${{ steps.version.outputs.full_version }}
 
         if [ -d "build/universal/TheBoysLauncher.app" ]; then
           echo "✅ Universal app bundle created!"
@@ -241,6 +279,46 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Extract version information
+      id: version
+      run: |
+        # Read version from version.env
+        $VersionFile = "$env:VERSION_FILE"
+        if (Test-Path $VersionFile) {
+          $VersionContent = Get-Content $VersionFile
+          $Version = ($VersionContent | Where-Object { $_ -match '^VERSION=' }) -replace '^VERSION=', ''
+          $Major = ($VersionContent | Where-Object { $_ -match '^MAJOR=' }) -replace '^MAJOR=', ''
+          $Minor = ($VersionContent | Where-Object { $_ -match '^MINOR=' }) -replace '^MINOR=', ''
+          $Patch = ($VersionContent | Where-Object { $_ -match '^PATCH=' }) -replace '^PATCH=', ''
+          $Prerelease = ($VersionContent | Where-Object { $_ -match '^PRERELEASE=' }) -replace '^PRERELEASE=', ''
+          $BuildMetadata = ($VersionContent | Where-Object { $_ -match '^BUILD_METADATA=' }) -replace '^BUILD_METADATA=', ''
+
+          # Construct full version string
+          $FullVersion = $Version
+          if ($Prerelease) {
+            $FullVersion = "$FullVersion-$Prerelease"
+          }
+          if ($BuildMetadata) {
+            $FullVersion = "$FullVersion+$BuildMetadata"
+          }
+
+          Write-Output "version=$Version" >> $env:GITHUB_OUTPUT
+          Write-Output "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
+          Write-Output "major=$Major" >> $env:GITHUB_OUTPUT
+          Write-Output "minor=$Minor" >> $env:GITHUB_OUTPUT
+          Write-Output "patch=$Patch" >> $env:GITHUB_OUTPUT
+
+          Write-Host "📋 Version Information:"
+          Write-Host "  Version: $Version"
+          Write-Host "  Full Version: $FullVersion"
+          Write-Host "  Major: $Major"
+          Write-Host "  Minor: $Minor"
+          Write-Host "  Patch: $Patch"
+        } else {
+          Write-Error "❌ Version file not found: $VersionFile"
+          exit 1
+        }
+
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
@@ -269,7 +347,7 @@ jobs:
         echo "Starting build..."
         $buildStartTime = Get-Date
 
-        go build -v -ldflags="-s -w -X main.version=v3.1.0" -o TheBoysLauncher.exe .
+        go build -v -ldflags="-s -w -X main.version=${{ steps.version.outputs.full_version }}" -o TheBoysLauncher.exe .
 
         $buildEndTime = Get-Date
         $buildDuration = $buildEndTime - $buildStartTime
@@ -285,6 +363,38 @@ jobs:
           exit 1
         }
 
+    - name: Install InnoSetup
+      run: |
+        Write-Host "Downloading InnoSetup..."
+        Invoke-WebRequest -Uri "https://jrsoftware.org/download.php/is.exe" -OutFile "innosetup.exe"
+        Write-Host "Installing InnoSetup..."
+        Start-Process -FilePath "innosetup.exe" -ArgumentList "/VERYSILENT", "/DIR=C:\Program Files (x86)\Inno Setup 6" -Wait
+        Write-Host "InnoSetup installed successfully"
+
+    - name: Update InnoSetup version
+      run: |
+        Write-Host "Updating InnoSetup version to ${{ steps.version.outputs.full_version }}..."
+        & "./scripts/update-inno-version.ps1" -IssFile "config/TheBoysLauncher.iss" -VersionFile "version.env"
+
+    - name: Build Windows installer
+      run: |
+        Write-Host "Building Windows installer with version ${{ steps.version.outputs.full_version }}..."
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "config/TheBoysLauncher.iss"
+
+        $InstallerName = "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.exe"
+        $InstallerPath = "installer\$InstallerName"
+
+        if (Test-Path $InstallerPath) {
+          Write-Host "✅ Windows installer build successful!"
+          Get-ChildItem $InstallerPath
+          Write-Host "Installer size: $((Get-Item $InstallerPath).Length / 1MB) MB"
+        } else {
+          Write-Host "❌ Windows installer build failed - no installer created at $InstallerPath"
+          Write-Host "Files in installer directory:"
+          Get-ChildItem installer -ErrorAction SilentlyContinue
+          exit 1
+        }
+
     - name: Upload Windows executable
       uses: actions/upload-artifact@v4
       with:
@@ -292,11 +402,34 @@ jobs:
         path: TheBoysLauncher.exe
         retention-days: 7
 
+    - name: Upload Windows installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: TheBoysLauncher-Windows-Installer
+        path: installer\TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.exe
+        retention-days: 7
+
+  # Version validation and consistency checks
+  validate-version:
+    name: Version Validation
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate version consistency
+      run: |
+        echo "🔍 Validating version consistency across project..."
+        chmod +x scripts/validate-version.sh
+        ./scripts/validate-version.sh
+
   # Quick validation
   validate:
     name: Quick Validation
     runs-on: ubuntu-latest
-    needs: [build-macos, create-bundles, build-windows]
+    needs: [build-macos, create-bundles, build-windows, validate-version]
     if: always()
 
     steps:
@@ -400,3 +533,97 @@ jobs:
 
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "*Commit: ${{ github.sha }}*" >> $GITHUB_STEP_SUMMARY
+
+  # Create GitHub Release (only on tags or main branch pushes)
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-macos, create-bundles, build-windows, validate-version]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download Windows executable
+      uses: actions/download-artifact@v4
+      with:
+        name: TheBoysLauncher-Windows
+        path: ./release-assets
+
+    - name: Download Windows installer
+      uses: actions/download-artifact@v4
+      with:
+        name: TheBoysLauncher-Windows-Installer
+        path: ./release-assets
+
+    - name: Download macOS Universal ZIP
+      uses: actions/download-artifact@v4
+      with:
+        name: TheBoysLauncher-macOS-Universal
+        path: ./release-assets
+
+    - name: Extract macOS universal binary
+      run: |
+        echo "Extracting macOS universal binary from app bundle..."
+        cd ./release-assets
+        unzip TheBoysLauncher-Universal.zip
+        cd TheBoysLauncher.app/Contents/MacOS
+        cp TheBoysLauncher ../../TheBoysLauncher-macos
+        cd ../../..
+        rm -rf TheBoysLauncher.app
+        ls -la
+
+    - name: Determine version
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION=$(grep "^VERSION=" version.env | cut -d'=' -f2)
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Release version: $VERSION"
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: ${{ steps.version.outputs.version }}
+        body: |
+          ## TheBoys Launcher ${{ steps.version.outputs.version }}
+
+          ### 📦 Downloads:
+
+          #### Windows:
+          - **TheBoysLauncher.exe** - Standalone executable
+          - **TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.exe** - Installer with shortcuts
+
+          #### macOS:
+          - **TheBoysLauncher-macos** - Universal binary (Intel + Apple Silicon)
+
+          ### 🚀 Installation:
+
+          **Windows:**
+          1. Download the installer for easy installation with shortcuts
+          2. Or download the standalone executable if you prefer portable usage
+
+          **macOS:**
+          1. Download the universal binary
+          2. Make it executable: `chmod +x TheBoysLauncher-macos`
+          3. Run it: `./TheBoysLauncher-macos`
+
+          ### ⚠️ Important:
+          - macOS users may need to allow the app to run in Security & Privacy settings
+          - Windows SmartScreen may warn about unsigned software
+
+          ---
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+        files: |
+          release-assets/TheBoysLauncher.exe
+          release-assets/TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.exe
+          release-assets/TheBoysLauncher-macos
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
