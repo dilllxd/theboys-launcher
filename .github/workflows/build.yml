@@ -1,77 +1,58 @@
-name: Build and Release
+name: Build TheBoys Launcher
 
-# Trigger on pushes to main branch (for builds) and tags (for releases)
 on:
   push:
     branches: [ main ]
-    tags: [ '*' ]
   pull_request:
-    branches: [ macos-support ]
+    branches: [ main ]
   workflow_dispatch:
 
-# Global environment variables
 env:
   VERSION_FILE: version.env
 
 jobs:
-  # macOS builds - focus on working executables first
-  build-macos:
-    name: macOS ${{ matrix.arch }}
-    runs-on: macos-latest
+  build:
+    name: Build Applications
     strategy:
-      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
-          - arch: Intel
-            goarch: amd64
-            output: TheBoysLauncher-amd64
-            bundle_arch: amd64
-          - arch: Apple Silicon
-            goarch: arm64
-            output: TheBoysLauncher-arm64
-            bundle_arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            binary_name: TheBoysLauncher
+            artifact_name: TheBoysLauncher-Linux
+          - os: windows-latest
+            platform: windows
+            binary_name: TheBoysLauncher.exe
+            artifact_name: TheBoysLauncher-Windows
+          - os: macos-latest
+            platform: darwin
+            binary_name: TheBoysLauncher
+            artifact_name: TheBoysLauncher-macOS
+    runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-
-    - name: Extract version information
-      id: version
-      run: |
-        # Read version from version.env
-        if [[ -f "$VERSION_FILE" ]]; then
-          source "$VERSION_FILE"
-
-          # Construct full version string
-          FULL_VERSION="$VERSION"
-          if [[ -n "$PRERELEASE" ]]; then
-            FULL_VERSION="$FULL_VERSION-$PRERELEASE"
-          fi
-          if [[ -n "$BUILD_METADATA" ]]; then
-            FULL_VERSION="$FULL_VERSION+$BUILD_METADATA"
-          fi
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
-          echo "major=$MAJOR" >> $GITHUB_OUTPUT
-          echo "minor=$MINOR" >> $GITHUB_OUTPUT
-          echo "patch=$PATCH" >> $GITHUB_OUTPUT
-
-          echo "📋 Version Information:"
-          echo "  Version: $VERSION"
-          echo "  Full Version: $FULL_VERSION"
-          echo "  Major: $MAJOR"
-          echo "  Minor: $MINOR"
-          echo "  Patch: $PATCH"
-        else
-          echo "❌ Version file not found: $VERSION_FILE"
-          exit 1
-        fi
 
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.22'
+        go-version: '^1.23'
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Get version
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          source ./scripts/get-version.sh
+          VERSION="$FULL_VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building version: $VERSION"
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -79,376 +60,66 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: macos-go-${{ matrix.goarch }}-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          macos-go-${{ matrix.goarch }}-${{ hashFiles('**/go.sum', '**/go.mod') }}-
-          macos-go-${{ matrix.goarch }}-
+          ${{ runner.os }}-go-
 
-    - name: Download dependencies
+    - name: Install Go dependencies
       run: go mod download
 
-    - name: Build macOS ${{ matrix.arch }}
-      timeout-minutes: 5
+    - name: Build binary
       run: |
-        echo "Building macOS ${{ matrix.arch }}..."
-        export GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
-        go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.full_version }}" -o ${{ matrix.output }} .
+        GOOS=${{ matrix.platform }} GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o ${{ matrix.binary_name }} .
 
-        # Verify the binary was created and show info
-        if [[ -f "${{ matrix.output }}" ]]; then
-          echo "✓ macOS ${{ matrix.arch }} build successful!"
-          ls -la ${{ matrix.output }}
-          file ${{ matrix.output }}
-        else
-          echo "❌ macOS ${{ matrix.arch }} build failed - no executable created"
-          exit 1
-        fi
+    - name: Make binary executable (Unix)
+      if: matrix.platform != 'windows'
+      run: chmod +x ${{ matrix.binary_name }}
 
-    - name: Upload macOS ${{ matrix.arch }} binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-${{ matrix.bundle_arch }}-Binary
-        path: ${{ matrix.output }}
-        retention-days: 7
-
-  # Create app bundles from working executables
-  create-bundles:
-    name: Create App Bundles
-    runs-on: macos-latest
-    needs: build-macos
-    if: always() && needs.build-macos.result == 'success'
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Extract version information
-      id: version
+    - name: Create macOS app bundles
+      if: matrix.platform == 'darwin'
       run: |
-        # Read version from version.env
-        if [[ -f "$VERSION_FILE" ]]; then
-          source "$VERSION_FILE"
+        echo "Creating macOS app bundles..."
 
-          # Construct full version string
-          FULL_VERSION="$VERSION"
-          if [[ -n "$PRERELEASE" ]]; then
-            FULL_VERSION="$FULL_VERSION-$PRERELEASE"
-          fi
-          if [[ -n "$BUILD_METADATA" ]]; then
-            FULL_VERSION="$FULL_VERSION+$BUILD_METADATA"
-          fi
+        # Build for all architectures
+        mkdir -p build/amd64 build/arm64 build/universal
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
-          echo "📋 Version: $FULL_VERSION"
-        else
-          echo "❌ Version file not found: $VERSION_FILE"
-          exit 1
-        fi
+        # Intel
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o build/amd64/TheBoysLauncher .
+        # Apple Silicon
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o build/arm64/TheBoysLauncher .
+        # Universal
+        lipo -create build/amd64/TheBoysLauncher build/arm64/TheBoysLauncher -output build/universal/TheBoysLauncher
 
-    - name: Download Intel executable
-      uses: actions/download-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-amd64-Binary
-        path: ./
+        # Create app bundles
+        ./scripts/create-app-bundle.sh amd64 ${{ steps.version.outputs.version }}
+        ./scripts/create-app-bundle.sh arm64 ${{ steps.version.outputs.version }}
+        ./scripts/create-app-bundle.sh universal ${{ steps.version.outputs.version }}
 
-    - name: Download Apple Silicon executable
-      uses: actions/download-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-arm64-Binary
-        path: ./
-
-    - name: Verify executables
-      run: |
-        echo "Checking downloaded executables:"
-        ls -la TheBoysLauncher-*
-        echo ""
-        echo "Intel executable info:"
-        file TheBoysLauncher-amd64
-        echo ""
-        echo "ARM executable info:"
-        file TheBoysLauncher-arm64
-
-    - name: Prepare directories for app bundles
-      run: |
-        echo "Setting up directory structure for app bundles..."
-        mkdir -p build/amd64
-        mkdir -p build/arm64
-        mkdir -p build/universal
-
-        # Copy executables to expected locations with correct names
-        echo "Copying Intel executable..."
-        cp TheBoysLauncher-amd64 build/amd64/TheBoysLauncher
-        chmod +x build/amd64/TheBoysLauncher
-
-        echo "Copying Apple Silicon executable..."
-        cp TheBoysLauncher-arm64 build/arm64/TheBoysLauncher
-        chmod +x build/arm64/TheBoysLauncher
-
-        echo "Verifying copied executables:"
-        file build/amd64/TheBoysLauncher
-        file build/arm64/TheBoysLauncher
-
-    - name: Create Intel app bundle
-      run: |
-        echo "Creating Intel app bundle..."
-        chmod +x scripts/create-app-bundle.sh
-        ./scripts/create-app-bundle.sh amd64 ${{ steps.version.outputs.full_version }}
-
-        if [ -d "build/amd64/TheBoysLauncher.app" ]; then
-          echo "✅ Intel app bundle created!"
-          ls -la build/amd64/TheBoysLauncher.app/Contents/MacOS/
-          file build/amd64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
-        else
-          echo "❌ Intel app bundle creation failed"
-          exit 1
-        fi
-
-    - name: Create Apple Silicon app bundle
-      run: |
-        echo "Creating Apple Silicon app bundle..."
-        ./scripts/create-app-bundle.sh arm64 ${{ steps.version.outputs.full_version }}
-
-        if [ -d "build/arm64/TheBoysLauncher.app" ]; then
-          echo "✅ Apple Silicon app bundle created!"
-          ls -la build/arm64/TheBoysLauncher.app/Contents/MacOS/
-          file build/arm64/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
-        else
-          echo "❌ Apple Silicon app bundle creation failed"
-          exit 1
-        fi
-
-    - name: Create Universal binary
-      run: |
-        echo "Creating Universal binary..."
-        mkdir -p build/universal
-
-        # Create universal binary from raw executables
-        if [ -f "TheBoysLauncher-amd64" ] && [ -f "TheBoysLauncher-arm64" ]; then
-          lipo -create TheBoysLauncher-amd64 TheBoysLauncher-arm64 -output build/universal/TheBoysLauncher
-
-          echo "✅ Universal binary created!"
-          file build/universal/TheBoysLauncher
-          lipo -info build/universal/TheBoysLauncher
-        else
-          echo "❌ Could not create universal binary - missing executables"
-          ls -la TheBoysLauncher-*
-          exit 1
-        fi
-
-    - name: Create Universal app bundle
-      run: |
-        echo "Creating Universal app bundle..."
-        ./scripts/create-app-bundle.sh universal ${{ steps.version.outputs.full_version }}
-
-        if [ -d "build/universal/TheBoysLauncher.app" ]; then
-          echo "✅ Universal app bundle created!"
-          ls -la build/universal/TheBoysLauncher.app/Contents/MacOS/
-          file build/universal/TheBoysLauncher.app/Contents/MacOS/TheBoysLauncher
-          du -sh build/universal/TheBoysLauncher.app
-        else
-          echo "❌ Universal app bundle creation failed"
-          exit 1
-        fi
-
-    - name: Create ZIP files for distribution
-      run: |
-        echo "Creating ZIP files for distribution..."
-
-        # Intel ZIP
-        cd build/amd64/
-        zip -r ../../TheBoysLauncher-Intel.zip TheBoysLauncher.app/
-        cd ../..
-
-        # Apple Silicon ZIP
-        cd build/arm64/
-        zip -r ../../TheBoysLauncher-AppleSilicon.zip TheBoysLauncher.app/
-        cd ../..
-
-        # Universal ZIP
-        cd build/universal/
-        zip -r ../../TheBoysLauncher-Universal.zip TheBoysLauncher.app/
-        cd ../..
-
-        echo "✅ ZIP files created:"
-        ls -la TheBoysLauncher-*.zip
-
-    - name: Upload Intel artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-Intel
-        path: TheBoysLauncher-Intel.zip
-        retention-days: 7
-
-    - name: Upload Apple Silicon artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-AppleSilicon
-        path: TheBoysLauncher-AppleSilicon.zip
-        retention-days: 7
-
-    - name: Upload Universal artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-Universal
-        path: TheBoysLauncher-Universal.zip
-        retention-days: 7
-
-  # Windows builds
-  build-windows:
-    name: Windows Build
-    runs-on: windows-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Extract version information
-      id: version
-      run: |
-        # Read version from version.env
-        $VersionFile = "$env:VERSION_FILE"
-        if (Test-Path $VersionFile) {
-          $VersionContent = Get-Content $VersionFile
-          $Version = ($VersionContent | Where-Object { $_ -match '^VERSION=' }) -replace '^VERSION=', ''
-          $Major = ($VersionContent | Where-Object { $_ -match '^MAJOR=' }) -replace '^MAJOR=', ''
-          $Minor = ($VersionContent | Where-Object { $_ -match '^MINOR=' }) -replace '^MINOR=', ''
-          $Patch = ($VersionContent | Where-Object { $_ -match '^PATCH=' }) -replace '^PATCH=', ''
-          $Prerelease = ($VersionContent | Where-Object { $_ -match '^PRERELEASE=' }) -replace '^PRERELEASE=', ''
-          $BuildMetadata = ($VersionContent | Where-Object { $_ -match '^BUILD_METADATA=' }) -replace '^BUILD_METADATA=', ''
-
-          # Construct full version string
-          $FullVersion = $Version
-          if ($Prerelease) {
-            $FullVersion = "$FullVersion-$Prerelease"
-          }
-          if ($BuildMetadata) {
-            $FullVersion = "$FullVersion+$BuildMetadata"
-          }
-
-          Write-Output "version=$Version" >> $env:GITHUB_OUTPUT
-          Write-Output "full_version=$FullVersion" >> $env:GITHUB_OUTPUT
-          Write-Output "major=$Major" >> $env:GITHUB_OUTPUT
-          Write-Output "minor=$Minor" >> $env:GITHUB_OUTPUT
-          Write-Output "patch=$Patch" >> $env:GITHUB_OUTPUT
-
-          Write-Host "📋 Version Information:"
-          Write-Host "  Version: $Version"
-          Write-Host "  Full Version: $FullVersion"
-          Write-Host "  Major: $Major"
-          Write-Host "  Minor: $Minor"
-          Write-Host "  Patch: $Patch"
-        } else {
-          Write-Error "❌ Version file not found: $VersionFile"
-          exit 1
-        }
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~\AppData\Local\go-build
-          ~\go\pkg\mod
-        key: windows-go-amd64-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
-        restore-keys: |
-          windows-go-amd64-${{ hashFiles('**/go.sum', '**/go.mod') }}-
-          windows-go-amd64-
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Build Windows executable
-      timeout-minutes: 15
-      run: |
-        echo "Building Windows executable..."
-        echo "Go version:"
-        go version
-        echo "Starting build..."
-        $buildStartTime = Get-Date
-
-        go build -v -ldflags="-s -w -X main.version=${{ steps.version.outputs.full_version }}" -o TheBoysLauncher.exe .
-
-        $buildEndTime = Get-Date
-        $buildDuration = $buildEndTime - $buildStartTime
-        echo "Build completed in $($buildDuration.TotalSeconds) seconds"
-
-        # Verify the binary was created
-        if (Test-Path "TheBoysLauncher.exe") {
-          echo "✅ Windows build successful!"
-          Get-ChildItem TheBoysLauncher.exe
-          echo "Binary size: $((Get-Item TheBoysLauncher.exe).Length / 1MB) MB"
-        } else {
-          echo "❌ Windows build failed - no executable created"
-          exit 1
-        }
-
-    - name: Cache WiX Toolset
-      uses: actions/cache@v4
-      id: cache-wix
-      with:
-        path: C:\Program Files (x86)\WiX Toolset v3.11
-        key: wix-toolset-3.11.2
-
-    - name: Install WiX Toolset
-      if: steps.cache-wix.outputs.cache-hit != 'true'
-      run: |
-        Write-Host "Installing WiX Toolset..."
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile "wix311-binaries.zip"
-        Expand-Archive -Path "wix311-binaries.zip" -DestinationPath "C:\temp\wix"
-        Move-Item "C:\temp\wix" "C:\Program Files (x86)\WiX Toolset v3.11"
-        [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Program Files (x86)\WiX Toolset v3.11", "User")
-        Write-Host "✅ WiX Toolset installed successfully"
-      timeout-minutes: 5
-
-    - name: Add WiX to PATH
-      run: |
-        echo "C:\Program Files (x86)\WiX Toolset v3.11" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        echo "Added WiX to PATH"
-
-    - name: Update WiX version
-      run: |
-        Write-Host "Updating WiX version to ${{ steps.version.outputs.full_version }}..."
-        & "./scripts/update-wix-version.ps1" -WxsFile "wix/TheBoysLauncher.wxs" -VersionFile "version.env"
+        # Create ZIP files
+        cd build/amd64 && zip -r ../../TheBoysLauncher-Intel.zip TheBoysLauncher.app && cd ../..
+        cd build/arm64 && zip -r ../../TheBoysLauncher-AppleSilicon.zip TheBoysLauncher.app && cd ../..
+        cd build/universal && zip -r ../../TheBoysLauncher-Universal.zip TheBoysLauncher.app && cd ../..
 
     - name: Build Windows installer
+      if: matrix.platform == 'windows'
       run: |
-        Write-Host "Building Windows MSI installer with version ${{ steps.version.outputs.full_version }}..."
+        # Add WiX to PATH
+        echo "C:\Program Files (x86)\WiX Toolset v3.11" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-        # Create a temporary WXS project file
-        $tempWxs = @'
+        # Create simple installer using candle and light
+        $version = "${{ steps.version.outputs.version }}"
+
+        $wxsContent = @"
         <?xml version="1.0" encoding="UTF-8"?>
         <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-          <Product Id="*"
-                   Name="TheBoys Launcher"
-                   Language="1033"
-                   Version="${{ steps.version.outputs.full_version }}"
-                   Manufacturer="Dylan"
-                   UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
-
-            <Package InstallerVersion="200"
-                     Compressed="yes"
-                     InstallScope="perUser"
-                     Description="TheBoys Minecraft Modpack Launcher"
-                     Comments="Cross-platform Minecraft modpack launcher with automatic Java management"
-                     Platform="x64" />
-
+          <Product Id="*" Name="TheBoys Launcher" Language="1033" Version="$version" Manufacturer="Dylan" UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
+            <Package InstallerVersion="200" Compressed="yes" InstallScope="perUser" Description="TheBoys Minecraft Modpack Launcher" Platform="x64" />
             <MediaTemplate EmbedCab="yes" />
-            <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoys Launcher is already installed." />
-
+            <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
             <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
               <ComponentRef Id="MainExecutable" />
-              <ComponentRef Id="IconFile" />
-              <ComponentRef Id="LicenseFile" />
               <ComponentRef Id="ApplicationShortcut" />
-              <ComponentRef Id="DirectoryCleanup" />
             </Feature>
-
             <Directory Id="TARGETDIR" Name="SourceDir">
               <Directory Id="LocalAppDataFolder">
                 <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
@@ -457,385 +128,61 @@ jobs:
                 <Directory Id="ApplicationProgramsFolder" Name="TheBoys Launcher"/>
               </Directory>
             </Directory>
-
             <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E70">
-              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" />
-              <RemoveFile Id="RemoveMainExecutable" Name="TheBoysLauncher.exe" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
-                <RegistryValue Type="string" Name="Version" Value="${{ steps.version.outputs.full_version }}" />
-                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
-              </RegistryKey>
-              <Shortcut Id="ApplicationStartMenuShortcut"
-                        Directory="ApplicationProgramsFolder"
-                        Name="TheBoys Launcher"
-                        Description="TheBoys Minecraft Modpack Launcher"
-                        Target="[#TheBoysLauncherEXE]"
-                        WorkingDirectory="INSTALLFOLDER"
-                        Icon="IconICO" />
+              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" KeyPath="yes" />
+              <Shortcut Id="ApplicationStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="TheBoys Launcher" Description="TheBoys Minecraft Modpack Launcher" Target="[#TheBoysLauncherEXE]" WorkingDirectory="INSTALLFOLDER" />
             </Component>
-
-            <Component Id="IconFile" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E72">
-              <File Id="IconICO" Source="icon.ico" />
-              <RemoveFile Id="RemoveIconFile" Name="icon.ico" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="IconFile" Value="[#IconICO]" KeyPath="yes" />
-              </RegistryKey>
-            </Component>
-
-            <Component Id="LicenseFile" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E73">
-              <File Id="LicenseTXT" Source="LICENSE.txt" />
-              <RemoveFile Id="RemoveLicenseFile" Name="LICENSE.txt" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="LicenseFile" Value="[#LicenseTXT]" KeyPath="yes" />
-              </RegistryKey>
-            </Component>
-
             <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E74">
               <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
               <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
             </Component>
-
-            <Component Id="DirectoryCleanup" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E75">
-              <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="DirectoryCleanup" Value="completed" KeyPath="yes" />
-              </RegistryKey>
-            </Component>
-
-            <Icon Id="IconICO" SourceFile="icon.ico" />
             <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
             <UIRef Id="WixUI_InstallDir" />
-            <WixVariable Id="WixUILicenseRtf" Value="LICENSE.txt" />
-
-            <CustomAction Id="CleanUserData"
-                          Directory="INSTALLFOLDER"
-                          ExeCommand="cmd /c &quot;rd /s /q &quot;%LOCALAPPDATA%\TheBoysLauncher&quot; 2&gt;nul&quot;"
-                          Execute="deferred"
-                          Return="ignore" />
-            <InstallExecuteSequence>
-              <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
-            </InstallExecuteSequence>
           </Product>
         </Wix>
-        '@
+        "@
 
-        $tempWxs | Out-File -FilePath "temp-product.wxs" -Encoding UTF8
+        $wxsContent | Out-File -FilePath "installer.wxs" -Encoding utf8
+        candle.exe installer.wxs
+        light.exe -ext WixUIExtension -out "TheBoysLauncher-Setup-$version.msi" installer.wixobj
+        Remove-Item installer.wxs, installer.wixobj -ErrorAction SilentlyContinue
 
-        # Compile WiX
-        candle.exe temp-product.wxs -out temp-product.wixobj
-
-        # Link to create MSI
-        light.exe temp-product.wixobj -out "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi" -ext WixUIExtension
-
-        $InstallerName = "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi"
-
-        if (Test-Path $InstallerName) {
-          Write-Host "✅ Windows MSI installer build successful!"
-          Get-ChildItem $InstallerName
-          Write-Host "Installer size: $((Get-Item $InstallerName).Length / 1MB) MB"
-        } else {
-          Write-Host "❌ Windows MSI installer build failed"
-          exit 1
-        }
-
-    - name: Upload Windows executable
+    - name: Upload primary binary
       uses: actions/upload-artifact@v4
       with:
-        name: TheBoysLauncher-Windows
-        path: TheBoysLauncher.exe
-        retention-days: 7
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.binary_name }}
+        retention-days: 30
+
+    - name: Upload macOS artifacts
+      if: matrix.platform == 'darwin'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}-Bundles
+        path: |
+          TheBoysLauncher-Intel.zip
+          TheBoysLauncher-AppleSilicon.zip
+          TheBoysLauncher-Universal.zip
+        retention-days: 30
 
     - name: Upload Windows installer
+      if: matrix.platform == 'windows'
       uses: actions/upload-artifact@v4
       with:
-        name: TheBoysLauncher-Windows-Installer
-        path: TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi
-        retention-days: 7
+        name: ${{ matrix.artifact_name }}-Installer
+        path: TheBoysLauncher-Setup-*.msi
+        retention-days: 30
 
-  # Version validation and consistency checks
-  validate-version:
-    name: Version Validation
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Validate version consistency
+    - name: Show build summary
       run: |
-        echo "🔍 Validating version consistency across project..."
-        chmod +x scripts/validate-version.sh
-        ./scripts/validate-version.sh
-
-  # Quick validation
-  validate:
-    name: Quick Validation
-    runs-on: ubuntu-latest
-    needs: [build-macos, create-bundles, build-windows, validate-version]
-    if: always()
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.22'
-
-    - name: Cache Go modules for validation
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: validation-go-linux-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
-        restore-keys: |
-          validation-go-linux-${{ hashFiles('**/go.sum', '**/go.mod') }}-
-          validation-go-linux-
-
-    - name: Install dependencies for validation
-      run: |
-        echo "Installing minimal dependencies for syntax checking..."
-        sudo apt-get update
-        sudo apt-get install -y pkg-config libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libgl1-mesa-dev
-
-    - name: Basic syntax check
-      run: |
-        echo "Checking Go syntax..."
-        go vet ./... || echo "⚠️ Some vet issues found (expected during development)"
-        echo "✅ Syntax check completed!"
-
-    - name: Module verification
-      run: |
-        echo "Verifying Go modules..."
-        go mod verify
-        echo "✅ Module verification completed!"
-
-    - name: Cross-platform compilation check
-      run: |
-        echo "Testing cross-platform compilation..."
-
-        # Test build logic without GUI components
-        echo "Testing core package compilation..."
-
-        # Test Windows target (without CGO dependencies)
-        echo "Testing Windows target (core packages only)..."
-        GOOS=windows GOARCH=amd64 go build -tags "!gui" -o test-windows.exe ./... 2>/dev/null || echo "⚠️ Windows cross-compilation test skipped (expected for GUI app)"
-        rm -f test-windows.exe
-
-        # Test macOS targets (without CGO dependencies)
-        echo "Testing macOS Intel target (core packages only)..."
-        GOOS=darwin GOARCH=amd64 go build -tags "!gui" -o test-macos-amd64 ./... 2>/dev/null || echo "⚠️ macOS Intel cross-compilation test skipped (expected for GUI app)"
-        rm -f test-macos-amd64
-
-        echo "Testing macOS ARM target (core packages only)..."
-        GOOS=darwin GOARCH=arm64 go build -tags "!gui" -o test-macos-arm64 ./... 2>/dev/null || echo "⚠️ macOS ARM cross-compilation test skipped (expected for GUI app)"
-        rm -f test-macos-arm64
-
-        # Test Linux target (without CGO dependencies)
-        echo "Testing Linux target (core packages only)..."
-        GOOS=linux GOARCH=amd64 go build -tags "!gui" -o test-linux ./... 2>/dev/null || echo "⚠️ Linux cross-compilation test skipped (expected for GUI app)"
-        rm -f test-linux
-
-        # Test that the Go syntax is correct for all platforms
-        echo "Testing Go package validation across platforms..."
-        go list -f '{{.GoFiles}}' ./... > /dev/null
-        go list -f '{{.ImportPath}}' ./... > /dev/null
-
-        # Test that the build constraints are properly set
-        echo "Testing build constraints..."
-        echo "Platform-specific files found:"
-        find . -name "*_windows.go" -o -name "*_darwin.go" -o -name "*_linux.go" | head -10
-
-        echo "✅ Cross-platform validation completed!"
-
-    - name: Generate build summary
-      run: |
-        echo "## 🚀 Cross-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Windows Build | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| macOS Executables | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| macOS App Bundles | ${{ needs.create-bundles.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        if [[ "${{ needs.build-windows.result }}" == "success" && "${{ needs.build-macos.result }}" == "success" && "${{ needs.create-bundles.result }}" == "success" ]]; then
-          echo "🎉 **All builds completed successfully!**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Available Artifacts:" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-Windows (exe)" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-Intel (ZIP)" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-AppleSilicon (ZIP)" >> $GITHUB_STEP_SUMMARY
-          echo "- TheBoysLauncher-macOS-Universal (ZIP)" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Build completed successfully!"
+        echo "Platform: ${{ matrix.platform }}"
+        echo "Version: ${{ steps.version.outputs.version }}"
+        if [ "${{ matrix.platform }}" = "darwin" ]; then
+          echo "Artifacts: Binary + 3 app bundle ZIPs"
+        elif [ "${{ matrix.platform }}" = "windows" ]; then
+          echo "Artifacts: Binary + MSI installer"
         else
-          echo "❌ **Some builds failed** - Check the individual job logs for details." >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts: Binary only"
         fi
-
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "*Commit: ${{ github.sha }}*" >> $GITHUB_STEP_SUMMARY
-
-  # Create GitHub Release (only on tags, not on branch pushes)
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build-macos, create-bundles, build-windows, validate-version]
-    if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push' && !contains(github.ref, 'heads/')
-    # This ensures the release only runs for actual tag pushes, not branch pushes
-    # github.ref will be like 'refs/tags/v3.2.0' for tag pushes
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download Windows executable
-      uses: actions/download-artifact@v4
-      with:
-        name: TheBoysLauncher-Windows
-        path: ./release-assets
-
-    - name: Download Windows installer
-      uses: actions/download-artifact@v4
-      with:
-        name: TheBoysLauncher-Windows-Installer
-        path: ./release-assets
-
-    - name: Download macOS Universal ZIP
-      uses: actions/download-artifact@v4
-      with:
-        name: TheBoysLauncher-macOS-Universal
-        path: ./release-assets
-
-    - name: Extract macOS universal binary
-      run: |
-        echo "Extracting macOS universal binary from app bundle..."
-        cd ./release-assets
-        unzip TheBoysLauncher-Universal.zip
-
-        # Check the directory structure and find the app bundle
-        echo "Checking extracted directory structure:"
-        find . -name "TheBoysLauncher.app" -type d
-
-        # Navigate to the app bundle and extract the binary
-        if [ -d "build/universal/TheBoysLauncher.app" ]; then
-          echo "Found app bundle in build/universal/ structure"
-          cd build/universal/TheBoysLauncher.app/Contents/MacOS
-          echo "Checking for binary in: $(pwd)"
-          ls -la
-          if [ -f "TheBoysLauncher" ]; then
-            echo "Binary found, copying..."
-            cp TheBoysLauncher ../../../../../TheBoysLauncher-macos
-            if [ $? -eq 0 ]; then
-              echo "✅ Copy completed successfully"
-              ls -la ../../../../../TheBoysLauncher-macos
-            else
-              echo "❌ ERROR: Copy operation failed"
-              exit 1
-            fi
-          else
-            echo "ERROR: TheBoysLauncher binary not found in app bundle"
-            exit 1
-          fi
-          cd ../../../../../..  # Return to release-assets directory
-          echo "About to delete build directory, current directory: $(pwd)"
-          ls -la TheBoysLauncher-macos  # Verify file exists before deletion
-          rm -rf build
-        elif [ -d "TheBoysLauncher.app" ]; then
-          echo "Found app bundle in root"
-          cd TheBoysLauncher.app/Contents/MacOS
-          echo "Checking for binary in: $(pwd)"
-          ls -la
-          if [ -f "TheBoysLauncher" ]; then
-            echo "Binary found, copying..."
-            cp TheBoysLauncher ../../TheBoysLauncher-macos
-            if [ $? -eq 0 ]; then
-              echo "✅ Copy completed successfully"
-              ls -la ../../TheBoysLauncher-macos
-            else
-              echo "❌ ERROR: Copy operation failed"
-              exit 1
-            fi
-          else
-            echo "ERROR: TheBoysLauncher binary not found in app bundle"
-            exit 1
-          fi
-          cd ../..  # Return to release-assets directory
-          echo "About to delete app bundle, current directory: $(pwd)"
-          ls -la TheBoysLauncher-macos  # Verify file exists before deletion
-          rm -rf TheBoysLauncher.app
-        else
-          echo "ERROR: Could not find TheBoysLauncher.app in extracted ZIP"
-          echo "Directory contents:"
-          ls -la
-          find . -name "*.app" -type d
-          exit 1
-        fi
-
-        echo "Final directory structure:"
-        ls -la
-
-        # Verify the final binary exists
-        if [ -f "TheBoysLauncher-macos" ]; then
-          echo "✅ macOS binary extraction successful"
-          ls -la TheBoysLauncher-macos
-        else
-          echo "❌ ERROR: TheBoysLauncher-macos was not created"
-          exit 1
-        fi
-
-    - name: Determine version
-      id: version
-      run: |
-        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-          VERSION=${GITHUB_REF#refs/tags/}
-        else
-          VERSION=$(grep "^VERSION=" version.env | cut -d'=' -f2)
-        fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Release version: $VERSION"
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: ${{ steps.version.outputs.version }}
-        body: |
-          ## TheBoys Launcher ${{ steps.version.outputs.version }}
-
-          ### 📦 Downloads:
-
-          #### Windows:
-          - **TheBoysLauncher.exe** - Standalone executable
-          - **TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.msi** - Professional MSI installer
-
-          #### macOS:
-          - **TheBoysLauncher-macos** - Universal binary (Intel + Apple Silicon)
-
-          ### 🚀 Installation:
-
-          **Windows:**
-          1. Download the MSI installer for professional installation with complete uninstall support
-          2. Or download the standalone executable if you prefer portable usage
-
-          **macOS:**
-          1. Download the universal binary
-          2. Make it executable: `chmod +x TheBoysLauncher-macos`
-          3. Run it: `./TheBoysLauncher-macos`
-
-          ### ⚠️ Important:
-          - macOS users may need to allow the app to run in Security & Privacy settings
-          - Windows SmartScreen may warn about unsigned software
-
-          ---
-          🤖 Generated with [Claude Code](https://claude.com/claude-code)
-        files: |
-          release-assets/TheBoysLauncher.exe
-          release-assets/TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.msi
-          release-assets/TheBoysLauncher-macos
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ls -la ${{ matrix.binary_name }}* 2>/dev/null || true
