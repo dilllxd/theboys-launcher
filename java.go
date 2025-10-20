@@ -246,21 +246,22 @@ func fetchJREURL(javaVersion string) (string, error) {
 // generateJavaAssetName creates platform-specific asset names for Adoptium releases
 func generateJavaAssetName(javaVersion, imageType, osName, arch, tag string) string {
 	tagWithoutJdk := strings.TrimPrefix(tag, "jdk")
-	// Remove hyphens from the tag part for the asset name (e.g., "8u462-b08" -> "8u462b08")
-	tagWithoutHyphens := strings.ReplaceAll(tagWithoutJdk, "-", "")
+	// Remove hyphens and replace + with _ for the asset name (e.g., "8u462-b08" -> "8u462b08", "17.0.16+8" -> "17.0.16_8")
+	tagCleaned := strings.ReplaceAll(tagWithoutJdk, "-", "")
+	tagCleaned = strings.ReplaceAll(tagCleaned, "+", "_")
 
 	switch osName {
 	case "windows":
-		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagWithoutHyphens)
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagCleaned)
 	case "mac":
 		if arch == "aarch64" {
-			return fmt.Sprintf("OpenJDK%sU-%s_aarch64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagWithoutHyphens)
+			return fmt.Sprintf("OpenJDK%sU-%s_aarch64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
 		}
-		return fmt.Sprintf("OpenJDK%sU-%s_x64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagWithoutHyphens)
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_mac_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
 	case "linux":
-		return fmt.Sprintf("OpenJDK%sU-%s_x64_linux_hotspot_%s.tar.gz", javaVersion, imageType, tagWithoutHyphens)
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_linux_hotspot_%s.tar.gz", javaVersion, imageType, tagCleaned)
 	default:
 		// Fallback to Windows pattern
-		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagWithoutHyphens)
+		return fmt.Sprintf("OpenJDK%sU-%s_x64_windows_hotspot_%s.zip", javaVersion, imageType, tagCleaned)
 	}
 }
