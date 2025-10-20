@@ -42,7 +42,7 @@ jobs:
         cache: true
         cache-dependency-path: go.sum
 
-      - name: Get version
+    - name: Get version
       id: version
       shell: bash
       run: |
