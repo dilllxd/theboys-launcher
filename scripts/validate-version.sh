@@ -91,16 +91,16 @@ fi
 echo -e "${BLUE}📁 .github/workflows/build.yml${NC}"
 check_file_contains_version ".github/workflows/build.yml" "VERSION_FILE: version.env" "VERSION_FILE reference"
 
-# Check InnoSetup file
-echo -e "${BLUE}📁 config/TheBoysLauncher.iss${NC}"
-if check_file_contains_version "config/TheBoysLauncher.iss" "#define MyAppVersion" "MyAppVersion definition"; then
-    # Extract version from ISS file
-    ISS_VERSION=$(grep "^#define MyAppVersion" "$PROJECT_ROOT/config/TheBoysLauncher.iss" | cut -d'"' -f2)
-    if [[ "$ISS_VERSION" == "$VERSION" ]]; then
-        echo -e "${GREEN}✅ InnoSetup version matches ($ISS_VERSION)${NC}"
+# Check WiX file
+echo -e "${BLUE}📁 wix/TheBoysLauncher.wxs${NC}"
+if check_file_contains_version "wix/TheBoysLauncher.wxs" 'Version="' "Version definition"; then
+    # Extract version from WiX file
+    WIX_VERSION=$(grep -o 'Version="[^"]*"' "$PROJECT_ROOT/wix/TheBoysLauncher.wxs" | head -1 | cut -d'"' -f2)
+    if [[ "$WIX_VERSION" == "$VERSION" ]]; then
+        echo -e "${GREEN}✅ WiX version matches ($WIX_VERSION)${NC}"
     else
-        echo -e "${RED}❌ InnoSetup version mismatch: expected $VERSION, found $ISS_VERSION${NC}"
-        echo -e "${YELLOW}💡 Run: ./scripts/update-inno-version.ps1${NC}"
+        echo -e "${RED}❌ WiX version mismatch: expected $VERSION, found $WIX_VERSION${NC}"
+        echo -e "${YELLOW}💡 Run: ./scripts/update-wix-version.ps1${NC}"
     fi
 fi
 
@@ -144,7 +144,7 @@ echo -e "   Full Version: ${GREEN}$FULL_VERSION${NC}"
 echo ""
 echo -e "${BLUE}💡 Tips for version updates:${NC}"
 echo -e "   1. Update $PROJECT_ROOT/version.env"
-echo -e "   2. Run ./scripts/update-inno-version.ps1 (Windows)"
+echo -e "   2. Run ./scripts/update-wix-version.ps1 (Windows)"
 echo -e "   3. Commit changes and push"
 
 echo ""

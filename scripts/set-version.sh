@@ -18,10 +18,10 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 3.2.1              # Update version to 3.2.1"
-    echo "  $0 3.3.0 --update-inno # Update version and InnoSetup file"
+    echo "  $0 3.3.0 --update-inno # Update version and WiX file"
     echo ""
     echo "Options:"
-    echo "  --update-inno    Also update the InnoSetup .iss file"
+    echo "  --update-inno    Also update the WiX .wxs file"
     echo "  --help, -h       Show this help message"
     exit 1
 }
@@ -85,15 +85,15 @@ rm -f "$VERSION_FILE.bak"
 
 echo -e "${GREEN}✅ Updated version.env${NC}"
 
-# Update InnoSetup file if requested
+# Update WiX file if requested
 if [[ "$UPDATE_INNO" == true ]]; then
-    ISS_FILE="$PROJECT_ROOT/config/TheBoysLauncher.iss"
-    if [[ -f "$ISS_FILE" ]]; then
-        sed -i.bak "s/^#define MyAppVersion.*/#define MyAppVersion \"$NEW_VERSION\"  ; This will be updated by update-inno-version.ps1/" "$ISS_FILE"
-        rm -f "$ISS_FILE.bak"
-        echo -e "${GREEN}✅ Updated config/TheBoysLauncher.iss${NC}"
+    WIX_FILE="$PROJECT_ROOT/wix/TheBoysLauncher.wxs"
+    if [[ -f "$WIX_FILE" ]]; then
+        sed -i.bak "s/Version=\"[^\"]*\"/Version=\"$NEW_VERSION\"/g" "$WIX_FILE"
+        rm -f "$WIX_FILE.bak"
+        echo -e "${GREEN}✅ Updated wix/TheBoysLauncher.wxs${NC}"
     else
-        echo -e "${YELLOW}⚠️  InnoSetup file not found: $ISS_FILE${NC}"
+        echo -e "${YELLOW}⚠️  WiX file not found: $WIX_FILE${NC}"
     fi
 fi
 

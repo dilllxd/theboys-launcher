@@ -132,7 +132,7 @@ theboys-launcher/
 │   ├── set-version.sh         # Version updating (Unix)
 │   ├── set-version.ps1        # Version updating (Windows)
 │   ├── validate-version.sh    # Version validation
-│   ├── update-inno-version.ps1 # InnoSetup version sync
+│   ├── update-wix-version.ps1 # WiX version sync
 │   ├── create-app-bundle.sh   # macOS app bundle creation
 │   ├── convert-icon.sh        # Icon conversion for macOS
 │   └── create-dmg.sh          # macOS DMG creation
@@ -143,9 +143,11 @@ theboys-launcher/
 │   ├── verify-build.sh        # Unix build verification
 │   └── update-version.ps1     # Legacy version script
 ├── config/                    # Configuration files
-│   ├── TheBoysLauncher.iss    # InnoSetup installer script
 │   ├── modpacks.json          # Modpack configurations
 │   └── openssl.cnf            # OpenSSL configuration
+├── wix/                       # WiX installer configuration
+│   ├── TheBoysLauncher.wxs    # WiX installer script
+│   └── Product.wxs            # Product configuration
 ├── docs/                      # Documentation
 │   ├── BUILD.md               # Build instructions
 │   ├── INSTALL_MACOS.md       # macOS installation guide

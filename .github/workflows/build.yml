@@ -363,35 +363,136 @@ jobs:
           exit 1
         }
 
-    - name: Install InnoSetup
-      run: |
-        Write-Host "Downloading InnoSetup..."
-        Invoke-WebRequest -Uri "https://jrsoftware.org/download.php/is.exe" -OutFile "innosetup.exe"
-        Write-Host "Installing InnoSetup..."
-        Start-Process -FilePath "innosetup.exe" -ArgumentList "/VERYSILENT", "/DIR=C:\Program Files (x86)\Inno Setup 6" -Wait
-        Write-Host "InnoSetup installed successfully"
+    - name: Cache WiX Toolset
+      uses: actions/cache@v4
+      id: cache-wix
+      with:
+        path: C:\Program Files (x86)\WiX Toolset v3.11
+        key: wix-toolset-3.11.2
 
-    - name: Update InnoSetup version
+    - name: Install WiX Toolset
+      if: steps.cache-wix.outputs.cache-hit != 'true'
       run: |
-        Write-Host "Updating InnoSetup version to ${{ steps.version.outputs.full_version }}..."
-        & "./scripts/update-inno-version.ps1" -IssFile "config/TheBoysLauncher.iss" -VersionFile "version.env"
+        Write-Host "Installing WiX Toolset..."
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile "wix311-binaries.zip"
+        Expand-Archive -Path "wix311-binaries.zip" -DestinationPath "C:\temp\wix"
+        Move-Item "C:\temp\wix" "C:\Program Files (x86)\WiX Toolset v3.11"
+        [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Program Files (x86)\WiX Toolset v3.11", "User")
+        Write-Host "✅ WiX Toolset installed successfully"
+      timeout-minutes: 5
+
+    - name: Add WiX to PATH
+      run: |
+        echo "C:\Program Files (x86)\WiX Toolset v3.11" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "Added WiX to PATH"
+
+    - name: Update WiX version
+      run: |
+        Write-Host "Updating WiX version to ${{ steps.version.outputs.full_version }}..."
+        & "./scripts/update-wix-version.ps1" -WxsFile "wix/TheBoysLauncher.wxs" -VersionFile "version.env"
 
     - name: Build Windows installer
       run: |
-        Write-Host "Building Windows installer with version ${{ steps.version.outputs.full_version }}..."
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "config/TheBoysLauncher.iss"
+        Write-Host "Building Windows MSI installer with version ${{ steps.version.outputs.full_version }}..."
 
-        $InstallerName = "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.exe"
-        $InstallerPath = "installer\$InstallerName"
+        # Create a temporary WXS project file
+        $tempWxs = @'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+          <Product Id="*"
+                   Name="TheBoys Launcher"
+                   Language="1033"
+                   Version="${{ steps.version.outputs.full_version }}"
+                   Manufacturer="Dylan"
+                   UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
 
-        if (Test-Path $InstallerPath) {
-          Write-Host "✅ Windows installer build successful!"
-          Get-ChildItem $InstallerPath
-          Write-Host "Installer size: $((Get-Item $InstallerPath).Length / 1MB) MB"
+            <Package InstallerVersion="200"
+                     Compressed="yes"
+                     InstallScope="perUser"
+                     Description="TheBoys Minecraft Modpack Launcher"
+                     Comments="Cross-platform Minecraft modpack launcher with automatic Java management"
+                     Platform="x64" />
+
+            <MediaTemplate EmbedCab="yes" />
+            <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoys Launcher is already installed." />
+
+            <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
+              <ComponentRef Id="MainExecutable" />
+              <ComponentRef Id="IconFile" />
+              <ComponentRef Id="LicenseFile" />
+              <ComponentRef Id="ApplicationShortcut" />
+            </Feature>
+
+            <Directory Id="TARGETDIR" Name="SourceDir">
+              <Directory Id="LocalAppDataFolder">
+                <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
+              </Directory>
+              <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="TheBoys Launcher"/>
+              </Directory>
+            </Directory>
+
+            <Component Id="MainExecutable" Directory="INSTALLFOLDER">
+              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" KeyPath="yes" />
+              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
+                <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
+                <RegistryValue Type="string" Name="Version" Value="${{ steps.version.outputs.full_version }}" />
+              </RegistryKey>
+            </Component>
+
+            <Component Id="IconFile" Directory="INSTALLFOLDER">
+              <File Id="IconICO" Source="icon.ico" />
+            </Component>
+
+            <Component Id="LicenseFile" Directory="INSTALLFOLDER">
+              <File Id="LicenseTXT" Source="LICENSE.txt" />
+            </Component>
+
+            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+              <Shortcut Id="ApplicationStartMenuShortcut"
+                        Name="TheBoys Launcher"
+                        Description="TheBoys Minecraft Modpack Launcher"
+                        Target="[#TheBoysLauncherEXE]"
+                        WorkingDirectory="INSTALLFOLDER"
+                        Icon="IconICO" />
+              <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+              <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+
+            <Icon Id="IconICO" SourceFile="icon.ico" />
+            <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+            <UIRef Id="WixUI_InstallDir" />
+            <WixVariable Id="WixUILicenseRtf" Value="LICENSE.txt" />
+
+            <CustomAction Id="CleanUserData"
+                          Directory="INSTALLFOLDER"
+                          ExeCommand="cmd /c &quot;rd /s /q &quot;%LOCALAPPDATA%\TheBoysLauncher&quot; 2&gt;nul&quot;"
+                          Execute="deferred"
+                          Return="ignore" />
+            <InstallExecuteSequence>
+              <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
+            </InstallExecuteSequence>
+          </Product>
+        </Wix>
+        '@
+
+        $tempWxs | Out-File -FilePath "temp-product.wxs" -Encoding UTF8
+
+        # Compile WiX
+        candle.exe temp-product.wxs -out temp-product.wixobj
+
+        # Link to create MSI
+        light.exe temp-product.wixobj -out "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi" -ext WixUIExtension
+
+        $InstallerName = "TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi"
+
+        if (Test-Path $InstallerName) {
+          Write-Host "✅ Windows MSI installer build successful!"
+          Get-ChildItem $InstallerName
+          Write-Host "Installer size: $((Get-Item $InstallerName).Length / 1MB) MB"
         } else {
-          Write-Host "❌ Windows installer build failed - no installer created at $InstallerPath"
-          Write-Host "Files in installer directory:"
-          Get-ChildItem installer -ErrorAction SilentlyContinue
+          Write-Host "❌ Windows MSI installer build failed"
           exit 1
         }
 
@@ -406,7 +507,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: TheBoysLauncher-Windows-Installer
-        path: installer\TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.exe
+        path: TheBoysLauncher-Setup-${{ steps.version.outputs.full_version }}.msi
         retention-days: 7
 
   # Version validation and consistency checks
@@ -597,7 +698,7 @@ jobs:
 
           #### Windows:
           - **TheBoysLauncher.exe** - Standalone executable
-          - **TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.exe** - Installer with shortcuts
+          - **TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.msi** - Professional MSI installer
 
           #### macOS:
           - **TheBoysLauncher-macos** - Universal binary (Intel + Apple Silicon)
@@ -605,7 +706,7 @@ jobs:
           ### 🚀 Installation:
 
           **Windows:**
-          1. Download the installer for easy installation with shortcuts
+          1. Download the MSI installer for professional installation with complete uninstall support
           2. Or download the standalone executable if you prefer portable usage
 
           **macOS:**
@@ -621,7 +722,7 @@ jobs:
           🤖 Generated with [Claude Code](https://claude.com/claude-code)
         files: |
           release-assets/TheBoysLauncher.exe
-          release-assets/TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.exe
+          release-assets/TheBoysLauncher-Setup-${{ steps.version.outputs.version }}.msi
           release-assets/TheBoysLauncher-macos
         draft: false
         prerelease: false

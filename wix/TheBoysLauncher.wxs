@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="TheBoys Launcher"
+           Language="1033"
+           Version="3.2.0"
+           Manufacturer="Dylan"
+           UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
+
+    <!-- Package information -->
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perUser"
+             Description="TheBoys Minecraft Modpack Launcher"
+             Comments="Cross-platform Minecraft modpack launcher with automatic Java management"
+             Platform="x64" />
+
+    <!-- Media definition -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Major upgrade handling -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoys Launcher is already installed." />
+
+    <!-- Features -->
+    <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="IconFile" />
+      <ComponentRef Id="LicenseFile" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <!-- Directories -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
+      </Directory>
+
+      <!-- Start Menu -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="TheBoys Launcher"/>
+      </Directory>
+
+      <!-- Desktop -->
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <!-- Main executable component -->
+    <Component Id="MainExecutable" Directory="INSTALLFOLDER">
+      <File Id="TheBoysLauncherEXE"
+            Source="TheBoysLauncher.exe"
+            KeyPath="yes" />
+
+      <!-- File association for .theboys files -->
+      <RegistryKey Root="HKCR" Key=".theboys">
+        <RegistryValue Type="string" Value="TheBoysLauncher.File" />
+      </RegistryKey>
+      <RegistryKey Root="HKCR" Key="TheBoysLauncher.File">
+        <RegistryValue Type="string" Value="TheBoys Modpack File" />
+        <RegistryValue Type="string" Name="DefaultIcon" Value="[INSTALLFOLDER]TheBoysLauncher.exe,0" />
+      </RegistryKey>
+      <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]TheBoysLauncher.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+
+      <!-- Registry entry for installed version -->
+      <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
+        <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
+        <RegistryValue Type="string" Name="Version" Value="3.2.0" />
+      </RegistryKey>
+    </Component>
+
+    <!-- Icon file component -->
+    <Component Id="IconFile" Directory="INSTALLFOLDER">
+      <File Id="IconICO" Source="icon.ico" />
+    </Component>
+
+    <!-- License file component -->
+    <Component Id="LicenseFile" Directory="INSTALLFOLDER">
+      <File Id="LicenseTXT" Source="LICENSE.txt" />
+    </Component>
+
+    <!-- Start Menu Shortcut -->
+    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="TheBoys Launcher"
+                Description="TheBoys Minecraft Modpack Launcher"
+                Target="[#TheBoysLauncherEXE]"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="IconICO"
+                IconIndex="0" />
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+      <RegistryValue Root="HKCU"
+                     Key="Software\TheBoysLauncher"
+                     Name="installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Desktop Shortcut (optional) -->
+    <Component Id="DesktopShortcut" Directory="DesktopFolder">
+      <Shortcut Id="ApplicationDesktopShortcut"
+                Name="TheBoys Launcher"
+                Description="TheBoys Minecraft Modpack Launcher"
+                Target="[#TheBoysLauncherEXE]"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="IconICO"
+                IconIndex="0" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\TheBoysLauncher"
+                     Name="desktop_shortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Icons -->
+    <Icon Id="IconICO" SourceFile="icon.ico" />
+
+    <!-- UI Properties -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="ARPPRODUCTICON" Value="IconICO" />
+
+    <!-- UI Reference -->
+    <UIRef Id="WixUI_InstallDir" />
+
+    <!-- License agreement -->
+    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.txt" />
+
+    <!-- Custom action to clean up all user data on uninstall -->
+    <CustomAction Id="CleanUserData"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="cmd /c &quot;echo Cleaning up user data... &amp;&amp; rd /s /q &quot;%LOCALAPPDATA%\TheBoysLauncher&quot; 2&gt;nul &amp;&amp; echo Cleanup completed&quot;"
+                  Execute="deferred"
+                  Return="ignore"
+                  HideTarget="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
+    </InstallExecuteSequence>
+
+  </Product>
+</Wix>
