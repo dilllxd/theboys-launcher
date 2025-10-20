@@ -41,10 +41,10 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
+        key: macos-go-${{ matrix.goarch }}-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}-
-          ${{ runner.os }}-go-
+          macos-go-${{ matrix.goarch }}-${{ hashFiles('**/go.sum', '**/go.mod') }}-
+          macos-go-${{ matrix.goarch }}-
 
     - name: Download dependencies
       run: go mod download
@@ -54,7 +54,7 @@ jobs:
       run: |
         echo "Building macOS ${{ matrix.arch }}..."
         export GOARCH=${{ matrix.goarch }} CGO_ENABLED=1
-        go build -ldflags="-s -w -X main.version=v3.0.1-ci" -o ${{ matrix.output }} .
+        go build -ldflags="-s -w -X main.version=v3.1.0" -o ${{ matrix.output }} .
 
         # Verify the binary was created and show info
         if [[ -f "${{ matrix.output }}" ]]; then
@@ -131,7 +131,7 @@ jobs:
       run: |
         echo "Creating Intel app bundle..."
         chmod +x scripts/create-app-bundle.sh
-        ./scripts/create-app-bundle.sh amd64 v3.0.1-ci
+        ./scripts/create-app-bundle.sh amd64 v3.1.0
 
         if [ -d "build/amd64/TheBoysLauncher.app" ]; then
           echo "✅ Intel app bundle created!"
@@ -145,7 +145,7 @@ jobs:
     - name: Create Apple Silicon app bundle
       run: |
         echo "Creating Apple Silicon app bundle..."
-        ./scripts/create-app-bundle.sh arm64 v3.0.1-ci
+        ./scripts/create-app-bundle.sh arm64 v3.1.0
 
         if [ -d "build/arm64/TheBoysLauncher.app" ]; then
           echo "✅ Apple Silicon app bundle created!"
@@ -177,7 +177,7 @@ jobs:
     - name: Create Universal app bundle
       run: |
         echo "Creating Universal app bundle..."
-        ./scripts/create-app-bundle.sh universal v3.0.1-ci
+        ./scripts/create-app-bundle.sh universal v3.1.0
 
         if [ -d "build/universal/TheBoysLauncher.app" ]; then
           echo "✅ Universal app bundle created!"
@@ -232,11 +232,61 @@ jobs:
         path: TheBoysLauncher-Universal.zip
         retention-days: 7
 
+  # Windows builds
+  build-windows:
+    name: Windows Build
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~\AppData\Local\go-build
+          ~\go\pkg\mod
+        key: windows-go-amd64-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
+        restore-keys: |
+          windows-go-amd64-${{ hashFiles('**/go.sum', '**/go.mod') }}-
+          windows-go-amd64-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build Windows executable
+      timeout-minutes: 5
+      run: |
+        echo "Building Windows executable..."
+        go build -ldflags="-s -w -X main.version=v3.1.0" -o TheBoysLauncher.exe .
+
+        # Verify the binary was created
+        if (Test-Path "TheBoysLauncher.exe") {
+          echo "✅ Windows build successful!"
+          Get-ChildItem TheBoysLauncher.exe
+        } else {
+          echo "❌ Windows build failed - no executable created"
+          exit 1
+        }
+
+    - name: Upload Windows executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: TheBoysLauncher-Windows
+        path: TheBoysLauncher.exe
+        retention-days: 7
+
   # Quick validation
   validate:
     name: Quick Validation
     runs-on: ubuntu-latest
-    needs: [build-macos, create-bundles]
+    needs: [build-macos, create-bundles, build-windows]
     if: always()
 
     steps:
@@ -247,6 +297,17 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.22'
+
+    - name: Cache Go modules for validation
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: validation-go-linux-${{ hashFiles('**/go.sum', '**/go.mod') }}-${{ github.sha }}
+        restore-keys: |
+          validation-go-linux-${{ hashFiles('**/go.sum', '**/go.mod') }}-
+          validation-go-linux-
 
     - name: Install dependencies for validation
       run: |
@@ -266,20 +327,47 @@ jobs:
         go mod verify
         echo "✅ Module verification completed!"
 
+    - name: Cross-platform compilation check
+      run: |
+        echo "Testing cross-platform compilation..."
+
+        # Test Windows compilation
+        echo "Testing Windows target..."
+        GOOS=windows GOARCH=amd64 go build -o test-windows.exe .
+        rm -f test-windows.exe
+
+        # Test macOS compilation
+        echo "Testing macOS Intel target..."
+        GOOS=darwin GOARCH=amd64 go build -o test-macos-amd64 .
+        rm -f test-macos-amd64
+
+        echo "Testing macOS ARM target..."
+        GOOS=darwin GOARCH=arm64 go build -o test-macos-arm64 .
+        rm -f test-macos-arm64
+
+        # Test Linux compilation
+        echo "Testing Linux target..."
+        GOOS=linux GOARCH=amd64 go build -o test-linux .
+        rm -f test-linux
+
+        echo "✅ Cross-platform compilation successful!"
+
     - name: Generate build summary
       run: |
-        echo "## 🚀 macOS Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## 🚀 Cross-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Windows Build | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "| macOS Executables | ${{ needs.build-macos.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| App Bundles | ${{ needs.create-bundles.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| macOS App Bundles | ${{ needs.create-bundles.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        if [[ "${{ needs.build-macos.result }}" == "success" && "${{ needs.create-bundles.result }}" == "success" ]]; then
-          echo "🎉 **All macOS builds completed successfully!**" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ needs.build-windows.result }}" == "success" && "${{ needs.build-macos.result }}" == "success" && "${{ needs.create-bundles.result }}" == "success" ]]; then
+          echo "🎉 **All builds completed successfully!**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Available Artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo "- TheBoysLauncher-Windows (exe)" >> $GITHUB_STEP_SUMMARY
           echo "- TheBoysLauncher-macOS-Intel (ZIP)" >> $GITHUB_STEP_SUMMARY
           echo "- TheBoysLauncher-macOS-AppleSilicon (ZIP)" >> $GITHUB_STEP_SUMMARY
           echo "- TheBoysLauncher-macOS-Universal (ZIP)" >> $GITHUB_STEP_SUMMARY
