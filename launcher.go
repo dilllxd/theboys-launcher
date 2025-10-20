@@ -85,7 +85,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		if err := downloadAndUnzipTo(jreURL, jreDir); err != nil {
 			fail(err)
 		}
-		_ = flattenOneLevel(jreDir)
+		_ = flattenJREExtraction(jreDir)
 		if !exists(javaBin) || !exists(javawBin) {
 			fail(fmt.Errorf("Java %s installation looks incomplete (bin/%s or bin/%s not found)", requiredJavaVersion, JavaBinName, JavawBinName))
 		}

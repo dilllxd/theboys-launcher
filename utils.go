@@ -336,3 +336,40 @@ func flattenOneLevel(path string) error {
 
 	return nil
 }
+
+// flattenJREExtraction handles platform-specific JRE extraction structures
+func flattenJREExtraction(jreDir string) error {
+	// First, flatten the top level (handles jdk-17.0.16+8-jre/ directory)
+	if err := flattenOneLevel(jreDir); err != nil {
+		return err
+	}
+
+	// On macOS, check if we have a Contents/Home structure and flatten it
+	if runtime.GOOS == "darwin" {
+		contentsPath := filepath.Join(jreDir, "Contents")
+		if exists(contentsPath) {
+			homePath := filepath.Join(contentsPath, "Home")
+			if exists(homePath) {
+				// Move everything from Contents/Home to the jreDir root
+				entries, err := os.ReadDir(homePath)
+				if err != nil {
+					return err
+				}
+
+				for _, entry := range entries {
+					oldPath := filepath.Join(homePath, entry.Name())
+					newPath := filepath.Join(jreDir, entry.Name())
+
+					if err := os.Rename(oldPath, newPath); err != nil {
+						return err
+					}
+				}
+
+				// Remove the now-empty Contents directory
+				os.RemoveAll(contentsPath)
+			}
+		}
+	}
+
+	return nil
+}
