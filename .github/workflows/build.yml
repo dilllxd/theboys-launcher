@@ -82,33 +82,22 @@ jobs:
       if: matrix.platform != 'windows'
       run: chmod +x ${{ matrix.binary_name }}
 
-    - name: Create macOS universal executable
+    - name: Create macOS native executable
       if: matrix.platform == 'darwin'
       run: |
-        echo "Creating macOS universal executable..."
+        echo "Creating macOS native executable..."
 
-        # Build for both architectures
-        mkdir -p build
-
-        # Intel
-        echo "Building Intel binary..."
-        GOARCH=amd64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o build/TheBoysLauncher-amd64 .
-
-        # Apple Silicon
-        echo "Building Apple Silicon binary..."
-        GOARCH=arm64 go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o build/TheBoysLauncher-arm64 .
-
-        # Create universal binary
-        echo "Creating universal binary..."
-        lipo -create build/TheBoysLauncher-amd64 build/TheBoysLauncher-arm64 -output TheBoysLauncher-universal
+        # Build natively (GitHub Actions macOS runners are typically Intel)
+        echo "Building macOS binary..."
+        go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" -o TheBoysLauncher-macos .
 
         # Make executable
-        chmod +x TheBoysLauncher-universal
+        chmod +x TheBoysLauncher-macos
 
         # Show file info
-        echo "Universal binary created:"
-        file TheBoysLauncher-universal
-        ls -la TheBoysLauncher-universal
+        echo "macOS binary created:"
+        file TheBoysLauncher-macos
+        ls -la TheBoysLauncher-macos
 
     - name: Build Windows installer
       if: matrix.platform == 'windows'
@@ -164,12 +153,12 @@ jobs:
         path: ${{ matrix.binary_name }}
         retention-days: 30
 
-    - name: Upload macOS universal executable
+    - name: Upload macOS native executable
       if: matrix.platform == 'darwin'
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.artifact_name }}-Universal
-        path: TheBoysLauncher-universal
+        name: ${{ matrix.artifact_name }}-Native
+        path: TheBoysLauncher-macos
         retention-days: 30
 
     - name: Upload Windows installer
@@ -186,7 +175,7 @@ jobs:
         echo "Platform: ${{ matrix.platform }}"
         echo "Version: ${{ steps.version.outputs.version }}"
         if [ "${{ matrix.platform }}" = "darwin" ]; then
-          echo "Artifacts: Native binary + Universal binary"
+          echo "Artifacts: Native binary + macOS-specific binary"
         elif [ "${{ matrix.platform }}" = "windows" ]; then
           echo "Artifacts: Binary + MSI installer"
         else
