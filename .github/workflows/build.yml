@@ -1,6 +1,6 @@
 name: Build and Release
 
-# Trigger on pushes to main branch (for releases) and pull requests to macos-support branch
+# Trigger on pushes to main branch (for builds) and tags (for releases)
 on:
   push:
     branches: [ main ]
@@ -678,12 +678,14 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "*Commit: ${{ github.sha }}*" >> $GITHUB_STEP_SUMMARY
 
-  # Create GitHub Release (only on tags or main branch pushes)
+  # Create GitHub Release (only on tags, not on branch pushes)
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build-macos, create-bundles, build-windows, validate-version]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push' && !contains(github.ref, 'heads/')
+    # This ensures the release only runs for actual tag pushes, not branch pushes
+    # github.ref will be like 'refs/tags/v3.2.0' for tag pushes
 
     steps:
     - name: Checkout code
@@ -712,10 +714,33 @@ jobs:
         echo "Extracting macOS universal binary from app bundle..."
         cd ./release-assets
         unzip TheBoysLauncher-Universal.zip
-        cd TheBoysLauncher.app/Contents/MacOS
-        cp TheBoysLauncher ../../TheBoysLauncher-macos
-        cd ../../..
-        rm -rf TheBoysLauncher.app
+
+        # Check the directory structure and find the app bundle
+        echo "Checking extracted directory structure:"
+        find . -name "TheBoysLauncher.app" -type d
+
+        # Navigate to the app bundle and extract the binary
+        if [ -d "build/universal/TheBoysLauncher.app" ]; then
+          echo "Found app bundle in build/universal/ structure"
+          cd build/universal/TheBoysLauncher.app/Contents/MacOS
+          cp TheBoysLauncher ../../../../../TheBoysLauncher-macos
+          cd ../../../../../..
+          rm -rf build
+        elif [ -d "TheBoysLauncher.app" ]; then
+          echo "Found app bundle in root"
+          cd TheBoysLauncher.app/Contents/MacOS
+          cp TheBoysLauncher ../../TheBoysLauncher-macos
+          cd ../../..
+          rm -rf TheBoysLauncher.app
+        else
+          echo "ERROR: Could not find TheBoysLauncher.app in extracted ZIP"
+          echo "Directory contents:"
+          ls -la
+          find . -name "*.app" -type d
+          exit 1
+        fi
+
+        echo "Final directory structure:"
         ls -la
 
     - name: Determine version
