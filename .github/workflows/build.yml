@@ -71,6 +71,27 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libgl1-mesa-dev libglfw3-dev libx11-dev libxcursor-dev libxinerama-dev libxi-dev libxrandr-dev libxext-dev libxfixes-dev libxxf86vm-dev pkg-config
 
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Cache build tools (Windows)
+      if: matrix.platform == 'windows'
+      uses: actions/cache@v4
+      with:
+        path: |
+          C:\Program Files (x86)\WiX Toolset v3.11
+          build-tools-cache
+        key: windows-build-tools-${{ hashFiles('**/TheBoysLauncher.exe') }}
+        restore-keys: |
+          windows-build-tools-
+
     - name: Install Go dependencies
       run: go mod download
 
@@ -106,9 +127,11 @@ jobs:
         # Add WiX to PATH
         echo "C:\Program Files (x86)\WiX Toolset v3.11" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-        # Create simple installer using candle and light
+        # Create optimized installer using candle and light
         $version = "${{ steps.version.outputs.version }}"
+        Write-Host "Building Windows MSI installer version $version"
 
+        # Create optimized WXS content
         $wxsContent = @"
         <?xml version="1.0" encoding="UTF-8"?>
         <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -119,6 +142,7 @@ jobs:
             <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
               <ComponentRef Id="MainExecutable" />
               <ComponentRef Id="ApplicationShortcut" />
+              <ComponentRef Id="DirectoryCleanup" />
             </Feature>
             <Directory Id="TARGETDIR" Name="SourceDir">
               <Directory Id="LocalAppDataFolder">
@@ -142,16 +166,32 @@ jobs:
               <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
               <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
             </Component>
+            <Component Id="DirectoryCleanup" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E75">
+              <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
+                <RegistryValue Type="string" Name="DirectoryCleanup" Value="completed" KeyPath="yes" />
+              </RegistryKey>
+            </Component>
             <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
             <UIRef Id="WixUI_InstallDir" />
           </Product>
         </Wix>
         "@
 
+        # Build MSI with optimizations
         $wxsContent | Out-File -FilePath "installer.wxs" -Encoding utf8
-        candle.exe installer.wxs
-        light.exe -ext WixUIExtension -out "TheBoysLauncher-Setup-$version.msi" installer.wixobj
+
+        # Use optimized candle and light options
+        candle.exe installer.wxs -out installer.wixobj
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        light.exe installer.wixobj -ext WixUIExtension -out "TheBoysLauncher-Setup-$version.msi" -sval
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        # Clean up temporary files
         Remove-Item installer.wxs, installer.wixobj -ErrorAction SilentlyContinue
+
+        Write-Host "MSI installer created successfully: TheBoysLauncher-Setup-$version.msi"
 
     - name: Upload primary binary
       uses: actions/upload-artifact@v4
