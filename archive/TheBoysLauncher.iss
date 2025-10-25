@@ -1,10 +1,10 @@
-; TheBoys Launcher Installer Script (Simplified - No Code Signing)
+; TheBoysLauncher Installer Script (Simplified - No Code Signing)
 ; Creates a professional Windows installer with shortcuts and uninstaller
 
 #define MyAppName "TheBoysLauncher"
 #define MyAppVersion "3.2.0"  ; This will be updated by update-inno-version.ps1
 #define MyAppPublisher "Dylan"
-#define MyAppURL "https://github.com/dilllxd/theboys-launcher"
+#define MyAppURL "https://github.com/dilllxd/theboyslauncher"
 #define MyAppExeName "TheBoysLauncher.exe"
 #define MyAppAssocName "TheBoys Minecraft Modpack Launcher"
 
@@ -39,7 +39,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "associate"; Description: "Associate .theboys files with TheBoys Launcher"; GroupDescription: "File associations:"
+Name: "associate"; Description: "Associate .theboys files with TheBoysLauncher"; GroupDescription: "File associations:"
 
 [Files]
 Source: "..\TheBoysLauncher.exe"; DestDir: "{app}"; Flags: ignoreversion

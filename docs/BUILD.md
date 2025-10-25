@@ -1,6 +1,6 @@
 # Build Guide
 
-This guide provides comprehensive instructions for building TheBoys Launcher on all supported platforms.
+This guide provides comprehensive instructions for building TheBoysLauncher on all supported platforms.
 
 ## 🛠️ Prerequisites
 
@@ -44,8 +44,8 @@ This guide provides comprehensive instructions for building TheBoys Launcher on 
 ### Clone and Build
 ```bash
 # Clone the repository
-git clone https://github.com/dilllxd/theboys-launcher.git
-cd theboys-launcher
+git clone https://github.com/dilllxd/theboyslauncher.git
+cd theboyslauncher
 
 # Build for current platform
 make build
@@ -375,9 +375,9 @@ make package-all
 mkdir -p release
 
 # Copy artifacts
-cp build/windows/TheBoysLauncher.exe release/TheBoys-Launcher-${VERSION}.exe
+cp build/windows/TheBoysLauncher.exe release/TheBoysLauncher-${VERSION}.exe
 cp -r build/universal/TheBoysLauncher.app release/TheBoysLauncher.app
-cp build/universal/TheBoysLauncher-Universal.dmg release/TheBoys-Launcher-${VERSION}-Universal.dmg
+cp build/universal/TheBoysLauncher-Universal.dmg release/TheBoysLauncher-${VERSION}-Universal.dmg
 ```
 
 ### Verify Release

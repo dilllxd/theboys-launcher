@@ -1,5 +1,5 @@
 @echo off
-echo Building TheBoys Launcher with icon and version info...
+echo Building TheBoysLauncher with icon and version info...
 
 REM Set version from command line or use default
 set VERSION=v2.0.3

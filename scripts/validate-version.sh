@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Version Validation Script for TheBoys Launcher
+# Version Validation Script for TheBoysLauncher
 # This script validates version consistency across all files
 
 set -euo pipefail

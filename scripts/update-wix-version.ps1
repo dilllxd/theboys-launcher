@@ -1,4 +1,4 @@
-# Update WiX Version Script for TheBoys Launcher
+# Update WiX Version Script for TheBoysLauncher
 # This script updates the WiX .wxs file with version from version.env
 
 param(

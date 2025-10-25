@@ -1,8 +1,8 @@
-# TheBoys Launcher - macOS Support Development Plan
+# TheBoysLauncher - macOS Support Development Plan
 
 ## Executive Summary
 
-This document outlines the complete development plan to convert TheBoys Launcher from Windows-only to full cross-platform support while maintaining 100% feature parity across Windows and macOS platforms (Intel and Apple Silicon).
+This document outlines the complete development plan to convert TheBoysLauncher from Windows-only to full cross-platform support while maintaining 100% feature parity across Windows and macOS platforms (Intel and Apple Silicon).
 
 ## Core Development Principles
 
@@ -134,7 +134,7 @@ The application currently has several Windows-specific hard dependencies:
 
 #### Tasks Completed:
 1. ✅ **Directory Structure Abstraction**
-   - Windows: `%USERPROFILE%\.theboys-launcher` (already implemented in Phase 1)
+   - Windows: `%USERPROFILE%\.theboyslauncher` (already implemented in Phase 1)
    - macOS: `~/Library/Application Support/TheBoysLauncher` (already implemented in Phase 1)
 2. ✅ **Executable Name Management**
    - Updated all hardcoded `.exe` references to use platform-specific names
@@ -208,20 +208,20 @@ The application currently has several Windows-specific hard dependencies:
 VERSION := $(shell git describe --tags --abbrev=0)
 
 build-windows:
-	@echo "Building TheBoys Launcher for Windows..."
+   @echo "Building TheBoysLauncher for Windows..."
 	@mkdir -p build/windows
 	@go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/windows/TheBoysLauncher.exe .
 	@echo "Windows build complete"
 
 build-macos:
-	@echo "Building TheBoys Launcher for macOS Intel..."
+   @echo "Building TheBoysLauncher for macOS Intel..."
 	@mkdir -p build/amd64
 	@export GOOS=darwin GOARCH=amd64 CGO_ENABLED=1
 	@go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/amd64/TheBoysLauncher .
 	@echo "macOS Intel build complete"
 
 build-macos-arm64:
-	@echo "Building TheBoys Launcher for macOS Apple Silicon..."
+   @echo "Building TheBoysLauncher for macOS Apple Silicon..."
 	@mkdir -p build/arm64
 	@export GOOS=darwin GOARCH=arm64 CGO_ENABLED=1
 	@go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/arm64/TheBoysLauncher .
@@ -258,7 +258,7 @@ cat > "build/$ARCH/TheBoysLauncher.app/Contents/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>TheBoys Launcher</string>
+   <string>TheBoysLauncher</string>
     <key>CFBundleExecutable</key>
     <string>TheBoysLauncher</string>
     <key>CFBundleIconFile</key>
@@ -479,7 +479,7 @@ echo "Creating macOS DMG for $ARCH..."
 
 # Create DMG using create-dmg tool
 create-dmg \
-  --volname "TheBoys Launcher ($ARCH)" \
+   --volname "TheBoysLauncher ($ARCH)" \
   --volicon "build/$ARCH/TheBoysLauncher.app/Contents/Resources/AppIcon.icns" \
   --window-pos 200 120 \
   --window-size 600 400 \
@@ -487,11 +487,11 @@ create-dmg \
   --icon "TheBoysLauncher.app" 175 120 \
   --hide-extension "TheBoysLauncher.app" \
   --app-drop-link 425 120 \
-  "TheBoys-Launcher-$VERSION-$ARCH.dmg" \
-  "build/$ARCH/" \
-  || exit 1
+   "TheBoysLauncher-$VERSION-$ARCH.dmg" \
+   "build/$ARCH/" \
+   || exit 1
 
-echo "DMG created successfully: TheBoys-Launcher-$VERSION-$ARCH.dmg"
+echo "DMG created successfully: TheBoysLauncher-$VERSION-$ARCH.dmg"
 ```
 
 #### Icon Conversion:
@@ -578,14 +578,14 @@ iconutil -c icns resources/darwin/TheBoysLauncher.iconset
 ## Installation
 
 ### Windows
-1. Download `TheBoys-Launcher-VERSION.exe`
+1. Download `TheBoysLauncher-VERSION.exe`
 2. Run the installer
 3. Launch from desktop shortcut
 
 ### macOS
-1. Download `TheBoys-Launcher-VERSION-Universal.dmg`
+1. Download `TheBoysLauncher-VERSION-Universal.dmg`
 2. Open the DMG file
-3. Drag TheBoys Launcher to Applications folder
+3. Drag TheBoysLauncher to Applications folder
 4. Launch from Applications
 
 ## Building from Source
@@ -684,7 +684,7 @@ make build-macos-universal
 ## File Structure After Implementation
 
 ```
-theboys-launcher/
+theboyslauncher/
 ├── main.go                    # Main entry point (platform-agnostic)
 ├── platform.go                # Common platform interface
 ├── platform_windows.go        # Windows-specific implementations
@@ -721,7 +721,7 @@ theboys-launcher/
 
 ## Conclusion
 
-This comprehensive 25-day development plan will convert TheBoys Launcher from Windows-only to full cross-platform support while maintaining 100% feature parity for both Intel and Apple Silicon Macs. The phased approach ensures manageable development cycles with clear success criteria and quality standards.
+This comprehensive 25-day development plan will convert TheBoysLauncher from Windows-only to full cross-platform support while maintaining 100% feature parity for both Intel and Apple Silicon Macs. The phased approach ensures manageable development cycles with clear success criteria and quality standards.
 
 The plan prioritizes robust dual-architecture support and proper macOS integration while maintaining the simplicity of direct distribution. Each phase delivers working, production-ready code with no shortcuts or temporary solutions.
 

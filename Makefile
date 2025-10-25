@@ -1,4 +1,4 @@
-# TheBoys Launcher Cross-Platform Makefile
+# TheBoysLauncher Cross-Platform Makefile
 
 # Set your version here
 VERSION ?= v3.0.1
@@ -12,21 +12,21 @@ all: build
 
 # Build Windows (simplified - no version info files)
 build-windows: check-icon
-	@echo "Building TheBoys Launcher for Windows..."
+	@echo "Building TheBoysLauncher for Windows..."
 	@mkdir -p build/windows
 	go build -ldflags="-s -w -H=windowsgui -X main.version=$(VERSION)" -o build/windows/TheBoysLauncher.exe .
 	@echo "Windows build complete: build/windows/TheBoysLauncher.exe"
 
 # Build macOS Intel
 build-macos:
-	@echo "Building TheBoys Launcher for macOS Intel..."
+	@echo "Building TheBoysLauncher for macOS Intel..."
 	@mkdir -p build/amd64
 	export GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 && go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/amd64/TheBoysLauncher .
 	@echo "macOS Intel build complete: build/amd64/TheBoysLauncher"
 
 # Build macOS Apple Silicon
 build-macos-arm64:
-	@echo "Building TheBoys Launcher for macOS Apple Silicon..."
+	@echo "Building TheBoysLauncher for macOS Apple Silicon..."
 	@mkdir -p build/arm64
 	export GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 && go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/arm64/TheBoysLauncher .
 	@echo "macOS Apple Silicon build complete: build/arm64/TheBoysLauncher"
@@ -150,13 +150,13 @@ test: build lint test-runtime
 .PHONY: clean
 clean:
 	@rm -rf build/
-	@rm -f TheBoysLauncher.exe test.exe resource.syso resource.rc theboys-launcher-cert.pfx
+	@rm -f TheBoysLauncher.exe test.exe resource.syso resource.rc theboyslauncher-cert.pfx
 	@echo "Cleaned all build artifacts"
 
 # Help
 .PHONY: help
 help:
-	@echo "TheBoys Launcher Cross-Platform Build System"
+	@echo "TheBoysLauncher Cross-Platform Build System"
 	@echo "Version: $(VERSION)"
 	@echo ""
 	@echo "Build Targets:"

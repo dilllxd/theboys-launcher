@@ -2,7 +2,7 @@
 
 // TheBoysLauncher.exe - Minecraft bootstrapper for Windows with Fyne GUI
 // - Self-updates from GitHub Releases (latest tag, no downgrades)
-// - Stores data in user's home directory (C:\Users\Username\.theboys-launcher)
+// - Stores data in user's home directory (C:\Users\Username\.theboyslauncher)
 // - Downloads Prism Launcher (portable) - prefers MinGW w64 on amd64
 // - Downloads Java dynamically based on Minecraft version (Temurin JRE) (Adoptium API w/ GitHub fallback)
 // - Downloads packwiz bootstrap dynamically (GitHub assets discovery)

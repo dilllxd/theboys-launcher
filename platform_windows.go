@@ -28,16 +28,22 @@ func totalRAMMB() int {
 
 // Windows-specific directory paths
 func getLauncherHome() string {
-	// Windows: %USERPROFILE%\.theboys-launcher
+	// Prefer LocalAppData\TheBoysLauncher on Windows for per-user installs
+	// Falls back to %USERPROFILE%\.theboyslauncher for compatibility
+	appData := os.Getenv("LOCALAPPDATA")
+	if appData != "" {
+		return filepath.Join(appData, "TheBoysLauncher")
+	}
+
+	// Fallback to USERPROFILE dot-folder (legacy)
 	homeDir := os.Getenv("USERPROFILE")
 	if homeDir == "" {
-		// Fallback to current directory if USERPROFILE is not set
 		if exePath, err := os.Executable(); err == nil {
 			return filepath.Dir(exePath)
 		}
 		return "."
 	}
-	return filepath.Join(homeDir, ".theboys-launcher")
+	return filepath.Join(homeDir, ".theboyslauncher")
 }
 
 // Windows-specific process management is now in process_windows.go

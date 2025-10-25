@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Set Version Script for TheBoys Launcher
+# Set Version Script for TheBoysLauncher
 # This script updates the version in version.env and optionally updates related files
 
 set -euo pipefail

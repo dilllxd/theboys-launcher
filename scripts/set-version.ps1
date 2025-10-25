@@ -1,4 +1,4 @@
-# Set Version PowerShell Script for TheBoys Launcher
+# Set Version PowerShell Script for TheBoysLauncher
 # This script updates the version in version.env and optionally updates related files
 
 param(

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Get-Version Script for TheBoys Launcher
+# Get-Version Script for TheBoysLauncher
 # This script reads version information and exports it in various formats
 
 set -euo pipefail

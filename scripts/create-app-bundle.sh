@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Create macOS app bundle for TheBoys Launcher
+# Create macOS app bundle for TheBoysLauncher
 # Usage: ./create-app-bundle.sh <arch> <version>
 # arch: amd64, arm64, or universal
 # version: version string (e.g., v3.0.1)
@@ -41,7 +41,7 @@ case $ARCH in
         ;;
 esac
 
-APP_NAME="TheBoys Launcher"
+APP_NAME="TheBoysLauncher"
 BUNDLE_NAME="TheBoysLauncher.app"
 BUILD_DIR="build/$ARCH"
 APP_DIR="$BUILD_DIR/$BUNDLE_NAME"
@@ -111,7 +111,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2024 TheBoys Launcher. All rights reserved.</string>
+    <string>Copyright © 2024 TheBoysLauncher. All rights reserved.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

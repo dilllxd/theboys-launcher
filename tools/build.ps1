@@ -2,7 +2,7 @@ param(
     [string]$Version = "v2.0.3"
 )
 
-Write-Host "Building TheBoys Launcher with icon and version info..." -ForegroundColor Green
+Write-Host "Building TheBoysLauncher with icon and version info..." -ForegroundColor Green
 
 # Check if rsrc tool is available
 try {

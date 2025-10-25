@@ -1,4 +1,4 @@
-module theboys-launcher
+module theboyslauncher
 
 go 1.25.0
 

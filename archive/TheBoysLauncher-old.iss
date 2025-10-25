@@ -1,10 +1,10 @@
-; TheBoys Launcher Installer Script
+; TheBoysLauncher Installer Script
 ; Creates a professional Windows installer with shortcuts and uninstaller
 
 #define MyAppName "TheBoysLauncher"
 #define MyAppVersion "2.0.0"
 #define MyAppPublisher "Dylan"
-#define MyAppURL "https://github.com/dilllxd/theboys-launcher"
+#define MyAppURL "https://github.com/dilllxd/theboyslauncher"
 #define MyAppExeName "TheBoysLauncher.exe"
 #define MyAppAssocName "TheBoys Minecraft Modpack Launcher"
 
@@ -85,7 +85,7 @@ var
     ResultCode: Integer;
     CertPath: string;
 begin
-    CertPath := ExpandConstant('{app}\theboys-launcher-cert.pfx');
+    CertPath := ExpandConstant('{app}\\TheBoysLauncher-cert.pfx');
 
     // Try to install the certificate to Trusted Root Certification Authorities
     if FileExists(CertPath) then
@@ -196,7 +196,7 @@ begin
     if DirExists(ExpandConstant('{userappdata}\TheBoysLauncher')) then
     begin
         Log('Found existing installation in AppData');
-        if MsgBox('TheBoys Launcher appears to already be installed. Continue with installation?', mbConfirmation, MB_YESNO) = IDYES then
+    if MsgBox('TheBoysLauncher appears to already be installed. Continue with installation?', mbConfirmation, MB_YESNO) = IDYES then
         begin
             Log('User chose to continue installation');
         end

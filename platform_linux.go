@@ -44,7 +44,7 @@ func totalRAMMB() int {
 
 // Linux-specific directory paths
 func getLauncherHome() string {
-	// Linux: ~/.theboys-launcher
+	// Linux: ~/.theboyslauncher
 	homeDir := os.Getenv("HOME")
 	if homeDir == "" {
 		// Fallback to current directory if HOME is not set
@@ -53,7 +53,7 @@ func getLauncherHome() string {
 		}
 		return "."
 	}
-	return filepath.Join(homeDir, ".theboys-launcher")
+	return filepath.Join(homeDir, ".theboyslauncher")
 }
 
 // Linux-specific process creation attributes

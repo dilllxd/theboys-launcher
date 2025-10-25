@@ -1,6 +1,6 @@
 # macOS Installation Guide
 
-This guide provides detailed instructions for installing TheBoys Launcher on macOS, including both Intel and Apple Silicon Macs.
+This guide provides detailed instructions for installing TheBoysLauncher on macOS, including both Intel and Apple Silicon Macs.
 
 ## 🔧 System Requirements
 
@@ -20,24 +20,24 @@ This guide provides detailed instructions for installing TheBoys Launcher on mac
 ### Method 1: DMG Installer (Recommended)
 
 1. **Download the DMG**
-   - Go to [Releases](https://github.com/dilllxd/theboys-launcher/releases)
-   - Download `TheBoys-Launcher-Universal.dmg`
+   - Go to [Releases](https://github.com/dilllxd/theboyslauncher/releases)
+   - Download `TheBoysLauncher-Universal.dmg`
 
 2. **Install the Application**
    - Double-click the downloaded DMG file
-   - A window will open showing TheBoys Launcher icon
-   - Drag TheBoys Launcher to your Applications folder
+      - A window will open showing TheBoysLauncher icon
+      - Drag TheBoysLauncher to your Applications folder
 
 3. **First Launch**
    - Open Applications folder
-   - Double-click TheBoys Launcher
+      - Double-click TheBoysLauncher
    - If you see a security warning, see "Security Instructions" below
 
 ### Method 2: Manual App Bundle
 
 1. **Download the App Bundle**
-   - Go to [Releases](https://github.com/dilllxd/theboys-launcher/releases)
-   - Download `TheBoys-Launcher-Universal.zip`
+   - Go to [Releases](https://github.com/dilllxd/theboyslauncher/releases)
+   - Download `TheBoysLauncher-Universal.zip`
 
 2. **Extract and Install**
    - Double-click the ZIP file to extract it
@@ -83,7 +83,7 @@ xattr -cr "/Applications/TheBoysLauncher.app"
 ## 🚀 First Launch Setup
 
 1. **Launch the Application**
-   - Open TheBoys Launcher from Applications
+      - Open TheBoysLauncher from Applications
    - The launcher will detect your macOS version and architecture
 
 2. **Initial Configuration**
@@ -214,9 +214,9 @@ If you want to use a specific Java installation:
 If you encounter issues not covered in this guide:
 
 1. **Check Logs**: Look in `~/Library/Application Support/TheBoysLauncher/logs/`
-2. **Search Issues**: [GitHub Issues](https://github.com/dilllxd/theboys-launcher/issues)
+2. **Search Issues**: [GitHub Issues](https://github.com/dilllxd/theboyslauncher/issues)
 3. **Create New Issue**: Include your macOS version, Mac model, and error logs
-4. **Community**: [GitHub Discussions](https://github.com/dilllxd/theboys-launcher/discussions)
+4. **Community**: [GitHub Discussions](https://github.com/dilllxd/theboyslauncher/discussions)
 
 ## 🔄 Updates
 
@@ -229,6 +229,6 @@ The launcher includes automatic update functionality:
 
 ---
 
-**Enjoy using TheBoys Launcher on macOS!** 🎉
+**Enjoy using TheBoysLauncher on macOS!** 🎉
 
 For more information, see the main [README.md](./README.md) file.

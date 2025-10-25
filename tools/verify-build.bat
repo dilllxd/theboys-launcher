@@ -1,5 +1,5 @@
 @echo off
-REM Quick build verification script for TheBoys Launcher (Windows)
+REM Quick build verification script for TheBoysLauncher (Windows)
 REM Run this before committing changes to ensure basic compilation
 
 echo 🔍 Running quick build verification...

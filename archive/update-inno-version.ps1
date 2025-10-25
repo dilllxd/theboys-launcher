@@ -24,8 +24,8 @@ Write-Host "Updating InnoSetup version to: $Version"
 
 # Read the .iss file
 if (-not (Test-Path $IssFile)) {
-    Write-Error "InnoSetup file not found: $IssFile"
-    exit 1
+    Write-Warning "InnoSetup file not found: $IssFile. Skipping Inno update (Inno removed)."
+    exit 0
 }
 
 $IssContent = Get-Content $IssFile

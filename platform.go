@@ -8,7 +8,7 @@ import (
 
 // Platform-specific constants
 const (
-	LauncherName = "TheBoys Launcher"
+	LauncherName = "TheBoysLauncher"
 )
 
 // Platform-specific executable names

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*"
-           Name="TheBoys Launcher"
+           Name="TheBoysLauncher"
            Language="1033"
            Version="3.2.0"
            Manufacturer="Dylan"
@@ -19,11 +19,18 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Major upgrade handling -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoys Launcher is already installed." />
+  <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoysLauncher is already installed." />
 
     <!-- Features -->
-    <Feature Id="ProductFeature" Title="TheBoys Launcher" Level="1">
+    <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
+      <!-- Shortcut components exposed via ShortcutsFeature -->
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <!-- Expose an optional feature so the MSI UI can allow users to select shortcuts -->
+    <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="1" Absent="allow">
       <ComponentRef Id="ApplicationShortcut" />
       <ComponentRef Id="DesktopShortcut" />
     </Feature>
@@ -35,8 +42,8 @@
       </Directory>
 
       <!-- Start Menu -->
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="TheBoys Launcher"/>
+        <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher"/>
       </Directory>
 
       <!-- Desktop -->
@@ -46,10 +53,10 @@
     <!-- Components -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <!-- Main executable -->
-      <Component Id="MainExecutable">
-        <File Id="TheBoysLauncherEXE"
-              Source="$(var.TheBoysLauncher.TargetPath)"
-              KeyPath="yes" />
+  <Component Id="MainExecutable">
+    <File Id="TheBoysLauncherEXE"
+      Source="$(var.TheBoysLauncher.TargetPath)"
+      KeyPath="yes" />
 
         <!-- File association for .theboys files -->
         <RegistryKey Root="HKCR" Key=".theboys">
@@ -71,19 +78,19 @@
 
       <!-- License file -->
       <Component Id="LicenseFile">
-        <File Id="LicenseTXT" Source="$(var.ProjectDir)LICENSE.txt" />
+        <File Id="LicenseRTF" Source="$(var.ProjectDir)wix\LICENSE.rtf" />
       </Component>
     </ComponentGroup>
 
-    <!-- Start Menu Shortcut -->
-    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
-      <Shortcut Id="ApplicationStartMenuShortcut"
-                Name="TheBoys Launcher"
-                Description="TheBoys Minecraft Modpack Launcher"
-                Target="[#TheBoysLauncherEXE]"
-                WorkingDirectory="INSTALLFOLDER"
-                Icon="IconICO"
-                IconIndex="0" />
+  <!-- Start Menu Shortcut -->
+  <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+  <Shortcut Id="ApplicationStartMenuShortcut"
+        Name="TheBoysLauncher"
+        Description="TheBoys Minecraft Modpack Launcher"
+        Target="[#TheBoysLauncherEXE]"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="IconICO"
+        IconIndex="0" />
       <RegistryValue Root="HKCU"
                      Key="Software\TheBoysLauncher"
                      Name="installed"
@@ -93,10 +100,10 @@
       <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
     </Component>
 
-    <!-- Desktop Shortcut (optional) -->
+  <!-- Desktop Shortcut (optional) -->
     <Component Id="DesktopShortcut" Directory="DesktopFolder">
       <Shortcut Id="ApplicationDesktopShortcut"
-                Name="TheBoys Launcher"
+                Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
                 Target="[#TheBoysLauncherEXE]"
                 WorkingDirectory="INSTALLFOLDER"
@@ -110,17 +117,17 @@
                      KeyPath="yes" />
     </Component>
 
-    <!-- Icons -->
-    <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
+  <!-- Icons -->
+  <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
 
     <!-- Properties for custom actions -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
-    <!-- UI Reference -->
-    <UIRef Id="WixUI_InstallDir" />
+  <!-- UI Reference: use Mondo UI to include feature selection (checkboxes) and install directory -->
+  <UIRef Id="WixUI_Mondo" />
 
-    <!-- License agreement -->
-    <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)LICENSE.txt" />
+  <!-- License agreement -->
+  <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)wix\LICENSE.rtf" />
 
     <!-- Custom actions to clean up user data on uninstall -->
     <CustomAction Id="CleanUserData"

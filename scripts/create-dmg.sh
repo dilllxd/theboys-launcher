@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Create macOS DMG installer for TheBoys Launcher
+# Create macOS DMG installer for TheBoysLauncher
 # Usage: ./create-dmg.sh <arch> <version>
 # arch: amd64, arm64, or universal
 # version: version string (e.g., v3.0.1)
@@ -20,7 +20,7 @@ VERSION=$2
 
 BUILD_DIR="build/$ARCH"
 APP_NAME="TheBoysLauncher.app"
-DMG_NAME="TheBoys-Launcher-$VERSION-$ARCH"
+DMG_NAME="TheBoysLauncher-$VERSION-$ARCH"
 DMG_PATH="$DMG_NAME.dmg"
 
 echo "Creating macOS DMG for $ARCH..."
@@ -51,7 +51,7 @@ ln -s /Applications "$DMG_DIR/Applications"
 if command -v create-dmg &> /dev/null; then
     echo "Creating styled DMG with create-dmg..."
     create-dmg \
-        --volname "TheBoys Launcher ($ARCH)" \
+    --volname "TheBoysLauncher ($ARCH)" \
         --volicon "$BUILD_DIR/$APP_NAME/Contents/Resources/AppIcon.icns" \
         --window-pos 200 120 \
         --window-size 600 400 \
@@ -67,7 +67,7 @@ else
     echo "Creating basic DMG with hdiutil..."
 
     # Create DMG
-    hdiutil create -srcfolder "$DMG_DIR" -volname "TheBoys Launcher ($ARCH)" -fs HFS+ -fsargs "-c c=64,a=16,e=16" -format UDRW -size 100m "$DMG_PATH.temp.dmg"
+    hdiutil create -srcfolder "$DMG_DIR" -volname "TheBoysLauncher ($ARCH)" -fs HFS+ -fsargs "-c c=64,a=16,e=16" -format UDRW -size 100m "$DMG_PATH.temp.dmg"
 
     # Mount DMG
     DEVICE=$(hdiutil attach -readwrite -noverify -noautoopen "$DMG_PATH.temp.dmg" | egrep '^/dev/' | sed 1q | awk '{print $1}')
@@ -78,7 +78,7 @@ else
     # Set up appearance (basic)
     echo '
     tell application "Finder"
-        tell disk "'TheBoys Launcher ($ARCH)'"
+    tell disk "'TheBoysLauncher ($ARCH)'"
             open
             set current view of container window to icon view
             set toolbar visible of container window to false

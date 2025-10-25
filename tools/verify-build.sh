@@ -1,5 +1,5 @@
 #!/bin/bash
-# Quick build verification script for TheBoys Launcher
+# Quick build verification script for TheBoysLauncher
 # Run this before committing changes to ensure basic compilation
 
 echo "🔍 Running quick build verification..."

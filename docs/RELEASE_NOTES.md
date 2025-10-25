@@ -158,9 +158,9 @@
 ### 📞 Support
 
 #### Getting Help
-- **GitHub Issues** - [Report bugs and request features](https://github.com/dilllxd/theboys-launcher/issues)
-- **GitHub Discussions** - [Community discussions](https://github.com/dilllxd/theboys-launcher/discussions)
-- **Documentation** - [Complete documentation](https://github.com/dilllxd/theboys-launcher/tree/macos-support)
+- **GitHub Issues** - [Report bugs and request features](https://github.com/dilllxd/theboyslauncher/issues)
+- **GitHub Discussions** - [Community discussions](https://github.com/dilllxd/theboyslauncher/discussions)
+- **Documentation** - [Complete documentation](https://github.com/dilllxd/theboyslauncher/tree/macos-support)
 
 #### Contributing
 - **Pull Requests** - Welcome for bug fixes and features
@@ -174,22 +174,22 @@
 ### Latest Release (v3.0.1)
 
 #### Windows
-- [TheBoys-Launcher-Setup.exe](https://github.com/dilllxd/theboys-launcher/releases/download/v3.0.1/TheBoys-Launcher-Setup.exe)
+- [TheBoysLauncher-Setup.exe](https://github.com/dilllxd/theboyslauncher/releases/download/v3.0.1/TheBoysLauncher-Setup.exe)
 
 #### macOS
-- [TheBoys-Launcher-Universal.dmg](https://github.com/dilllxd/theboys-launcher/releases/download/v3.0.1/TheBoys-Launcher-Universal.dmg)
-- [TheBoys-Launcher-Intel.zip](https://github.com/dilllxd/theboys-launcher/releases/download/v3.0.1/TheBoys-Launcher-Intel.zip)
-- [TheBoys-Launcher-AppleSilicon.zip](https://github.com/dilllxd/theboys-launcher/releases/download/v3.0.1/TheBoys-Launcher-AppleSilicon.zip)
+- [TheBoysLauncher-Universal.dmg](https://github.com/dilllxd/theboyslauncher/releases/download/v3.0.1/TheBoysLauncher-Universal.dmg)
+- [TheBoysLauncher-Intel.zip](https://github.com/dilllxd/theboyslauncher/releases/download/v3.0.1/TheBoysLauncher-Intel.zip)
+- [TheBoysLauncher-AppleSilicon.zip](https://github.com/dilllxd/theboyslauncher/releases/download/v3.0.1/TheBoysLauncher-AppleSilicon.zip)
 
 #### Source Code
-- [Source Code (tar.gz)](https://github.com/dilllxd/theboys-launcher/archive/refs/tags/v3.0.1.tar.gz)
-- [Source Code (zip)](https://github.com/dilllxd/theboys-launcher/archive/refs/tags/v3.0.1.zip)
+- [Source Code (tar.gz)](https://github.com/dilllxd/theboyslauncher/archive/refs/tags/v3.0.1.tar.gz)
+- [Source Code (zip)](https://github.com/dilllxd/theboyslauncher/archive/refs/tags/v3.0.1.zip)
 
 ### Build from Source
 See [BUILD.md](./BUILD.md) for comprehensive build instructions.
 
 ---
 
-**Thank you for using TheBoys Launcher!** 🚀
+**Thank you for using TheBoysLauncher!** 🚀
 
-This release represents months of work to bring TheBoys Launcher to multiple platforms while maintaining the simplicity and reliability that users expect.
+This release represents months of work to bring TheBoysLauncher to multiple platforms while maintaining the simplicity and reliability that users expect.

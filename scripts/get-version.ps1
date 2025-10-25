@@ -1,4 +1,4 @@
-# Get-Version PowerShell Script for TheBoys Launcher
+# Get-Version PowerShell Script for TheBoysLauncher
 # This script reads version information and exports it in various formats
 
 param(

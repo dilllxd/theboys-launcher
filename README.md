@@ -1,4 +1,4 @@
-# TheBoys Launcher
+# TheBoysLauncher
 
 A cross-platform Minecraft bootstrapper and modpack manager that automatically downloads, configures, and launches Prism Launcher with modpacks.
 
@@ -18,12 +18,12 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 ## 📦 Installation
 
 ### Windows
-1. Download the latest `TheBoys-Launcher-Setup.exe` from [Releases](https://github.com/dilllxd/theboys-launcher/releases)
+1. Download the latest `TheBoysLauncher-Setup.exe` from [Releases](https://github.com/dilllxd/theboyslauncher/releases)
 2. Run the installer
 3. Launch from desktop shortcut or Start menu
 
 ### macOS
-1. Download the latest `TheBoysLauncher-Universal.zip` from [Releases](https://github.com/dilllxd/theboys-launcher/releases)
+1. Download the latest `TheBoysLauncher-Universal.zip` from [Releases](https://github.com/dilllxd/theboyslauncher/releases)
 2. Extract the ZIP file
 3. Drag `TheBoysLauncher.app` to your Applications folder
 4. Launch from Applications (first launch may require bypassing Gatekeeper)
@@ -31,7 +31,7 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 **Note for macOS users**: The launcher is not signed, so you may need to right-click → Open or go to System Preferences → Security & Privacy to allow it to run.
 
 ### Linux
-1. Download the latest `TheBoys-Launcher-linux.tar.gz` from [Releases](https://github.com/dilllxd/theboys-launcher/releases)
+1. Download the latest `TheBoysLauncher-linux.tar.gz` from [Releases](https://github.com/dilllxd/theboyslauncher/releases)
 2. Extract the archive
 3. Run `./TheBoysLauncher` from the extracted directory
 
@@ -45,8 +45,8 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 ### Quick Build
 ```bash
 # Clone the repository
-git clone https://github.com/dilllxd/theboys-launcher.git
-cd theboys-launcher
+git clone https://github.com/dilllxd/theboyslauncher.git
+cd theboyslauncher
 
 # Build for current platform
 make build
@@ -97,7 +97,7 @@ lipo -create TheBoysLauncher TheBoysLauncher-arm64 -output TheBoysLauncher-unive
 ## 📁 Project Structure
 
 ```
-theboys-launcher/
+theboyslauncher/
 ├── main.go                    # Application entry point
 ├── platform.go                # Platform detection and abstractions
 ├── platform_windows.go        # Windows-specific implementations
@@ -170,9 +170,9 @@ theboys-launcher/
 
 The launcher stores configuration in platform-specific locations:
 
-- **Windows**: `%USERPROFILE%\.theboys-launcher`
+- **Windows**: `%LOCALAPPDATA%\TheBoysLauncher`
 - **macOS**: `~/Library/Application Support/TheBoysLauncher`
-- **Linux**: `~/.theboys-launcher`
+- **Linux**: `~/.theboyslauncher`
 
 ### Configuration Options
 - **Memory Allocation**: Automatic detection with manual override
@@ -263,10 +263,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/dilllxd/theboys-launcher/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dilllxd/theboys-launcher/discussions)
-- **Releases**: [GitHub Releases](https://github.com/dilllxd/theboys-launcher/releases)
+- **Issues**: [GitHub Issues](https://github.com/dilllxd/theboyslauncher/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/dilllxd/theboyslauncher/discussions)
+- **Releases**: [GitHub Releases](https://github.com/dilllxd/theboyslauncher/releases)
 
 ---
 
-**TheBoys Launcher** - Simplifying Minecraft modpack management across all platforms. 🚀
+**TheBoysLauncher** - Simplifying Minecraft modpack management across all platforms. 🚀
