@@ -3,7 +3,7 @@
   <Product Id="*"
            Name="TheBoysLauncher"
            Language="1033"
-           Version="3.2.0"
+           Version="$(var.ProductVersion)"
            Manufacturer="Dylan"
            UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
 
@@ -22,10 +22,11 @@
   <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoysLauncher is already installed." />
 
     <!-- Features -->
-    <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
+      <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <!-- ShortcutsFeature is a child feature that users can enable/disable in the UI -->
-      <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="1" Absent="allow">
+      <!-- Default Level=0 means not installed by default; user can enable the feature in the feature selection dialog -->
+      <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="0" Absent="allow">
         <ComponentRef Id="ApplicationShortcut" />
         <ComponentRef Id="DesktopShortcut" />
       </Feature>
@@ -80,6 +81,7 @@
 
   <!-- Start Menu Shortcut -->
   <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+    <Condition>CREATE_STARTMENU_SHORTCUT="1"</Condition>
   <Shortcut Id="ApplicationStartMenuShortcut"
         Name="TheBoysLauncher"
         Description="TheBoys Minecraft Modpack Launcher"
@@ -98,6 +100,7 @@
 
   <!-- Desktop Shortcut (optional) -->
     <Component Id="DesktopShortcut" Directory="DesktopFolder">
+      <Condition>CREATE_DESKTOP_SHORTCUT="1"</Condition>
       <Shortcut Id="ApplicationDesktopShortcut"
                 Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
@@ -115,13 +118,44 @@
 
   <!-- Icons -->
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
+
+  <!-- Properties to control shortcut creation (default = 0 -> not created) -->
+  <Property Id="CREATE_DESKTOP_SHORTCUT" Value="0" />
+  <Property Id="CREATE_STARTMENU_SHORTCUT" Value="0" />
   <!-- Properties for custom actions -->
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   <!-- Ensure installed product shows an icon in Add/Remove Programs -->
   <Property Id="ARPPRODUCTICON" Value="IconICO" />
 
-  <!-- UI Reference: use Mondo UI to include feature selection (checkboxes) and install directory -->
-  <UIRef Id="WixUI_Mondo" />
+  <!-- UI Reference: use a simple InstallDir UI, and add a custom dialog to ask about shortcuts -->
+  <UIRef Id="WixUI_InstallDir" />
+
+  <!-- Custom dialog to ask about creating shortcuts (appears after InstallDirDlg) -->
+  <UI>
+    <DialogRef Id="InstallDirDlg" />
+    <!-- After InstallDir, show ShortcutDlg to ask user about shortcuts -->
+    <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ShortcutDlg">1</Publish>
+
+    <Dialog Id="ShortcutDlg" Width="370" Height="270" Title="Create Shortcuts">
+      <Control Id="Banner" Type="Banner" X="0" Y="0" Width="370" Height="60"/>
+      <Control Id="Description" Type="Text" X="15" Y="70" Width="340" Height="30" Transparent="yes" NoPrefix="yes">
+        <Text>Please choose whether you want shortcuts created for TheBoysLauncher.</Text>
+      </Control>
+
+      <Control Id="StartMenuCheck" Type="CheckBox" X="20" Y="110" Width="330" Height="17" Property="CREATE_STARTMENU_SHORTCUT" CheckBoxValue="1" Text="Create a Start Menu shortcut" />
+      <Control Id="DesktopCheck" Type="CheckBox" X="20" Y="140" Width="330" Height="17" Property="CREATE_DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a Desktop shortcut" />
+
+      <Control Id="Back" Type="PushButton" X="180" Y="235" Width="56" Height="17" Text="&amp;Back">
+        <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+      </Control>
+      <Control Id="Next" Type="PushButton" X="240" Y="235" Width="56" Height="17" Text="&amp;Next">
+        <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      </Control>
+      <Control Id="Cancel" Type="PushButton" X="300" Y="235" Width="56" Height="17" Text="Cancel">
+        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+      </Control>
+    </Dialog>
+  </UI>
 
   <!-- License agreement -->
   <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)wix\LICENSE.rtf" />

@@ -44,6 +44,8 @@ type Modpack struct {
 type LauncherSettings struct {
 	MemoryMB int  `json:"memoryMB"` // Memory allocation in MB (2-16GB range)
 	AutoRAM  bool `json:"autoRam"`  // Whether to auto-manage RAM per modpack
+	// If true, the launcher will check and install prerelease/dev builds from releases
+	DevBuildsEnabled bool `json:"devBuildsEnabled,omitempty"`
 }
 
 var defaultModpackID string
@@ -68,15 +70,17 @@ func loadSettings(root string) error {
 	settingsPath := filepath.Join(root, "settings.json")
 
 	defaultSettings := LauncherSettings{
-		MemoryMB: clampMemoryMB(DefaultAutoMemoryMB()),
-		AutoRAM:  true,
+		MemoryMB:         clampMemoryMB(DefaultAutoMemoryMB()),
+		AutoRAM:          true,
+		DevBuildsEnabled: false,
 	}
 
 	// Try to load existing settings
 	if data, err := os.ReadFile(settingsPath); err == nil {
 		type storedSettings struct {
-			MemoryMB int   `json:"memoryMB"`
-			AutoRAM  *bool `json:"autoRam"`
+			MemoryMB         int   `json:"memoryMB"`
+			AutoRAM          *bool `json:"autoRam"`
+			DevBuildsEnabled *bool `json:"devBuildsEnabled"`
 		}
 		var stored storedSettings
 		if err := json.Unmarshal(data, &stored); err == nil {
@@ -88,6 +92,11 @@ func loadSettings(root string) error {
 				settings.AutoRAM = true
 			} else {
 				settings.AutoRAM = *stored.AutoRAM
+			}
+			if stored.DevBuildsEnabled == nil {
+				settings.DevBuildsEnabled = false
+			} else {
+				settings.DevBuildsEnabled = *stored.DevBuildsEnabled
 			}
 			if !settings.AutoRAM {
 				settings.MemoryMB = clampMemoryMB(settings.MemoryMB)

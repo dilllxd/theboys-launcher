@@ -27,9 +27,16 @@ if (-not (Test-Path $exePath)) {
 Write-Host "Using candle.exe to compile wix/Product.wxs"
 
 # Build arguments safely as an array
+# Clean up version for product metadata (strip leading 'v' if present)
+$cleanVersion = $Version.Trim()
+if ($cleanVersion.StartsWith('v')) { $cleanVersion = $cleanVersion.Substring(1) }
+Write-Host "Clean version: $cleanVersion"
+
+# Pass ProductVersion to candle so Product/@Version uses $(var.ProductVersion)
 $candleArgs = @(
     "-dProjectDir=$projectDir",
     "-dTheBoysLauncher.TargetPath=$exePath",
+    "-dProductVersion=$cleanVersion",
     "wix\\Product.wxs",
     "-out",
     "installer.wixobj"
@@ -39,10 +46,10 @@ $candleArgs = @(
 if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed"; exit $LASTEXITCODE }
 
 Write-Host "Running light.exe to link the MSI"
-& light.exe installer.wixobj -ext WixUIExtension -out "TheBoysLauncher-Setup-$Version.msi" -sval
+& light.exe installer.wixobj -ext WixUIExtension -out "TheBoysLauncher-Setup-$cleanVersion.msi" -sval
 if ($LASTEXITCODE -ne 0) { Write-Error "light.exe failed"; exit $LASTEXITCODE }
 
-Write-Host "MSI created: TheBoysLauncher-Setup-$Version.msi"
+Write-Host "MSI created: TheBoysLauncher-Setup-$cleanVersion.msi"
 Remove-Item installer.wixobj -ErrorAction SilentlyContinue
 
 exit 0
