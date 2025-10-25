@@ -175,7 +175,6 @@
 
     <!-- Launch application on exit when checkbox selected -->
     <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
-    <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return">1</Publish>
   </UI>
 
   <!-- License agreement -->
