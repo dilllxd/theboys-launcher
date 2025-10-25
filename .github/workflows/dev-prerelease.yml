@@ -273,14 +273,17 @@ jobs:
         run: |
           set -euo pipefail
           UPLOAD_URL=${{ steps.release.outputs.upload_url }}
-          shopt -s globstar
-          for file in release-artifacts/**; do
-            if [ -f "$file" ]; then
-              echo "Uploading $file"
-              curl -s -X POST \
-                -H "Authorization: token $GITHUB_TOKEN" \
-                -H "Content-Type: application/octet-stream" \
-                --data-binary @"$file" \
-                "${UPLOAD_URL}?name=$(basename "$file")"
-            fi
-          done
+          UPLOAD_URL="${UPLOAD_URL%\{*}"
+
+          echo "Assets to upload:"
+          find release-artifacts -type f -print
+
+          while IFS= read -r file; do
+            base=$(basename "$file")
+            echo "Uploading $base"
+            curl -sSL -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$file" \
+              "${UPLOAD_URL}?name=${base}"
+          done < <(find release-artifacts -type f -print)
