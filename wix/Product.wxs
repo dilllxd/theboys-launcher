@@ -116,6 +116,7 @@
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
 
   <!-- Properties to control shortcut creation -->
+  <Property Id="SHORTCUTS_DIALOG_SHOWN" Value="0" />
   <Property Id="CREATE_DESKTOP_SHORTCUT" Value="1" />
   <Property Id="CREATE_STARTMENU_SHORTCUT" Value="1" />
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
@@ -129,11 +130,27 @@
 
   <!-- Base UI with custom shortcut dialog -->
   <UIRef Id="WixUI_InstallDir" />
+  <UIRef Id="WixUI_Common" />
 
   <UI>
     <DialogRef Id="InstallDirDlg" />
-    <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ShortcutDlg">1</Publish>
-    <Publish Dialog="ShortcutDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg">1</Publish>
+    <DialogRef Id="BrowseDlg" />
+    <DialogRef Id="DiskCostDlg" />
+    <DialogRef Id="ErrorDlg" />
+    <DialogRef Id="FatalError" />
+    <DialogRef Id="FilesInUse" />
+    <DialogRef Id="MsiRMFilesInUse" />
+    <DialogRef Id="PrepareDlg" />
+    <DialogRef Id="ProgressDlg" />
+    <DialogRef Id="ResumeDlg" />
+    <DialogRef Id="UserExit" />
+
+    <!-- Intercept Install button to show shortcut dialog -->
+    <Publish Dialog="VerifyReadyDlg" Control="Install" Event="NewDialog" Value="ShortcutDlg">SHORTCUTS_DIALOG_SHOWN = 0</Publish>
+    <Publish Dialog="VerifyReadyDlg" Control="Install" Event="EndDialog" Value="Return">SHORTCUTS_DIALOG_SHOWN = 1</Publish>
+
+    <Publish Dialog="ShortcutDlg" Control="Back" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+    <Publish Dialog="ShortcutDlg" Control="Next" Event="SetProperty" Value="SHORTCUTS_DIALOG_SHOWN=1">1</Publish>
     <Publish Dialog="ShortcutDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
 
     <Dialog Id="ShortcutDlg" Width="370" Height="260" Title="Create Shortcuts">
@@ -155,6 +172,10 @@
         <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
       </Control>
     </Dialog>
+
+    <!-- Launch application on exit when checkbox selected -->
+    <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
+    <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return">1</Publish>
   </UI>
 
   <!-- License agreement -->
@@ -168,9 +189,16 @@
                   Return="ignore"
                   HideTarget="no" />
 
+    <CustomAction Id="LaunchApplication"
+                  FileKey="TheBoysLauncherEXE"
+                  ExeCommand=""
+                  Return="asyncNoWait"
+                  Impersonate="yes" />
+
     <InstallExecuteSequence>
       <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
     </InstallExecuteSequence>
+    <UIRef Id="WixUI_ErrorProgressText" />
 
   </Product>
 </Wix>
