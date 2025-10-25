@@ -27,9 +27,18 @@ if (-not (Test-Path $exePath)) {
 Write-Host "Using candle.exe to compile wix/Product.wxs"
 
 # Build arguments safely as an array
-# Clean up version for product metadata (strip leading 'v' if present)
+# Clean up version for product metadata (strip leading 'v' if present and ensure valid format for WiX)
 $cleanVersion = $Version.Trim()
 if ($cleanVersion.StartsWith('v')) { $cleanVersion = $cleanVersion.Substring(1) }
+
+# Ensure version conforms to x.x.x.x format
+if ($cleanVersion -match '^(\d+\.\d+\.\d+)(?:[-.].*)?$') {
+    $cleanVersion = $matches[1] + ".0"  # Append .0 to ensure x.x.x.x format
+} else {
+    Write-Error "Invalid version format: $cleanVersion. Expected format: x.x.x or x.x.x.x"
+    exit 1
+}
+
 Write-Host "Clean version: $cleanVersion"
 
 # Pass ProductVersion to candle so Product/@Version uses $(var.ProductVersion)
