@@ -56,7 +56,11 @@ jobs:
           else
             # Fallback: read from version.env if present
             source ./version.env || true
-            VERSION="${VERSION}-${PRERELEASE}"
+            if [[ -n "${PRERELEASE:-}" ]]; then
+              VERSION="${VERSION}-${PRERELEASE}"
+            else
+              VERSION="${VERSION}"
+            fi
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "Building version (from version.env): $VERSION"
           fi
@@ -186,7 +190,11 @@ jobs:
           if [ -z "$TAG" ]; then
             echo "GITHUB_REF_NAME empty, falling back to version.env"
             source ./version.env || true
-            TAG="v${VERSION}-${PRERELEASE}"
+            if [[ -n "${PRERELEASE:-}" ]]; then
+              TAG="v${VERSION}-${PRERELEASE}"
+            else
+              TAG="v${VERSION}"
+            fi
           fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           if echo "${TAG}" | grep -E -qi "-dev[.]"; then
