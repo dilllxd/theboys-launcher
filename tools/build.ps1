@@ -43,7 +43,10 @@ $resourceContent | Set-Content "resource.rc" -Encoding UTF8
 
 # Compile resources
 Write-Host "Compiling resources..." -ForegroundColor Blue
-& rsrc -ico icon.ico -manifest resource.rc -o resource.syso
+# Embed icon and other resources. Do not pass resource.rc as a manifest here because
+# an RC-based VERSIONINFO is not a valid application manifest and can cause
+# side-by-side configuration errors on Windows (LGHT0103 / SxS failures).
+& rsrc -ico icon.ico -o resource.syso
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Resource compilation failed!" -ForegroundColor Red

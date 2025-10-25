@@ -24,15 +24,11 @@
     <!-- Features -->
     <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
-      <!-- Shortcut components exposed via ShortcutsFeature -->
-      <ComponentRef Id="ApplicationShortcut" />
-      <ComponentRef Id="DesktopShortcut" />
-    </Feature>
-
-    <!-- Expose an optional feature so the MSI UI can allow users to select shortcuts -->
-    <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="1" Absent="allow">
-      <ComponentRef Id="ApplicationShortcut" />
-      <ComponentRef Id="DesktopShortcut" />
+      <!-- ShortcutsFeature is a child feature that users can enable/disable in the UI -->
+      <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="1" Absent="allow">
+        <ComponentRef Id="ApplicationShortcut" />
+        <ComponentRef Id="DesktopShortcut" />
+      </Feature>
     </Feature>
 
     <!-- Directories -->
