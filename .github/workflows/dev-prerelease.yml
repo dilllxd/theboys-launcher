@@ -57,17 +57,17 @@ jobs:
           PRERELEASE="dev.${SHORT_SHA}"
           FULL_VERSION="${VERSION}-${PRERELEASE}"
 
-          cat > version.env <<EOF
-# TheBoysLauncher Version Configuration (auto-generated)
-VERSION=$VERSION
-MAJOR=$MAJOR
-MINOR=$MINOR
-PATCH=$PATCH
-BUILD_METADATA=
-PRERELEASE=$PRERELEASE
-
-# Full version string is constructed by scripts/get-version.sh
-EOF
+          {
+            echo "# TheBoysLauncher Version Configuration (auto-generated)"
+            echo "VERSION=$VERSION"
+            echo "MAJOR=$MAJOR"
+            echo "MINOR=$MINOR"
+            echo "PATCH=$PATCH"
+            echo "BUILD_METADATA="
+            echo "PRERELEASE=$PRERELEASE"
+            echo
+            echo "# Full version string is constructed by scripts/get-version.sh"
+          } > version.env
 
           git add version.env
           if git diff --cached --quiet; then
