@@ -1,52 +1,17 @@
-name: Dev CI + Auto-bump
+name: Build on version.env change
 
 on:
   push:
-    branches:
-      - dev
+    paths:
+      - 'version.env'
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  autobump:
-    if: ${{ github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-latest
-    # Avoid running autobump when the push was made by the actions bot (prevents loop)
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Run auto-bump
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: provide a PERSONAL_ACCESS_TOKEN secret with repo scope to allow tag pushes
-          # created by this workflow to trigger other workflows. If absent, GITHUB_TOKEN will be used
-          # (note: pushes performed with GITHUB_TOKEN may NOT trigger other workflows).
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        run: |
-          set -e
-          # If a PAT is configured, change the origin remote to use it so pushes come from the PAT
-          if [ -n "${PERSONAL_ACCESS_TOKEN}" ]; then
-            echo "Using PERSONAL_ACCESS_TOKEN to push tags so they trigger workflows"
-            git remote set-url origin "https://x-access-token:${PERSONAL_ACCESS_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          else
-            echo "No PERSONAL_ACCESS_TOKEN provided; will push using GITHUB_TOKEN (may not trigger workflows)"
-          fi
-          chmod +x ./scripts/auto-bump.sh
-          ./scripts/auto-bump.sh
-
   build:
-    name: Build Applications (after autobump)
-    needs: autobump
+    name: Build Applications
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -77,16 +42,12 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Get version
+      - name: Read version.env
         id: version
         shell: bash
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-          else
-            source ./scripts/get-version.sh
-            VERSION="$FULL_VERSION"
-          fi
+          source ./version.env || true
+          VERSION="${VERSION}-${PRERELEASE}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
@@ -193,7 +154,7 @@ jobs:
           ls -la ${{ matrix.binary_name }}* 2>/dev/null || true
 
   publish_release:
-    name: Publish Release (autobump)
+    name: Publish Release (on version.env change)
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -265,5 +226,3 @@ jobs:
                 --data-binary @"$f" "${UPLOAD_URL}?name=$(basename "$f")"
             fi
           done
-
-  # dispatch-build removed: tag pushes now trigger build.yml directly

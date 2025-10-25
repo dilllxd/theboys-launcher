@@ -1,0 +1,39 @@
+name: Dev Auto-bump
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  autobump:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run auto-bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          set -e
+          if [ -n "${PERSONAL_ACCESS_TOKEN}" ]; then
+            echo "Using PERSONAL_ACCESS_TOKEN to push tags so they trigger workflows"
+            git remote set-url origin "https://x-access-token:${PERSONAL_ACCESS_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          else
+            echo "No PERSONAL_ACCESS_TOKEN provided; will push using GITHUB_TOKEN (may not trigger workflows)"
+          fi
+          chmod +x ./scripts/auto-bump.sh
+          ./scripts/auto-bump.sh
