@@ -172,32 +172,7 @@ jobs:
 
     - name: Build Windows installer
       if: matrix.platform == 'windows'
-      run: |
-        # Ensure the exe contains embedded icon and version info by running the build script
-        $version = "${{ steps.version.outputs.version }}"
-        Write-Host "Embedding icon and building exe for installer: $version"
-
-        # Run the build script to compile resources and produce TheBoysLauncher.exe
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "& { .\tools\build.ps1 -Version '$version' }"
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        # Use the maintained wix/Product.wxs to create the MSI
-        Write-Host "Creating MSI using wix\Product.wxs"
-
-        # Define ProjectDir for WXS so $(var.ProjectDir) resolves to repo root
-        $projectDir = $PWD
-        $candleTarget = Join-Path $projectDir 'TheBoysLauncher.exe'
-        # Invoke candle and light from PATH (WiX bin should have been appended earlier)
-        candle.exe -dProjectDir="$projectDir" -dTheBoysLauncher.TargetPath="$candleTarget" wix\Product.wxs -out installer.wixobj
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        light.exe installer.wixobj -ext WixUIExtension -out "TheBoysLauncher-Setup-$version.msi" -sval
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-        # Clean up temporary files
-        Remove-Item installer.wixobj -ErrorAction SilentlyContinue
-
-        Write-Host "MSI installer created successfully: TheBoysLauncher-Setup-$version.msi"
+      run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -Version "${{ steps.version.outputs.version }}"
 
     # NOTE: WiX installation is handled earlier and the path is appended to GITHUB_PATH. Duplicate installation step removed.
 
