@@ -9,7 +9,7 @@ Flow
 1. You push commits to `dev`.  
    The workflow bumps `version.env` by incrementing the patch number, stamps `PRERELEASE=dev.<short-sha>`, commits the change, and tags the commit (`v<version>-dev.<sha>`).
 
-2. The build matrix compiles the launcher for Linux, Windows, and macOS, including the WiX-based MSI.
+2. The build matrix compiles the launcher for Linux, Windows, and macOS. Artifacts are normalised to platform-specific filenames (`TheBoysLauncher-linux`, `TheBoysLauncher.exe`, `TheBoysLauncher-mac-universal`, `TheBoysLauncher-mac-native`, and `TheBoysLauncher-Setup-<version>.msi`).
 
 3. A prerelease is created on GitHub using the new tag, and all artifacts from the build matrix are attached automatically.
 
