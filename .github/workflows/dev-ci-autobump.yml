@@ -1,0 +1,50 @@
+name: Dev CI + Auto-bump
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  autobump:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    # Avoid running autobump when the push was made by the actions bot (prevents loop)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run auto-bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./scripts/auto-bump.sh
+          ./scripts/auto-bump.sh
+
+  dispatch-build:
+    needs: autobump
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger build workflow_dispatch for `build.yml`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+        run: |
+          echo "Dispatching build.yml on ref $REF"
+          curl -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            https://api.github.com/repos/$REPO/actions/workflows/build.yml/dispatches \
+            -d "{\"ref\": \"$REF\"}"

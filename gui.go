@@ -1472,7 +1472,153 @@ func (g *GUI) showSettings() {
 		applyManual(v)
 	}
 
+	// Dev builds checkbox
+	devCheck := widget.NewCheck("Enable dev builds (pre-release)", nil)
+	devCheck.SetChecked(settings.DevBuildsEnabled)
+
+	// backup metadata file path
+	backupMetaPath := filepath.Join(g.root, "dev-backup.json")
+	backupExePath := filepath.Join(g.root, "backup-non-dev"+getExecutableExtension())
+
+	devCheck.OnChanged = func(on bool) {
+		// If enabling, create a backup of the latest stable executable so we can restore later
+		if on {
+			// Avoid blocking UI - show progress and run in goroutine
+			g.showLoading(true, "Preparing dev-build backup...")
+			go func() {
+				defer g.showLoading(false, "")
+
+				tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension(), false)
+				if err != nil {
+					// Failed to fetch stable asset; revert checkbox on main thread
+					logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))
+					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to fetch stable backup; dev builds not enabled"})
+					fyne.Do(func() { devCheck.SetChecked(false) })
+					return
+				}
+
+				// download stable exe to backup path
+				if err := downloadTo(assetURL, backupExePath, 0755); err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to download backup exe: %v", err)))
+					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to download backup; dev builds not enabled"})
+					fyne.Do(func() { devCheck.SetChecked(false) })
+					return
+				}
+
+				// write metadata
+				meta := map[string]string{"tag": tag, "path": backupExePath}
+				if data, jerr := json.MarshalIndent(meta, "", "  "); jerr == nil {
+					_ = os.WriteFile(backupMetaPath, data, 0644)
+				}
+
+				settings.DevBuildsEnabled = true
+				if err := saveSettings(g.root); err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to save settings after enabling dev builds: %v", err)))
+				}
+
+				fyne.Do(func() {
+					g.updateStatus("Dev builds enabled")
+				})
+			}()
+			return
+		}
+
+		// Disabling dev builds: offer to restore backup if present
+		settings.DevBuildsEnabled = false
+		if err := saveSettings(g.root); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to save settings after disabling dev builds: %v", err)))
+		}
+
+		// If backup metadata exists, ask user to restore now (this will restart the launcher)
+		if exists(backupMetaPath) && exists(backupExePath) {
+			fyne.Do(func() {
+				confirm := dialog.NewConfirm("Restore previous launcher?", "A backup of the previous non-dev launcher was found. Restore it now? This will restart the launcher.", func(ok bool) {
+					if ok {
+						// Perform replace and restart
+						go func() {
+							// Use replaceAndRestart from update.go
+							_ = replaceAndRestart(g.exePath, backupExePath)
+						}()
+					} else {
+						g.updateStatus("Dev builds disabled (no restore)")
+					}
+				}, g.window)
+				confirm.Show()
+			})
+		} else {
+			g.updateStatus("Dev builds disabled")
+		}
+	}
+
 	refreshUI()
+
+	// Channel & backup info
+	channelLabel := widget.NewLabel("")
+	backupLabel := widget.NewLabel("")
+
+	restoreBtn := widget.NewButton("Restore backup now", func() {
+		if !exists(backupMetaPath) || !exists(backupExePath) {
+			dialog.ShowInformation("No backup", "No backup found to restore.", g.window)
+			return
+		}
+		// Confirm
+		confirm := dialog.NewConfirm("Restore backup?", "Restoring will replace the current launcher and restart. Continue?", func(ok bool) {
+			if ok {
+				go func() { _ = replaceAndRestart(g.exePath, backupExePath) }()
+			}
+		}, g.window)
+		confirm.Show()
+	})
+
+	deleteBtn := widget.NewButton("Delete backup", func() {
+		if !exists(backupMetaPath) && !exists(backupExePath) {
+			dialog.ShowInformation("No backup", "No backup present.", g.window)
+			return
+		}
+		confirm := dialog.NewConfirm("Delete backup?", "Delete the saved non-dev backup? This cannot be undone.", func(ok bool) {
+			if !ok {
+				return
+			}
+			_ = os.Remove(backupMetaPath)
+			_ = os.Remove(backupExePath)
+			backupLabel.SetText("No backup present")
+			dialog.ShowInformation("Deleted", "Backup deleted.", g.window)
+		}, g.window)
+		confirm.Show()
+	})
+
+	// helper to refresh channel/backup UI
+	refreshChannelUI := func() {
+		if settings.DevBuildsEnabled {
+			channelLabel.SetText("Channel: Dev (enabled)")
+		} else {
+			channelLabel.SetText("Channel: Stable")
+		}
+
+		if exists(backupMetaPath) {
+			data, err := os.ReadFile(backupMetaPath)
+			if err == nil {
+				var meta map[string]string
+				if json.Unmarshal(data, &meta) == nil {
+					tag := meta["tag"]
+					info := fmt.Sprintf("Backup tag: %s", tag)
+					// show file info (mod time) if exe exists
+					if fi, err := os.Stat(backupExePath); err == nil {
+						info = fmt.Sprintf("%s • saved: %s", info, fi.ModTime().Format(time.RFC1123))
+					}
+					backupLabel.SetText(info)
+				} else {
+					backupLabel.SetText("Backup metadata corrupted")
+				}
+			} else {
+				backupLabel.SetText("Failed to read backup metadata")
+			}
+		} else {
+			backupLabel.SetText("No backup present")
+		}
+	}
+
+	refreshChannelUI()
 
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
 		if err := saveSettings(g.root); err != nil {
@@ -1486,6 +1632,12 @@ func (g *GUI) showSettings() {
 	dialogContent := container.NewVBox(
 		widget.NewLabel("Launcher Settings"),
 		autoCheck,
+		devCheck,
+		container.NewVBox(
+			container.NewHBox(channelLabel, layout.NewSpacer()),
+			container.NewHBox(backupLabel, layout.NewSpacer()),
+			container.NewHBox(restoreBtn, layout.NewSpacer(), deleteBtn),
+		),
 		memLabel,
 		memSlider,
 		container.NewHBox(layout.NewSpacer(), saveBtn),

@@ -26,7 +26,9 @@ func selfUpdate(root, exePath string, report func(string)) error {
 
 	notify("Checking for launcher updates...")
 
-	tag, assetURL, err := fetchLatestAsset(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension())
+	// Prefer prerelease/dev builds if the user has enabled them
+	preferDev := settings.DevBuildsEnabled
+	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension(), preferDev)
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")
@@ -87,6 +89,83 @@ func selfUpdate(root, exePath string, report func(string)) error {
 	return nil
 }
 
+// fetchLatestAssetPreferPrerelease fetches the latest asset URL for the desired binary.
+// If preferPrerelease is true it will attempt to find a prerelease tag (containing "dev") first,
+// otherwise it falls back to the latest normal release.
+func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerelease bool) (tag, url string, err error) {
+	releasesURL := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
+	var assetURL string
+
+	resp, err := http.Get(releasesURL)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to fetch releases page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", "", fmt.Errorf("GitHub releases page returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read releases page HTML: %w", err)
+	}
+	html := string(body)
+
+	// If preferPrerelease, try to locate a tag that contains 'dev' (our autobump uses dev.<sha>)
+	if preferPrerelease {
+		// Match tags like v1.2.3-dev.<sha> (look for '-dev.' to reduce false positives)
+		prereleaseRe := regexp.MustCompile(fmt.Sprintf(`/%s/%s/releases/tag/([^"']*-dev[.\-][^"']*)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo)))
+		if m := prereleaseRe.FindStringSubmatch(html); len(m) >= 2 {
+			tag = m[1]
+			assetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
+			// verify
+			headReq, _ := http.NewRequest("HEAD", assetURL, nil)
+			headReq.Header.Set("User-Agent", getUserAgent("General"))
+			headResp, err := http.DefaultClient.Do(headReq)
+			if err == nil && headResp != nil {
+				headResp.Body.Close()
+				if headResp.StatusCode == 200 {
+					return tag, assetURL, nil
+				}
+			}
+		}
+		// fall through to normal latest release
+	}
+
+	// Fallback: find the first release tag on the releases page (latest)
+	tagPattern := fmt.Sprintf(`/%s/%s/releases/tag/([^"']+)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo))
+	tagRe := regexp.MustCompile(tagPattern)
+	tagMatches := tagRe.FindStringSubmatch(html)
+
+	if len(tagMatches) < 2 {
+		return "", "", fmt.Errorf("could not find any release tags for %s/%s", owner, repo)
+	}
+
+	tag = tagMatches[1]
+
+	assetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
+
+	// Verify the asset exists by making a HEAD request
+	headReq, err := http.NewRequest("HEAD", assetURL, nil)
+	if err != nil {
+		return tag, "", fmt.Errorf("failed to create HEAD request: %w", err)
+	}
+	headReq.Header.Set("User-Agent", getUserAgent("General"))
+
+	headResp, err := http.DefaultClient.Do(headReq)
+	if err != nil {
+		return tag, "", fmt.Errorf("failed to verify asset exists: %w", err)
+	}
+	defer headResp.Body.Close()
+
+	if headResp.StatusCode != 200 {
+		return tag, "", fmt.Errorf("asset %s not found for release %s (HTTP %d)", wantName, tag, headResp.StatusCode)
+	}
+
+	return tag, assetURL, nil
+}
+
 // replaceAndRestart replaces the current executable with the new one and launches it
 func replaceAndRestart(currentExe, newExe string) error {
 	cmd := exec.Command(newExe, "--cleanup-after-update", "--cleanup-old-exe", currentExe, "--cleanup-new-exe", newExe)
@@ -141,67 +220,9 @@ func performUpdateCleanup(oldExe, newExe string) {
 }
 
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
-	// Use GitHub's releases archive page to find the latest release without API
-	// This approach avoids rate limiting entirely
-	releasesURL := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
-
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return nil
-		},
-	}
-
-	resp, err := client.Get(releasesURL)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch releases page: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return "", "", fmt.Errorf("GitHub releases page returned status %d", resp.StatusCode)
-	}
-
-	// Read HTML content
-	htmlBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read releases page HTML: %w", err)
-	}
-	html := string(htmlBody)
-
-	// Extract the first (latest) release tag from the releases page
-	// Look for release links in the format: /owner/repo/releases/tag/version
-	tagPattern := fmt.Sprintf(`/%s/%s/releases/tag/([^"]+)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo))
-	tagRe := regexp.MustCompile(tagPattern)
-	tagMatches := tagRe.FindStringSubmatch(html)
-
-	if len(tagMatches) < 2 {
-		return "", "", fmt.Errorf("could not find any release tags for %s/%s", owner, repo)
-	}
-
-	tag = tagMatches[1]
-	fmt.Printf("Found latest tag: %s\n", tag)
-
-	// Construct the direct download URL using GitHub's predictable URL pattern
-	assetURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
-
-	// Verify the asset exists by making a HEAD request
-	headReq, err := http.NewRequest("HEAD", assetURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create HEAD request: %w", err)
-	}
-	headReq.Header.Set("User-Agent", getUserAgent("General"))
-
-	headResp, err := http.DefaultClient.Do(headReq)
-	if err != nil {
-		return tag, "", fmt.Errorf("failed to verify asset exists: %w", err)
-	}
-	defer headResp.Body.Close()
-
-	if headResp.StatusCode != 200 {
-		return tag, "", fmt.Errorf("asset %s not found for release %s (HTTP %d)", wantName, tag, headResp.StatusCode)
-	}
-
-	return tag, assetURL, nil
+	// Delegate to the prefer-prerelease fetcher so callers automatically respect the
+	// global DevBuildsEnabled setting when present.
+	return fetchLatestAssetPreferPrerelease(owner, repo, wantName, settings.DevBuildsEnabled)
 }
 
 func normalizeTag(t string) string {
