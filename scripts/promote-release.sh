@@ -32,7 +32,12 @@ if [[ ! "$PRERELEASE" =~ ^dev\. ]]; then
   exit 1
 fi
 
-STABLE_VERSION="$VERSION"
+# Increment the PATCH version for stable release
+PATCH=$((PATCH + 1))
+STABLE_VERSION="$MAJOR.$MINOR.$PATCH"
+
+# Log the incremented version
+echo "Incremented version to $STABLE_VERSION"
 
 echo "Promoting $VERSION-$PRERELEASE to stable release $STABLE_VERSION"
 
