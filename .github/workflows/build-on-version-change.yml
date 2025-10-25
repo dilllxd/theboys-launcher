@@ -1,7 +1,11 @@
-name: Build on version.env change
+name: Build on version.tag or version.env change
 
 on:
   push:
+    # Trigger on tag pushes created by auto-bump (tags start with 'v')
+    tags:
+      - 'v*'
+    # Also allow manual pushes that modify version.env (optional fallback)
     paths:
       - 'version.env'
 
@@ -30,10 +34,11 @@ jobs:
             artifact_name: TheBoysLauncher-macOS
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository (bumped commit)
+      - name: Checkout repository (bumped commit or tag)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -42,14 +47,22 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Read version.env
+      - name: Read version from tag or version.env
         id: version
         shell: bash
         run: |
-          source ./version.env || true
-          VERSION="${VERSION}-${PRERELEASE}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
+          # If this run was triggered by a tag, use the tag as the version
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Building version (from tag): $VERSION"
+          else
+            # Fallback: read from version.env if present
+            source ./version.env || true
+            VERSION="${VERSION}-${PRERELEASE}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Building version (from version.env): $VERSION"
+          fi
 
       - name: Install Go dependencies
         run: go mod download
