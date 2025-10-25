@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: dev-auto-bump
+  cancel-in-progress: false
+
 jobs:
   autobump:
     if: ${{ github.actor != 'github-actions[bot]' }}
@@ -32,6 +36,9 @@ jobs:
           if [ -n "${PERSONAL_ACCESS_TOKEN}" ]; then
             echo "Using PERSONAL_ACCESS_TOKEN to push tags so they trigger workflows"
             git remote set-url origin "https://x-access-token:${PERSONAL_ACCESS_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          elif git remote get-url origin | grep -q '@github.com:'; then
+            echo "Switching remote to HTTPS to support pushing with GITHUB_TOKEN"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           else
             echo "No PERSONAL_ACCESS_TOKEN provided; will push using GITHUB_TOKEN (may not trigger workflows)"
           fi

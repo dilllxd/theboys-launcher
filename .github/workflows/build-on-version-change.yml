@@ -1,13 +1,10 @@
-name: Build on version.tag or version.env change
+name: Build and Pre-release
 
 on:
   push:
-    # Trigger on tag pushes created by auto-bump (tags start with 'v')
     tags:
       - 'v*'
-    # Also allow manual pushes that modify version.env (optional fallback)
-    paths:
-      - 'version.env'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -167,7 +164,7 @@ jobs:
           ls -la ${{ matrix.binary_name }}* 2>/dev/null || true
 
   publish_release:
-    name: Publish Release (on version.env change)
+    name: Publish Release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -185,9 +182,12 @@ jobs:
         id: detect
         shell: bash
         run: |
-          # Compute tag from version.env
-          source ./version.env || true
-          TAG="v${VERSION}-${PRERELEASE}"
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ]; then
+            echo "GITHUB_REF_NAME empty, falling back to version.env"
+            source ./version.env || true
+            TAG="v${VERSION}-${PRERELEASE}"
+          fi
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           if echo "${TAG}" | grep -E -qi "-dev[.]"; then
             echo "prerelease=true" >> $GITHUB_OUTPUT

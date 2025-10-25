@@ -19,13 +19,15 @@ source ./version.env
 
 echo "Current version: $VERSION (patch=$PATCH)"
 
+# Capture the commit that triggered this workflow.
+BASE_SHORT_SHA=$(git rev-parse --short HEAD)
+
 # Bump patch
 PATCH=$((PATCH + 1))
 VERSION="$MAJOR.$MINOR.$PATCH"
 
 # Compute prerelease identifier using short SHA
-SHORT_SHA=$(git rev-parse --short HEAD)
-PRERELEASE="dev.$SHORT_SHA"
+PRERELEASE="dev.$BASE_SHORT_SHA"
 
 echo "Bumping to version: $VERSION (prerelease=$PRERELEASE)"
 
@@ -46,11 +48,11 @@ if git diff --cached --quiet; then
   echo "No changes to commit"
 else
   git commit -m "ci: auto-bump dev version to $VERSION-$PRERELEASE"
-  # Force push to the current branch
+  # Push the updated dev branch
   git push origin HEAD
-  # Create tag
+  # Create annotated tag for the bumped version
   TAG="v${VERSION}-${PRERELEASE}"
-  git tag "$TAG"
+  git tag -a "$TAG" -m "Automated dev bump for $TAG (source $BASE_SHORT_SHA)"
   git push origin "$TAG"
   echo "Pushed commit and tag $TAG"
 fi
