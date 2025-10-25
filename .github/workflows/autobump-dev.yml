@@ -23,12 +23,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run auto-bump
+      - name: Run auto-bump (with diagnostics)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
-          set -e
+          set -eux
           if [ -n "${PERSONAL_ACCESS_TOKEN}" ]; then
             echo "Using PERSONAL_ACCESS_TOKEN to push tags so they trigger workflows"
             git remote set-url origin "https://x-access-token:${PERSONAL_ACCESS_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -37,3 +37,29 @@ jobs:
           fi
           chmod +x ./scripts/auto-bump.sh
           ./scripts/auto-bump.sh
+
+          echo "--- git remote and config ---"
+          git remote -v || true
+          echo "Current local HEAD:"; git rev-parse --abbrev-ref HEAD || true
+          echo "Show HEAD commit and changed files:"; git show --name-only --pretty=oneline HEAD || true
+
+          echo "--- fetch origin and show latest origin/dev ---"
+          git fetch origin --prune || true
+          echo "origin/dev (ls-remote):"; git ls-remote origin refs/heads/dev || true
+
+          if [ -f version.env ]; then
+            source ./version.env || true
+            TAG="v${VERSION}-${PRERELEASE}"
+            echo "Expected tag: $TAG"
+            echo "origin tag (ls-remote):"; git ls-remote origin refs/tags/$TAG || true
+          else
+            echo "version.env missing"
+          fi
+
+          API_TOKEN=${PERSONAL_ACCESS_TOKEN:-${GITHUB_TOKEN}}
+          if [ -n "$API_TOKEN" ]; then
+            echo "--- GitHub API check for origin/dev latest commit ---"
+            curl -s -H "Authorization: token $API_TOKEN" "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/dev" | jq -r '.sha + " - " + (.commit.author.name // "") + " <" + (.commit.author.email // "") + ": " + (.commit.message // "")' || true
+          else
+            echo "no API token available for GitHub API checks"
+          fi
