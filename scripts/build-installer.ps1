@@ -10,7 +10,14 @@ if ($LASTEXITCODE -ne 0) { Write-Error "tools\\build.ps1 failed"; exit $LASTEXIT
 
 # Resolve paths
 $projectDir = (Get-Location).Path
+# Ensure ProjectDir ends with a backslash so WiX "$(var.ProjectDir)" + "icon.ico" resolves to a valid path
+if (-not $projectDir.EndsWith('\')) { $projectDir = $projectDir + '\' }
 $exePath = Join-Path $projectDir 'TheBoysLauncher.exe'
+
+Write-Host "Resolved ProjectDir: $projectDir"
+Write-Host "Resolved EXE path: $exePath"
+Write-Host "Resolved icon path: ${projectDir}icon.ico"
+Write-Host "Resolved license path: ${projectDir}wix\LICENSE.rtf"
 
 if (-not (Test-Path $exePath)) {
     Write-Error "Built exe not found at $exePath"
