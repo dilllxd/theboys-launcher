@@ -28,7 +28,19 @@ jobs:
       - name: Run auto-bump
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: provide a PERSONAL_ACCESS_TOKEN secret with repo scope to allow tag pushes
+          # created by this workflow to trigger other workflows. If absent, GITHUB_TOKEN will be used
+          # (note: pushes performed with GITHUB_TOKEN may NOT trigger other workflows).
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
+          set -e
+          # If a PAT is configured, change the origin remote to use it so pushes come from the PAT
+          if [ -n "${PERSONAL_ACCESS_TOKEN}" ]; then
+            echo "Using PERSONAL_ACCESS_TOKEN to push tags so they trigger workflows"
+            git remote set-url origin "https://x-access-token:${PERSONAL_ACCESS_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          else
+            echo "No PERSONAL_ACCESS_TOKEN provided; will push using GITHUB_TOKEN (may not trigger workflows)"
+          fi
           chmod +x ./scripts/auto-bump.sh
           ./scripts/auto-bump.sh
 
