@@ -119,9 +119,10 @@
 
   <!-- Icons -->
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
-
-    <!-- Properties for custom actions -->
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+  <!-- Properties for custom actions -->
+  <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+  <!-- Ensure installed product shows an icon in Add/Remove Programs -->
+  <Property Id="ARPPRODUCTICON" Value="IconICO" />
 
   <!-- UI Reference: use Mondo UI to include feature selection (checkboxes) and install directory -->
   <UIRef Id="WixUI_Mondo" />

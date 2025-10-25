@@ -151,73 +151,51 @@ jobs:
         restore-keys: |
           windows-build-tools-
 
+    - name: Debug WiX and icon (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        Write-Host "--- WiX / icon debug output ---"
+        Write-Host "Check for candle.exe and light.exe in PATH"
+        Get-Command candle.exe -ErrorAction SilentlyContinue | Format-List -Force || Write-Host "candle.exe not found in PATH"
+        Get-Command light.exe -ErrorAction SilentlyContinue | Format-List -Force || Write-Host "light.exe not found in PATH"
+
+        Write-Host "List cached build-tools-cache\wix\bin (if present)"
+        if (Test-Path build-tools-cache\wix\bin) { Get-ChildItem build-tools-cache\wix\bin -Recurse | Select-Object FullName, Length | Format-Table } else { Write-Host "No cached wix bin" }
+
+        Write-Host "Check that icon.ico exists in repository root"
+        if (Test-Path icon.ico) { Write-Host "icon.ico found:"; Get-Item icon.ico | Format-List Name,Length } else { Write-Host "icon.ico missing" }
+
+        Write-Host "Where (on disk) candle.exe would be located (where.exe)"
+        where.exe candle.exe || Write-Host "where.exe returned no result"
+
+        Write-Host "--- end debug ---"
+
     - name: Build Windows installer
       if: matrix.platform == 'windows'
       run: |
-        # WiX bin directory should already be appended to PATH by the earlier step (from cache or install)
-        # Create optimized installer using candle and light
+        # Ensure the exe contains embedded icon and version info by running the build script
         $version = "${{ steps.version.outputs.version }}"
-        Write-Host "Building Windows MSI installer version $version"
+        Write-Host "Embedding icon and building exe for installer: $version"
 
-        # Create optimized WXS content
-        $wxsContent = @"
-        <?xml version="1.0" encoding="UTF-8"?>
-        <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-          <Product Id="*" Name="TheBoysLauncher" Language="1033" Version="$version" Manufacturer="Dylan" UpgradeCode="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E6F">
-            <Package InstallerVersion="200" Compressed="yes" InstallScope="perUser" Description="TheBoys Minecraft Modpack Launcher" Platform="x64" />
-            <MediaTemplate EmbedCab="yes" />
-            <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
-            <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
-              <ComponentRef Id="MainExecutable" />
-              <ComponentRef Id="ApplicationShortcut" />
-              <ComponentRef Id="DirectoryCleanup" />
-            </Feature>
-            <Directory Id="TARGETDIR" Name="SourceDir">
-              <Directory Id="LocalAppDataFolder">
-                <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
-              </Directory>
-                <Directory Id="ProgramMenuFolder">
-                <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher"/>
-              </Directory>
-            </Directory>
-            <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E70">
-              <File Id="TheBoysLauncherEXE" Source="TheBoysLauncher.exe" />
-              <RemoveFile Id="RemoveMainExecutable" Name="TheBoysLauncher.exe" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
-                <RegistryValue Type="string" Name="Version" Value="$version" />
-                <RegistryValue Type="string" Name="MainExecutable" Value="[#TheBoysLauncherEXE]" KeyPath="yes" />
-              </RegistryKey>
-              <Shortcut Id="ApplicationStartMenuShortcut" Directory="ApplicationProgramsFolder" Name="TheBoysLauncher" Description="TheBoys Minecraft Modpack Launcher" Target="[#TheBoysLauncherEXE]" WorkingDirectory="INSTALLFOLDER" />
-            </Component>
-            <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E74">
-              <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-              <RegistryValue Root="HKCU" Key="Software\TheBoysLauncher" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
-            </Component>
-            <Component Id="DirectoryCleanup" Directory="INSTALLFOLDER" Guid="D5E2B1A3-7C4F-4A2D-9E8F-1A2B3C4D5E75">
-              <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
-              <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
-                <RegistryValue Type="string" Name="DirectoryCleanup" Value="completed" KeyPath="yes" />
-              </RegistryKey>
-            </Component>
-            <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
-            <UIRef Id="WixUI_InstallDir" />
-          </Product>
-        </Wix>
-        "@
+        # Run the build script to compile resources and produce TheBoysLauncher.exe
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "& { .\tools\build.ps1 -Version '$version' }"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-        # Build MSI with optimizations
-        $wxsContent | Out-File -FilePath "installer.wxs" -Encoding utf8
+        # Use the maintained wix/Product.wxs to create the MSI
+        Write-Host "Creating MSI using wix\Product.wxs"
 
-        # Use optimized candle and light options
-        candle.exe installer.wxs -out installer.wixobj
+        # Define ProjectDir for WXS so $(var.ProjectDir) resolves to repo root
+        $projectDir = $PWD
+        $candleTarget = Join-Path $projectDir 'TheBoysLauncher.exe'
+        # Invoke candle and light from PATH (WiX bin should have been appended earlier)
+        candle.exe -dProjectDir="$projectDir" -dTheBoysLauncher.TargetPath="$candleTarget" wix\Product.wxs -out installer.wixobj
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         light.exe installer.wixobj -ext WixUIExtension -out "TheBoysLauncher-Setup-$version.msi" -sval
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         # Clean up temporary files
-        Remove-Item installer.wxs, installer.wixobj -ErrorAction SilentlyContinue
+        Remove-Item installer.wixobj -ErrorAction SilentlyContinue
 
         Write-Host "MSI installer created successfully: TheBoysLauncher-Setup-$version.msi"
 
