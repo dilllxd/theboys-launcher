@@ -30,11 +30,13 @@
 
     <!-- Directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
+      </Directory>
 
       <!-- Start Menu -->
       <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher"/>
+        <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher" />
       </Directory>
 
       <!-- Desktop -->
@@ -44,7 +46,7 @@
     <!-- Components -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <!-- Main executable -->
-  <Component Id="MainExecutable">
+  <Component Id="MainExecutable" Guid="*">
     <File Id="TheBoysLauncherEXE"
       Source="$(var.TheBoysLauncher.TargetPath)"
       KeyPath="yes" />
@@ -57,24 +59,24 @@
           <RegistryValue Type="string" Value="TheBoys Modpack File" />
           <RegistryValue Type="string" Name="DefaultIcon" Value="[INSTALLFOLDER]TheBoysLauncher.exe,0" />
         </RegistryKey>
-        <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
+      <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
           <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]TheBoysLauncher.exe&quot; &quot;%1&quot;" />
         </RegistryKey>
       </Component>
 
       <!-- Icon file -->
-      <Component Id="IconFile">
+      <Component Id="IconFile" Guid="*">
         <File Id="IconICO" Source="$(var.ProjectDir)icon.ico" />
       </Component>
 
       <!-- License file -->
-      <Component Id="LicenseFile">
+      <Component Id="LicenseFile" Guid="*">
         <File Id="LicenseRTF" Source="$(var.ProjectDir)wix\LICENSE.rtf" />
       </Component>
     </ComponentGroup>
 
   <!-- Start Menu Shortcut -->
-  <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
+  <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="*">
   <Shortcut Id="ApplicationStartMenuShortcut"
         Name="TheBoysLauncher"
         Description="TheBoys Minecraft Modpack Launcher"
@@ -92,7 +94,7 @@
     </Component>
 
   <!-- Desktop Shortcut (optional) -->
-    <Component Id="DesktopShortcut" Directory="DesktopFolder">
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
       <Shortcut Id="ApplicationDesktopShortcut"
                 Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
@@ -112,7 +114,6 @@
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
 
   <!-- Properties -->
-  <Property Id="INSTALLFOLDER" Value="[LocalAppDataFolder]TheBoysLauncher" />
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   <!-- Ensure installed product shows an icon in Add/Remove Programs -->
   <Property Id="ARPPRODUCTICON" Value="IconICO" />
