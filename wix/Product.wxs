@@ -30,17 +30,15 @@
 
     <!-- Directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="LocalAppDataFolder">
-        <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
-      </Directory>
+      <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
 
       <!-- Start Menu -->
-        <Directory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuFolder">
         <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher"/>
       </Directory>
 
       <!-- Desktop -->
-      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id="DesktopFolder" />
     </Directory>
 
     <!-- Components -->
@@ -77,7 +75,6 @@
 
   <!-- Start Menu Shortcut -->
   <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
-    <Condition>CREATE_STARTMENU_SHORTCUT="1"</Condition>
   <Shortcut Id="ApplicationStartMenuShortcut"
         Name="TheBoysLauncher"
         Description="TheBoys Minecraft Modpack Launcher"
@@ -96,7 +93,6 @@
 
   <!-- Desktop Shortcut (optional) -->
     <Component Id="DesktopShortcut" Directory="DesktopFolder">
-      <Condition>CREATE_DESKTOP_SHORTCUT="1"</Condition>
       <Shortcut Id="ApplicationDesktopShortcut"
                 Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
@@ -115,10 +111,8 @@
   <!-- Icons -->
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
 
-  <!-- Properties to control shortcut creation -->
-  <Property Id="SHORTCUTS_DIALOG_SHOWN" Value="0" />
-  <Property Id="CREATE_DESKTOP_SHORTCUT" Value="1" />
-  <Property Id="CREATE_STARTMENU_SHORTCUT" Value="1" />
+  <!-- Properties -->
+  <Property Id="INSTALLFOLDER" Value="[LocalAppDataFolder]TheBoysLauncher" />
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   <!-- Ensure installed product shows an icon in Add/Remove Programs -->
   <Property Id="ARPPRODUCTICON" Value="IconICO" />
@@ -144,34 +138,6 @@
     <DialogRef Id="ProgressDlg" />
     <DialogRef Id="ResumeDlg" />
     <DialogRef Id="UserExit" />
-
-    <!-- Intercept Install button to show shortcut dialog -->
-    <Publish Dialog="VerifyReadyDlg" Control="Install" Event="NewDialog" Value="ShortcutDlg">SHORTCUTS_DIALOG_SHOWN = 0</Publish>
-    <Publish Dialog="VerifyReadyDlg" Control="Install" Event="EndDialog" Value="Return">SHORTCUTS_DIALOG_SHOWN = 1</Publish>
-
-    <Publish Dialog="ShortcutDlg" Control="Back" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
-    <Publish Dialog="ShortcutDlg" Control="Next" Event="SetProperty" Value="SHORTCUTS_DIALOG_SHOWN=1">1</Publish>
-    <Publish Dialog="ShortcutDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
-
-    <Dialog Id="ShortcutDlg" Width="370" Height="260" Title="Create Shortcuts">
-      <Control Id="Banner" Type="Banner" X="0" Y="0" Width="370" Height="60" />
-      <Control Id="Description" Type="Text" X="15" Y="75" Width="340" Height="20" Transparent="yes" NoPrefix="yes">
-        <Text>Select which shortcuts to create for TheBoysLauncher.</Text>
-      </Control>
-
-      <Control Id="StartMenuCheck" Type="CheckBox" X="25" Y="115" Width="300" Height="17"
-               Property="CREATE_STARTMENU_SHORTCUT" CheckBoxValue="1"
-               Text="Create a Start Menu shortcut" />
-      <Control Id="DesktopCheck" Type="CheckBox" X="25" Y="145" Width="300" Height="17"
-               Property="CREATE_DESKTOP_SHORTCUT" CheckBoxValue="1"
-               Text="Create a Desktop shortcut" />
-
-      <Control Id="Back" Type="PushButton" X="180" Y="225" Width="56" Height="17" Text="&amp;Back" />
-      <Control Id="Next" Type="PushButton" X="240" Y="225" Width="56" Height="17" Default="yes" Text="&amp;Install" />
-      <Control Id="Cancel" Type="PushButton" X="300" Y="225" Width="56" Height="17" Cancel="yes" Text="Cancel">
-        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
-      </Control>
-    </Dialog>
 
     <!-- Launch application on exit when checkbox selected -->
     <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>

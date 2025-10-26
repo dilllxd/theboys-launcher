@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // -------------------- CONFIG: EDIT THESE --------------------
@@ -72,7 +73,7 @@ func loadSettings(root string) error {
 	defaultSettings := LauncherSettings{
 		MemoryMB:         clampMemoryMB(DefaultAutoMemoryMB()),
 		AutoRAM:          true,
-		DevBuildsEnabled: false,
+		DevBuildsEnabled: isDevBuild(),
 	}
 
 	// Try to load existing settings
@@ -100,6 +101,10 @@ func loadSettings(root string) error {
 			}
 			if !settings.AutoRAM {
 				settings.MemoryMB = clampMemoryMB(settings.MemoryMB)
+			}
+			if isDevBuild() && !settings.DevBuildsEnabled {
+				settings.DevBuildsEnabled = true
+				_ = saveSettings(root)
 			}
 			return nil
 		}
@@ -197,4 +202,10 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+
+}
+
+func isDevBuild() bool {
+	lower := strings.ToLower(version)
+	return strings.Contains(lower, "dev")
 }
