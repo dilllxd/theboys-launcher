@@ -130,6 +130,14 @@ else
     exit 1
 fi
 
+echo "Running pagination tests..."
+if go test -v tests/pagination_test.go tests/pagination_edge_cases_test.go tests/pagination_integration_test.go; then
+    print_status "PASS" "Pagination tests passed"
+else
+    print_status "FAIL" "Pagination tests failed"
+    exit 1
+fi
+
 # Test 5: Cross-platform compilation test
 print_status "INFO" "Test 5: Testing cross-platform compilation..."
 
@@ -257,6 +265,7 @@ echo "- ✅ Prerelease tag detection tests"
 echo "- ✅ Stable version filtering tests"
 echo "- ✅ Bug report scenario tests"
 echo "- ✅ GUI dev mode toggle tests"
+echo "- ✅ Pagination tests (core, edge cases, integration)"
 echo "- ✅ Cross-platform compilation"
 echo "- ✅ GitHub Actions workflow validation"
 echo "- ✅ Required files check"

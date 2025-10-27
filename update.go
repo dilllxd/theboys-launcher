@@ -28,7 +28,7 @@ func selfUpdate(root, exePath string, report func(string)) error {
 
 	// Prefer prerelease/dev builds if the user has enabled them
 	preferDev := settings.DevBuildsEnabled
-	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
+	tag, assetURL, err := FetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")
@@ -102,7 +102,7 @@ func forceUpdate(root, exePath string, preferDev bool, report func(string)) erro
 	notify("Checking for latest launcher version...")
 
 	// Fetch the latest asset based on preference (dev or stable)
-	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
+	tag, assetURL, err := FetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")
@@ -152,26 +152,75 @@ func forceUpdate(root, exePath string, preferDev bool, report func(string)) erro
 	return nil
 }
 
-// fetchLatestAssetPreferPrerelease fetches the latest asset URL for the desired binary.
+// FetchLatestAssetPreferPrerelease fetches the latest asset URL for the desired binary.
 // If preferPrerelease is true it will attempt to find a prerelease tag (containing "dev") first,
 // otherwise it falls back to the latest normal release.
-func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerelease bool) (tag, url string, err error) {
-	releasesURL := fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
-	var assetURL string
+func FetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerelease bool) (tag, url string, err error) {
+	const maxPages = 10 // Limit pagination to avoid infinite loops
+
+	// If preferPrerelease, we only need to check the first page since dev builds are recent
+	if preferPrerelease {
+		return fetchFromPage(owner, repo, wantName, 1, preferPrerelease)
+	}
+
+	// For stable releases, we need to check multiple pages since stable releases might be on older pages
+	for page := 1; page <= maxPages; page++ {
+		logf("Checking page %d for stable releases...", page)
+		tag, url, err := fetchFromPage(owner, repo, wantName, page, preferPrerelease)
+		if err != nil {
+			// If we get an error that indicates no more releases, stop pagination
+			if strings.Contains(err.Error(), "could not find any release tags") {
+				logf("No more releases found on page %d, stopping pagination", page)
+				break
+			}
+			// For other errors, continue to next page
+			logf("Error checking page %d: %v", page, err)
+			continue
+		}
+
+		// If we found a stable release, return it
+		if tag != "" && url != "" {
+			logf("Found stable release %s on page %d", tag, page)
+			return tag, url, nil
+		}
+
+		// Check if there are more pages by looking for pagination indicators
+		hasMore, err := hasMorePages(owner, repo, page)
+		if err != nil {
+			logf("Error checking for more pages: %v", err)
+			break
+		}
+		if !hasMore {
+			logf("No more pages available, stopping pagination at page %d", page)
+			break
+		}
+	}
+
+	return "", "", fmt.Errorf("no stable releases found for %s/%s after checking %d pages", owner, repo, maxPages)
+}
+
+// fetchFromPage fetches releases from a specific page and returns the appropriate tag/URL
+func fetchFromPage(owner, repo, wantName string, page int, preferPrerelease bool) (tag, url string, err error) {
+	var releasesURL string
+	if page == 1 {
+		releasesURL = fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
+	} else {
+		releasesURL = fmt.Sprintf("https://github.com/%s/%s/releases?page=%d", owner, repo, page)
+	}
 
 	resp, err := http.Get(releasesURL)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to fetch releases page: %w", err)
+		return "", "", fmt.Errorf("failed to fetch releases page %d: %w", page, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", "", fmt.Errorf("GitHub releases page returned status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("GitHub releases page %d returned status %d", page, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read releases page HTML: %w", err)
+		return "", "", fmt.Errorf("failed to read releases page %d HTML: %w", page, err)
 	}
 	html := string(body)
 
@@ -181,7 +230,7 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 		prereleaseRe := regexp.MustCompile(fmt.Sprintf(`/%s/%s/releases/tag/([^"']*-dev[.\-][^"']*)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo)))
 		if m := prereleaseRe.FindStringSubmatch(html); len(m) >= 2 {
 			tag = m[1]
-			assetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
+			assetURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
 			// verify
 			headReq, _ := http.NewRequest("HEAD", assetURL, nil)
 			headReq.Header.Set("User-Agent", getUserAgent("General"))
@@ -202,7 +251,7 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 	tagMatches := tagRe.FindAllStringSubmatch(html, -1)
 
 	if len(tagMatches) == 0 {
-		return "", "", fmt.Errorf("could not find any release tags for %s/%s", owner, repo)
+		return "", "", fmt.Errorf("could not find any release tags for %s/%s on page %d", owner, repo, page)
 	}
 
 	// Extract all tags
@@ -222,7 +271,8 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 			}
 		}
 		if len(stableTags) == 0 {
-			return "", "", fmt.Errorf("no stable releases found for %s/%s", owner, repo)
+			// Return empty results but no error - let the caller decide to continue pagination
+			return "", "", nil
 		}
 		tag = stableTags[0] // Return the first stable tag found
 	} else {
@@ -230,7 +280,7 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 		tag = allTags[0]
 	}
 
-	assetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
+	assetURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
 
 	// Verify the asset exists by making a HEAD request
 	headReq, err := http.NewRequest("HEAD", assetURL, nil)
@@ -250,6 +300,45 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 	}
 
 	return tag, assetURL, nil
+}
+
+// hasMorePages checks if there are more pages of releases by looking for pagination indicators
+func hasMorePages(owner, repo string, currentPage int) (bool, error) {
+	// For this implementation, we'll check if the current page has any releases
+	// If it has releases, we assume there might be more pages
+	// This is a simple approach that works well for our use case
+
+	var releasesURL string
+	if currentPage == 1 {
+		releasesURL = fmt.Sprintf("https://github.com/%s/%s/releases", owner, repo)
+	} else {
+		releasesURL = fmt.Sprintf("https://github.com/%s/%s/releases?page=%d", owner, repo, currentPage)
+	}
+
+	resp, err := http.Get(releasesURL)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return false, fmt.Errorf("GitHub releases page %d returned status %d", currentPage, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+	html := string(body)
+
+	// Check if there are any release tags on this page
+	tagPattern := fmt.Sprintf(`/%s/%s/releases/tag/([^"']+)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo))
+	tagRe := regexp.MustCompile(tagPattern)
+	tagMatches := tagRe.FindAllStringSubmatch(html, -1)
+
+	// If we found releases on this page, there might be more pages
+	// This is a conservative approach that ensures we don't miss stable releases
+	return len(tagMatches) > 0, nil
 }
 
 // isPrereleaseTag checks if a version tag represents a prerelease/dev version
@@ -322,7 +411,7 @@ func performUpdateCleanup(oldExe, newExe string) {
 func fetchLatestAsset(owner, repo, wantName string) (tag, url string, err error) {
 	// Delegate to the prefer-prerelease fetcher so callers automatically respect the
 	// global DevBuildsEnabled setting when present.
-	return fetchLatestAssetPreferPrerelease(owner, repo, wantName, settings.DevBuildsEnabled)
+	return FetchLatestAssetPreferPrerelease(owner, repo, wantName, settings.DevBuildsEnabled)
 }
 
 func normalizeTag(t string) string {

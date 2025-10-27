@@ -1524,10 +1524,10 @@ func (g *GUI) showSettings() {
 
 				if targetDevMode {
 					// Check if dev builds are available
-					_, _, validationErr = fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, true)
+					_, _, validationErr = FetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, true)
 				} else {
 					// Check if stable builds are available
-					_, _, validationErr = fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
+					_, _, validationErr = FetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
 				}
 
 				if validationErr != nil {
