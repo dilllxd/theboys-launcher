@@ -25,7 +25,7 @@ func main() {
 
 	// Simulate the buildQtEnvironment function
 	jreDir := filepath.Join(prismDir, "java", "jre17") // Assuming JRE 17
-	qtEnv := buildQtEnvironment(prismDir, jreDir)
+	qtEnv := buildQtEnvironmentDebug(prismDir, jreDir)
 
 	fmt.Println("Qt environment variables that would be set:")
 	for _, env := range qtEnv {
@@ -268,7 +268,7 @@ fi
 }
 
 // Standalone version of buildQtEnvironment function
-func buildQtEnvironment(prismDir, jreDir string) []string {
+func buildQtEnvironmentDebug(prismDir, jreDir string) []string {
 	qtEnv := []string{
 		"JAVA_HOME=" + jreDir,
 		"PATH=" + buildPathEnv(filepath.Join(jreDir, "bin")),
