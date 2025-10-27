@@ -97,6 +97,113 @@ func logQtEnvironment(prismDir string) {
 	logf("=== End Qt Environment Debug ===")
 }
 
+// fixQtPluginRPATH fixes RPATH settings in Qt plugins on Linux systems
+// This ensures plugins can find the bundled Qt libraries
+func fixQtPluginRPATH(prismDir string) error {
+	// Only apply this fix on Linux systems
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	logf("%s", stepLine("Fixing Qt plugin RPATH settings"))
+
+	// Check if patchelf is available
+	if _, err := exec.LookPath("patchelf"); err != nil {
+		logf("%s", warnLine("patchelf not found, skipping RPATH fixing (install patchelf for better Qt compatibility)"))
+		return nil // Not an error, just skip the fix
+	}
+
+	pluginsDir := filepath.Join(prismDir, "plugins")
+	if !exists(pluginsDir) {
+		logf("%s", warnLine("Plugins directory not found, skipping RPATH fixing"))
+		return nil
+	}
+
+	// Fix RPATH for critical Qt plugins
+	criticalPlugins := []string{
+		"platforms/libqxcb.so",
+		"imageformats/libqjpeg.so",
+		"imageformats/libqgif.so",
+		"imageformats/libqwebp.so",
+		"iconengines/libqsvgicon.so",
+		"platforms/libqminimal.so",
+		"platforms/libqoffscreen.so",
+		"platforms/libqvnc.so",
+	}
+
+	var fixedCount int
+	var errors []string
+
+	for _, plugin := range criticalPlugins {
+		pluginPath := filepath.Join(pluginsDir, plugin)
+		if exists(pluginPath) {
+			// Use patchelf to set the correct RPATH
+			// $ORIGIN/../../lib points from the plugin directory to the lib directory
+			cmd := exec.Command("patchelf", "--set-rpath", "$ORIGIN/../../lib", pluginPath)
+			if err := cmd.Run(); err != nil {
+				errMsg := fmt.Sprintf("Failed to fix RPATH for %s: %v", plugin, err)
+				logf("%s", warnLine(errMsg))
+				errors = append(errors, errMsg)
+			} else {
+				logf("Fixed RPATH for %s", plugin)
+				fixedCount++
+			}
+		} else {
+			logf("Plugin not found: %s (skipping)", plugin)
+		}
+	}
+
+	// Also fix any additional plugins in subdirectories
+	if fixedCount > 0 {
+		logf("%s", successLine(fmt.Sprintf("Fixed RPATH for %d Qt plugins", fixedCount)))
+	}
+
+	// Fix all .so files in plugins directory recursively as a fallback
+	err := filepath.Walk(pluginsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-.so files
+		if info.IsDir() || !strings.HasSuffix(path, ".so") {
+			return nil
+		}
+
+		// Skip files we already processed
+		for _, plugin := range criticalPlugins {
+			if strings.HasSuffix(path, plugin) {
+				return nil
+			}
+		}
+
+		// Fix RPATH for additional plugins
+		cmd := exec.Command("patchelf", "--set-rpath", "$ORIGIN/../../lib", path)
+		if err := cmd.Run(); err != nil {
+			logf("Failed to fix RPATH for %s: %v", filepath.Base(path), err)
+		} else {
+			logf("Fixed RPATH for additional plugin: %s", filepath.Base(path))
+			fixedCount++
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Error during recursive RPATH fixing: %v", err)))
+		errors = append(errors, err.Error())
+	}
+
+	if len(errors) > 0 {
+		logf("%s", warnLine(fmt.Sprintf("RPATH fixing completed with %d errors", len(errors))))
+	} else if fixedCount > 0 {
+		logf("%s", successLine(fmt.Sprintf("Successfully fixed RPATH for %d Qt plugins", fixedCount)))
+	} else {
+		logf("%s", warnLine("No Qt plugins found to fix RPATH for"))
+	}
+
+	return nil
+}
+
 // -------------------- Launcher Logic --------------------
 
 func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.Process, progressCb func(stage string, step, total int)) {
