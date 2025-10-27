@@ -200,3 +200,139 @@ func TestVersionComparisonScenarios(t *testing.T) {
 		t.Errorf("%q should be older than %q", oldVersion, newVersion)
 	}
 }
+
+func TestIsPrereleaseTag(t *testing.T) {
+	tests := []struct {
+		input       string
+		expected    bool
+		description string
+	}{
+		// Stable versions (should return false)
+		{"v1.2.3", false, "Standard stable version"},
+		{"1.2.3", false, "Stable version without v prefix"},
+		{"v3.2.27", false, "Stable version from bug report"},
+		{"v10.20.30", false, "Multi-digit stable version"},
+		{"v1.0.0", false, "Zero patch version"},
+		{"v1.2.0", false, "Zero patch version with minor"},
+
+		// Dev versions (should return true)
+		{"v1.2.3-dev", true, "Simple dev version"},
+		{"v1.2.3-dev.abc123", true, "Dev version with hash"},
+		{"v3.2.30-dev.adcb1ae", true, "Dev version from bug report"},
+		{"v1.0.0-dev", true, "Dev version with zero patch"},
+		{"dev", false, "Simple dev without version (no dash)"},
+		{"v1.2.3-DEV", true, "Uppercase dev"},
+		{"v1.2.3-Dev", true, "Mixed case dev"},
+
+		// Beta versions (should return true)
+		{"v1.2.3-beta", true, "Simple beta version"},
+		{"v1.2.3-beta.2", true, "Beta with number"},
+		{"v1.2.3-BETA", true, "Uppercase beta"},
+		{"v1.2.3-Beta", true, "Mixed case beta"},
+
+		// Release candidate versions (should return true)
+		{"v1.2.3-rc", true, "Simple rc version"},
+		{"v1.2.3-rc.1", true, "RC with number"},
+		{"v1.2.3-rc.10", true, "RC with multi-digit number"},
+		{"v1.2.3-RC", true, "Uppercase RC"},
+		{"v1.2.3-Rc", true, "Mixed case RC"},
+
+		// Alpha versions (should return true)
+		{"v1.2.3-alpha", true, "Simple alpha version"},
+		{"v1.2.3-alpha.2", true, "Alpha with number"},
+		{"v1.2.3-ALPHA", true, "Uppercase alpha"},
+		{"v1.2.3-Alpha", true, "Mixed case alpha"},
+
+		// Pre versions (should return true)
+		{"v1.2.3-pre", true, "Simple pre version"},
+		{"v1.2.3-pre.1", true, "Pre with number"},
+		{"v1.2.3-PRE", true, "Uppercase pre"},
+		{"v1.2.3-Pre", true, "Mixed case pre"},
+
+		// Edge cases
+		{"", false, "Empty string"},
+		{"v", false, "Just v prefix"},
+		{"1.2.3-", false, "Trailing dash without indicator"},
+		{"v1.2.3-snapshot", false, "Unknown prerelease type"},
+		{"v1.2.3-test", false, "Unknown prerelease type"},
+		{"v1.2.3-build", false, "Unknown prerelease type"},
+
+		// Complex versions
+		{"v1.2.3-dev.abc123+build.456", true, "Dev version with build metadata"},
+		{"v1.2.3-beta.1+build.123", true, "Beta version with build metadata"},
+		{"v1.2.3+build.456", false, "Stable version with build metadata"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			result := isPrereleaseTag(test.input)
+			if result != test.expected {
+				t.Errorf("isPrereleaseTag(%q) = %v, want %v (%s)",
+					test.input, result, test.expected, test.description)
+			}
+		})
+	}
+}
+
+func TestIsPrereleaseTagCaseSensitivity(t *testing.T) {
+	// Test that the function is case insensitive
+	testCases := []struct {
+		prefix   string
+		expected bool
+	}{
+		{"dev", true},
+		{"DEV", true},
+		{"Dev", true},
+		{"dEv", true},
+		{"beta", true},
+		{"BETA", true},
+		{"Beta", true},
+		{"rc", true},
+		{"RC", true},
+		{"Rc", true},
+		{"alpha", true},
+		{"ALPHA", true},
+		{"Alpha", true},
+		{"pre", true},
+		{"PRE", true},
+		{"Pre", true},
+		{"stable", false},
+		{"release", false},
+		{"final", false},
+	}
+
+	for _, tc := range testCases {
+		version := "v1.2.3-" + tc.prefix
+		result := isPrereleaseTag(version)
+		if result != tc.expected {
+			t.Errorf("isPrereleaseTag(%q) = %v, want %v", version, result, tc.expected)
+		}
+	}
+}
+
+func TestIsPrereleaseTagPosition(t *testing.T) {
+	// Test that the prerelease indicator must be after a dash
+	testCases := []struct {
+		version     string
+		expected    bool
+		description string
+	}{
+		{"v1.2.3-dev", true, "Prerelease after dash"},
+		{"v1.2.3dev", false, "Prerelease without dash"},
+		{"v1.2-dev.3", true, "Prerelease in middle with dash"},
+		{"v1.2dev.3", false, "Prerelease in middle without dash"},
+		{"dev-v1.2.3", false, "Prerelease before version"},
+		{"vdev1.2.3", false, "Prerelease embedded in version"},
+		{"v1.2.3-dev-beta", true, "Multiple prerelease indicators"},
+		{"v1.2.3-beta-dev", true, "Multiple prerelease indicators reversed"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			result := isPrereleaseTag(tc.version)
+			if result != tc.expected {
+				t.Errorf("isPrereleaseTag(%q) = %v, want %v", tc.version, result, tc.expected)
+			}
+		})
+	}
+}

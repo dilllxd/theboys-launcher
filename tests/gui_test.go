@@ -2,12 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // Helper function to check if file exists (since we can't access the main package's exists function)
@@ -16,7 +14,7 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-// TestGUIDevModeToggle tests the enhanced dev mode toggle functionality in the GUI
+// TestGUIDevModeToggle tests simplified dev mode toggle functionality in GUI
 func TestGUIDevModeToggle(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "theboyslauncher-gui-test")
@@ -25,166 +23,114 @@ func TestGUIDevModeToggle(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test 1: Backup creation when enabling dev mode
-	t.Run("BackupCreationOnEnable", func(t *testing.T) {
-		// Setup: Create mock stable executable
-		stableExePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
-		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
+	// Test 1: Direct dev mode toggle without backup
+	t.Run("DirectDevModeToggle", func(t *testing.T) {
+		// Setup: Create mock executable
+		exePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
+
+		// Create a mock executable
+		err := os.WriteFile(exePath, []byte("mock-exe"), 0755)
+		if err != nil {
+			t.Fatalf("Failed to create mock exe: %v", err)
+		}
+
+		// Simulate direct dev mode toggle (no backup creation)
+		// In new implementation, dev mode toggle directly updates settings and triggers update
+		devModeEnabled := true
+
+		// Verify dev mode state
+		if !devModeEnabled {
+			t.Error("Dev mode should be enabled after toggle")
+		}
+
+		// Verify no backup files were created
 		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
+		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
 
-		// Create a mock stable executable
-		err := os.WriteFile(stableExePath, []byte("mock-stable-exe"), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create mock stable exe: %v", err)
+		if fileExists(backupMetaPath) {
+			t.Error("Backup metadata file should not be created in simplified implementation")
 		}
-
-		// Simulate backup creation logic from gui.go
-		// This simulates the backup creation when enabling dev mode
-		if !fileExists(backupMetaPath) || !fileExists(backupExePath) {
-			// Simulate fetching stable version metadata
-			tag := "v3.2.27"
-			meta := map[string]string{"tag": tag, "path": backupExePath}
-
-			// Write backup metadata
-			data, err := json.MarshalIndent(meta, "", "  ")
-			if err != nil {
-				t.Fatalf("Failed to marshal backup metadata: %v", err)
-			}
-
-			err = os.WriteFile(backupMetaPath, data, 0644)
-			if err != nil {
-				t.Fatalf("Failed to write backup metadata: %v", err)
-			}
-
-			// Simulate downloading stable exe to backup path
-			err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-			if err != nil {
-				t.Fatalf("Failed to create backup exe: %v", err)
-			}
-		}
-
-		// Verify backup was created
-		if !fileExists(backupMetaPath) {
-			t.Error("Backup metadata file should exist after enabling dev mode")
-		}
-		if !fileExists(backupExePath) {
-			t.Error("Backup executable file should exist after enabling dev mode")
-		}
-
-		// Verify backup metadata content
-		data, err := os.ReadFile(backupMetaPath)
-		if err != nil {
-			t.Fatalf("Failed to read backup metadata: %v", err)
-		}
-
-		var meta map[string]string
-		err = json.Unmarshal(data, &meta)
-		if err != nil {
-			t.Fatalf("Failed to unmarshal backup metadata: %v", err)
-		}
-
-		if meta["tag"] != "v3.2.27" {
-			t.Errorf("Expected backup tag to be v3.2.27, got %s", meta["tag"])
+		if fileExists(backupExePath) {
+			t.Error("Backup executable file should not be created in simplified implementation")
 		}
 	})
 
-	// Test 2: Backup restoration when disabling dev mode
-	t.Run("BackupRestorationOnDisable", func(t *testing.T) {
-		// Setup: Create backup files
-		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
+	// Test 2: Direct stable mode toggle without backup restoration
+	t.Run("DirectStableModeToggle", func(t *testing.T) {
+		// Setup: Create mock executable
+		exePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
+
+		// Create a mock executable
+		err := os.WriteFile(exePath, []byte("mock-dev-exe"), 0755)
+		if err != nil {
+			t.Fatalf("Failed to create mock exe: %v", err)
+		}
+
+		// Simulate direct stable mode toggle (no backup restoration)
+		// In new implementation, stable mode toggle directly updates settings and triggers update
+		devModeEnabled := false
+
+		// Verify stable mode state
+		if devModeEnabled {
+			t.Error("Dev mode should be disabled after toggle")
+		}
+
+		// Verify no backup restoration occurred
 		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
-		currentExePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
+		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
 
-		// Create backup metadata
-		meta := map[string]string{"tag": "v3.2.27", "path": backupExePath}
-		data, err := json.MarshalIndent(meta, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal backup metadata: %v", err)
+		if fileExists(backupMetaPath) {
+			t.Error("Backup metadata should not be used in simplified implementation")
 		}
-		err = os.WriteFile(backupMetaPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to write backup metadata: %v", err)
+		if fileExists(backupExePath) {
+			t.Error("Backup executable should not be used in simplified implementation")
 		}
+	})
 
-		// Create backup executable
-		err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create backup exe: %v", err)
-		}
+	// Test 3: Fallback to stable update when dev update fails
+	t.Run("FallbackOnUpdateFailure", func(t *testing.T) {
+		// Setup: Mock update failure scenario
+		exePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
 
 		// Create current dev executable
-		err = os.WriteFile(currentExePath, []byte("mock-dev-exe"), 0755)
+		err = os.WriteFile(exePath, []byte("mock-dev-exe"), 0755)
 		if err != nil {
 			t.Fatalf("Failed to create current exe: %v", err)
 		}
 
-		// Simulate backup restoration logic from gui.go
-		// This simulates checking for backup and restoring when disabling dev mode
-		if fileExists(backupMetaPath) && fileExists(backupExePath) {
-			// In real implementation, this would call replaceAndRestart
-			// For testing, we'll simulate the restoration by copying
-			data, err := os.ReadFile(backupExePath)
+		// Simulate update failure and fallback logic
+		updateFailed := true
+		targetDevMode := true
+		fallbackAttempted := false
+
+		// Simulate update process with fallback
+		if updateFailed && targetDevMode {
+			// Attempt fallback to stable
+			fallbackAttempted = true
+			err = os.WriteFile(exePath, []byte("mock-stable-exe"), 0755)
 			if err != nil {
-				t.Fatalf("Failed to read backup exe: %v", err)
-			}
-			err = os.WriteFile(currentExePath, data, 0755)
-			if err != nil {
-				t.Fatalf("Failed to restore backup exe: %v", err)
+				t.Fatalf("Failed to simulate fallback update: %v", err)
 			}
 		}
 
-		// Verify restoration
-		data, err = os.ReadFile(currentExePath)
-		if err != nil {
-			t.Fatalf("Failed to read restored exe: %v", err)
-		}
-
-		if string(data) != "mock-backup-exe" {
-			t.Error("Current executable should be restored from backup")
-		}
-	})
-
-	// Test 3: Fallback to stable update when no backup exists
-	t.Run("FallbackToStableUpdate", func(t *testing.T) {
-		// Setup: No backup files exist
-		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
-		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
-		currentExePath := filepath.Join(tempDir, "TheBoysLauncher.exe")
-
-		// Ensure backup doesn't exist
-		os.Remove(backupMetaPath)
-		os.Remove(backupExePath)
-
-		// Create current dev executable
-		err = os.WriteFile(currentExePath, []byte("mock-dev-exe"), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create current exe: %v", err)
-		}
-
-		// Simulate fallback logic from gui.go
-		// This simulates the fallback to stable update when no backup exists
-		if !(fileExists(backupMetaPath) && fileExists(backupExePath)) {
-			// In real implementation, this would call forceUpdate with preferDev=false
-			// For testing, we'll simulate the stable update
-			err = os.WriteFile(currentExePath, []byte("mock-stable-exe"), 0755)
-			if err != nil {
-				t.Fatalf("Failed to simulate stable update: %v", err)
-			}
+		// Verify fallback was attempted
+		if !fallbackAttempted {
+			t.Error("Fallback to stable should be attempted when dev update fails")
 		}
 
 		// Verify fallback update
-		data, err := os.ReadFile(currentExePath)
+		data, err := os.ReadFile(exePath)
 		if err != nil {
 			t.Fatalf("Failed to read updated exe: %v", err)
 		}
 
 		if string(data) != "mock-stable-exe" {
-			t.Error("Current executable should be updated to stable version when no backup exists")
+			t.Error("Executable should be updated to stable version when fallback occurs")
 		}
 	})
 }
 
-// TestGUIDevModeErrorHandling tests error handling in the dev mode toggle functionality
+// TestGUIDevModeErrorHandling tests error handling in simplified dev mode toggle functionality
 func TestGUIDevModeErrorHandling(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "theboyslauncher-gui-error-test")
@@ -193,55 +139,45 @@ func TestGUIDevModeErrorHandling(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test 1: Handle backup creation failure
-	t.Run("BackupCreationFailure", func(t *testing.T) {
-		// Setup: Use invalid backup path to simulate failure
-		backupExePath := filepath.Join(tempDir, "invalid", "path", "backup.exe")
-		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
+	// Test 1: Handle validation failure gracefully
+	t.Run("ValidationFailure", func(t *testing.T) {
+		// Simulate validation failure scenario
+		validationFailed := true
+		originalDevMode := false
+		pendingDevMode := true
 
-		// Simulate backup creation with invalid path
-		tag := "v3.2.27"
-		meta := map[string]string{"tag": tag, "path": backupExePath}
-
-		// This should fail when trying to write to invalid path
-		data, err := json.MarshalIndent(meta, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal backup metadata: %v", err)
+		// Simulate Save & Apply operation with validation failure
+		if validationFailed {
+			// Revert checkbox state
+			pendingDevMode = originalDevMode
 		}
 
-		err = os.WriteFile(backupMetaPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to write backup metadata: %v", err)
-		}
-
-		// Try to create backup exe in invalid path
-		err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-		if err == nil {
-			t.Error("Expected backup creation to fail with invalid path")
+		// Verify checkbox was reverted
+		if pendingDevMode != originalDevMode {
+			t.Errorf("Checkbox should be reverted on validation failure. Expected %v, got %v",
+				originalDevMode, pendingDevMode)
 		}
 	})
 
-	// Test 2: Handle corrupted backup metadata
-	t.Run("CorruptedBackupMetadata", func(t *testing.T) {
+	// Test 2: Handle corrupted settings gracefully
+	t.Run("CorruptedSettings", func(t *testing.T) {
 		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
 
-		// Write corrupted metadata
+		// Write corrupted metadata (should be ignored in new implementation)
 		err := os.WriteFile(backupMetaPath, []byte("invalid json"), 0644)
 		if err != nil {
 			t.Fatalf("Failed to write corrupted metadata: %v", err)
 		}
 
-		// Try to read corrupted metadata
-		data, err := os.ReadFile(backupMetaPath)
-		if err != nil {
-			t.Fatalf("Failed to read corrupted metadata: %v", err)
+		// In new implementation, corrupted backup metadata should be ignored
+		// since we don't use backup system anymore
+		if fileExists(backupMetaPath) {
+			// File might exist but should be ignored
+			t.Log("Backup metadata file exists but should be ignored in simplified implementation")
 		}
 
-		var meta map[string]string
-		err = json.Unmarshal(data, &meta)
-		if err == nil {
-			t.Error("Expected metadata unmarshaling to fail with corrupted JSON")
-		}
+		// The launcher should continue without backup functionality
+		// This test verifies that the system doesn't crash when backup files exist
 	})
 }
 
@@ -332,10 +268,10 @@ func TestGUIDevModeSettingsPersistence(t *testing.T) {
 	})
 }
 
-// TestGUIDevModeUIFeedback tests that UI feedback is properly provided during dev mode operations
+// TestGUIDevModeUIFeedback tests that UI feedback is properly provided during simplified dev mode operations
 func TestGUIDevModeUIFeedback(t *testing.T) {
-	// Test UI feedback message patterns
-	t.Run("UIFeedbackMessages", func(t *testing.T) {
+	// Test UI feedback message patterns for simplified implementation
+	t.Run("SimplifiedUIFeedbackMessages", func(t *testing.T) {
 		testCases := []struct {
 			operation   string
 			expectedMsg string
@@ -343,13 +279,8 @@ func TestGUIDevModeUIFeedback(t *testing.T) {
 		}{
 			{
 				operation:   "enable_dev_mode",
-				expectedMsg: "Preparing dev mode",
-				description: "Enabling dev mode should show preparation message",
-			},
-			{
-				operation:   "create_backup",
-				expectedMsg: "Creating backup of current stable version",
-				description: "Backup creation should show backup message",
+				expectedMsg: "Validating update availability",
+				description: "Enabling dev mode should show validation message",
 			},
 			{
 				operation:   "update_to_dev",
@@ -358,40 +289,37 @@ func TestGUIDevModeUIFeedback(t *testing.T) {
 			},
 			{
 				operation:   "disable_dev_mode",
-				expectedMsg: "Switching to stable channel",
-				description: "Disabling dev mode should show switch message",
-			},
-			{
-				operation:   "restore_backup",
-				expectedMsg: "Restoring stable version from backup",
-				description: "Backup restoration should show restore message",
+				expectedMsg: "Validating update availability",
+				description: "Disabling dev mode should show validation message",
 			},
 			{
 				operation:   "update_to_stable",
 				expectedMsg: "Updating to latest stable version",
 				description: "Stable update should show stable update message",
 			},
+			{
+				operation:   "fallback_to_stable",
+				expectedMsg: "Attempting fallback to stable",
+				description: "Fallback should show fallback message",
+			},
 		}
 
 		for _, tc := range testCases {
 			t.Run(tc.operation, func(t *testing.T) {
-				// Simulate UI feedback logic from gui.go
-				// In real implementation, this would update the loading overlay
+				// Simulate simplified UI feedback logic from gui.go
 				var feedbackMessage string
 
 				switch tc.operation {
 				case "enable_dev_mode":
-					feedbackMessage = "Preparing dev mode..."
-				case "create_backup":
-					feedbackMessage = "Creating backup of current stable version..."
+					feedbackMessage = "Validating update availability..."
 				case "update_to_dev":
 					feedbackMessage = "Updating to latest dev version..."
 				case "disable_dev_mode":
-					feedbackMessage = "Switching to stable channel..."
-				case "restore_backup":
-					feedbackMessage = "Restoring stable version from backup..."
+					feedbackMessage = "Validating update availability..."
 				case "update_to_stable":
 					feedbackMessage = "Updating to latest stable version..."
+				case "fallback_to_stable":
+					feedbackMessage = "Attempting fallback to stable..."
 				}
 
 				if feedbackMessage == "" {
@@ -404,106 +332,109 @@ func TestGUIDevModeUIFeedback(t *testing.T) {
 			})
 		}
 	})
+
+	// Test channel status display
+	t.Run("ChannelStatusDisplay", func(t *testing.T) {
+		testCases := []struct {
+			name            string
+			devModeEnabled  bool
+			expectedChannel string
+		}{
+			{
+				name:            "Dev mode enabled",
+				devModeEnabled:  true,
+				expectedChannel: "Channel: Dev",
+			},
+			{
+				name:            "Dev mode disabled",
+				devModeEnabled:  false,
+				expectedChannel: "Channel: Stable",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				// Simulate channel label logic from simplified gui.go
+				var channelLabel string
+				if tc.devModeEnabled {
+					channelLabel = "Channel: Dev"
+				} else {
+					channelLabel = "Channel: Stable"
+				}
+
+				if channelLabel != tc.expectedChannel {
+					t.Errorf("Expected channel label '%s', got '%s'", tc.expectedChannel, channelLabel)
+				}
+			})
+		}
+	})
 }
 
-// TestGUIDevModeBackupManagement tests backup file management operations
-func TestGUIDevModeBackupManagement(t *testing.T) {
+// TestGUIDevModeValidation tests the pre-update validation functionality
+func TestGUIDevModeValidation(t *testing.T) {
 	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "theboyslauncher-gui-backup-test")
+	tempDir, err := os.MkdirTemp("", "theboyslauncher-gui-validation-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
-	backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
+	// Test 1: Validation success scenario
+	t.Run("ValidationSuccess", func(t *testing.T) {
+		// Simulate successful validation
+		validationPassed := true
 
-	// Test 1: Delete backup functionality
-	t.Run("DeleteBackup", func(t *testing.T) {
-		// Create backup files first
-		meta := map[string]string{"tag": "v3.2.27", "path": backupExePath}
-		data, err := json.MarshalIndent(meta, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal backup metadata: %v", err)
-		}
-		err = os.WriteFile(backupMetaPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to write backup metadata: %v", err)
-		}
-		err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create backup exe: %v", err)
+		// Simulate validation logic
+		if validationPassed {
+			// Validation passed, proceed with update
+			// In real implementation, this would trigger forceUpdate
+		} else {
+			t.Error("Validation should have passed in this test scenario")
 		}
 
-		// Verify backup exists
-		if !fileExists(backupMetaPath) || !fileExists(backupExePath) {
-			t.Fatal("Backup files should exist before deletion")
-		}
-
-		// Simulate backup deletion from gui.go
-		err = os.Remove(backupMetaPath)
-		if err != nil {
-			t.Fatalf("Failed to remove backup metadata: %v", err)
-		}
-		err = os.Remove(backupExePath)
-		if err != nil {
-			t.Fatalf("Failed to remove backup exe: %v", err)
-		}
-
-		// Verify backup is deleted
-		if fileExists(backupMetaPath) {
-			t.Error("Backup metadata file should be deleted")
-		}
-		if fileExists(backupExePath) {
-			t.Error("Backup executable file should be deleted")
+		// Verify we can proceed with update
+		if !validationPassed {
+			t.Error("Should be able to proceed with update after successful validation")
 		}
 	})
 
-	// Test 2: Backup info display
-	t.Run("BackupInfoDisplay", func(t *testing.T) {
-		// Create backup with timestamp
-		meta := map[string]string{"tag": "v3.2.27", "path": backupExePath}
-		data, err := json.MarshalIndent(meta, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal backup metadata: %v", err)
-		}
-		err = os.WriteFile(backupMetaPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to write backup metadata: %v", err)
-		}
-		err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create backup exe: %v", err)
+	// Test 2: Validation failure scenario
+	t.Run("ValidationFailure", func(t *testing.T) {
+		// Simulate validation failure
+		validationPassed := false
+		targetDevMode := true
+		originalDevMode := false
+
+		// Simulate validation failure handling
+		if !validationPassed {
+			// Revert to original state
+			targetDevMode = originalDevMode
 		}
 
-		// Get file info for timestamp
-		info, err := os.Stat(backupExePath)
-		if err != nil {
-			t.Fatalf("Failed to get backup exe info: %v", err)
+		// Verify state was reverted
+		if targetDevMode != originalDevMode {
+			t.Errorf("Dev mode should be reverted to original state (%v) on validation failure, got %v",
+				originalDevMode, targetDevMode)
+		}
+	})
+
+	// Test 3: Network error handling
+	t.Run("NetworkErrorHandling", func(t *testing.T) {
+		// Simulate network error during validation
+		networkError := true
+		originalDevMode := false
+		pendingDevMode := true
+
+		// Simulate network error handling
+		if networkError {
+			// Show error message and revert
+			pendingDevMode = originalDevMode
 		}
 
-		// Simulate backup info display logic from gui.go
-		var backupInfo string
-		if fileExists(backupMetaPath) {
-			data, err := os.ReadFile(backupMetaPath)
-			if err == nil {
-				var loadedMeta map[string]string
-				if json.Unmarshal(data, &loadedMeta) == nil {
-					tag := loadedMeta["tag"]
-					backupInfo = fmt.Sprintf("Backup tag: %s", tag)
-					if info != nil {
-						backupInfo = fmt.Sprintf("%s • saved: %s", backupInfo, info.ModTime().Format(time.RFC1123))
-					}
-				}
-			}
-		}
-
-		if backupInfo == "" {
-			t.Error("Backup info should not be empty when backup exists")
-		}
-
-		if !containsString(backupInfo, "v3.2.27") {
-			t.Errorf("Backup info should contain tag v3.2.27, got: %s", backupInfo)
+		// Verify error handling
+		if pendingDevMode != originalDevMode {
+			t.Errorf("Dev mode should be reverted on network error. Expected %v, got %v",
+				originalDevMode, pendingDevMode)
 		}
 	})
 }

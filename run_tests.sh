@@ -98,6 +98,30 @@ else
     exit 1
 fi
 
+echo "Running prerelease filtering tests..."
+if go test -v -run TestIsPrereleaseTag; then
+    print_status "PASS" "Prerelease tag detection tests passed"
+else
+    print_status "FAIL" "Prerelease tag detection tests failed"
+    exit 1
+fi
+
+echo "Running stable version filtering tests..."
+if go test -v -run "TestFilterStableReleasesLogic|TestFetchLatestAssetPreferStableLogic|TestVersionFilteringEdgeCases"; then
+    print_status "PASS" "Stable version filtering tests passed"
+else
+    print_status "FAIL" "Stable version filtering tests failed"
+    exit 1
+fi
+
+echo "Running bug report scenario tests..."
+if go test -v -run TestBugReportScenario; then
+    print_status "PASS" "Bug report scenario tests passed"
+else
+    print_status "FAIL" "Bug report scenario tests failed"
+    exit 1
+fi
+
 echo "Running GUI dev mode toggle tests..."
 if go test -v tests/gui_test.go tests/devbuilds_test.go -run TestGUIDevMode; then
     print_status "PASS" "GUI dev mode toggle tests passed"
@@ -229,6 +253,9 @@ echo "Test Summary:"
 echo "- ✅ Code compilation"
 echo "- ✅ Go modules verification"
 echo "- ✅ Unit tests (platform, version, update, forceUpdate)"
+echo "- ✅ Prerelease tag detection tests"
+echo "- ✅ Stable version filtering tests"
+echo "- ✅ Bug report scenario tests"
 echo "- ✅ GUI dev mode toggle tests"
 echo "- ✅ Cross-platform compilation"
 echo "- ✅ GitHub Actions workflow validation"

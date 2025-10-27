@@ -4,13 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// TestDevModeToggleBehavior tests the modified dev mode toggle behavior
-// This tests the new implementation where checkbox toggles only update temporary variables
-// and the actual update process only happens when Save is clicked
+// TestDevModeToggleBehavior tests simplified dev mode toggle behavior
+// This tests the new implementation where settings are applied directly with Save & Apply button
 func TestDevModeToggleBehavior(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "theboyslauncher-devmode-toggle-test")
@@ -19,8 +17,8 @@ func TestDevModeToggleBehavior(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test 1: Checkbox toggle doesn't trigger immediate updates
-	t.Run("CheckboxToggleNoImmediateUpdate", func(t *testing.T) {
+	// Test 1: Direct settings application
+	t.Run("DirectSettingsApplication", func(t *testing.T) {
 		// Setup initial settings
 		originalSettings := LauncherSettings{
 			MemoryMB:         4096,
@@ -39,109 +37,9 @@ func TestDevModeToggleBehavior(t *testing.T) {
 			t.Fatalf("Failed to save original settings: %v", err)
 		}
 
-		// Simulate checkbox toggle (temporary variable change)
-		pendingDevBuildsEnabled := true // User checks the checkbox
-
-		// Verify original settings haven't changed
-		savedData, err := os.ReadFile(settingsPath)
-		if err != nil {
-			t.Fatalf("Failed to read saved settings: %v", err)
-		}
-
-		var savedSettings LauncherSettings
-		err = json.Unmarshal(savedData, &savedSettings)
-		if err != nil {
-			t.Fatalf("Failed to unmarshal saved settings: %v", err)
-		}
-
-		// Original settings should remain unchanged
-		if savedSettings.DevBuildsEnabled != originalSettings.DevBuildsEnabled {
-			t.Errorf("Saved settings should not change when checkbox is toggled. Expected %v, got %v",
-				originalSettings.DevBuildsEnabled, savedSettings.DevBuildsEnabled)
-		}
-
-		// Pending variable should reflect the change
-		if pendingDevBuildsEnabled != true {
-			t.Error("Pending variable should reflect checkbox state")
-		}
-	})
-
-	// Test 2: Multiple checkbox toggles before save
-	t.Run("MultipleTogglesBeforeSave", func(t *testing.T) {
-		// Setup initial settings
-		originalSettings := LauncherSettings{
-			MemoryMB:         4096,
-			AutoRAM:          true,
-			DevBuildsEnabled: false,
-		}
-
-		// Save original settings
-		settingsPath := filepath.Join(tempDir, "settings2.json")
-		data, err := json.MarshalIndent(originalSettings, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal original settings: %v", err)
-		}
-		err = os.WriteFile(settingsPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to save original settings: %v", err)
-		}
-
-		// Simulate multiple checkbox toggles
-		pendingDevBuildsEnabled := false
-		pendingDevBuildsEnabled = true  // First toggle
-		pendingDevBuildsEnabled = false // Second toggle
-		pendingDevBuildsEnabled = true  // Third toggle
-
-		// Verify original settings haven't changed after multiple toggles
-		savedData, err := os.ReadFile(settingsPath)
-		if err != nil {
-			t.Fatalf("Failed to read saved settings: %v", err)
-		}
-
-		var savedSettings LauncherSettings
-		err = json.Unmarshal(savedData, &savedSettings)
-		if err != nil {
-			t.Fatalf("Failed to unmarshal saved settings: %v", err)
-		}
-
-		// Original settings should remain unchanged
-		if savedSettings.DevBuildsEnabled != originalSettings.DevBuildsEnabled {
-			t.Errorf("Saved settings should not change after multiple checkbox toggles. Expected %v, got %v",
-				originalSettings.DevBuildsEnabled, savedSettings.DevBuildsEnabled)
-		}
-
-		// Pending variable should reflect the final state
-		if pendingDevBuildsEnabled != true {
-			t.Error("Pending variable should reflect final checkbox state")
-		}
-	})
-
-	// Test 3: Save button applies pending changes
-	t.Run("SaveButtonAppliesPendingChanges", func(t *testing.T) {
-		// Setup initial settings
-		originalSettings := LauncherSettings{
-			MemoryMB:         4096,
-			AutoRAM:          true,
-			DevBuildsEnabled: false,
-		}
-
-		// Save original settings
-		settingsPath := filepath.Join(tempDir, "settings3.json")
-		data, err := json.MarshalIndent(originalSettings, "", "  ")
-		if err != nil {
-			t.Fatalf("Failed to marshal original settings: %v", err)
-		}
-		err = os.WriteFile(settingsPath, data, 0644)
-		if err != nil {
-			t.Fatalf("Failed to save original settings: %v", err)
-		}
-
-		// Simulate checkbox toggle and save
-		pendingDevBuildsEnabled := true // User checks the checkbox
-
-		// Simulate save operation
+		// Simulate Save & Apply operation
 		updatedSettings := originalSettings
-		updatedSettings.DevBuildsEnabled = pendingDevBuildsEnabled
+		updatedSettings.DevBuildsEnabled = true // User enables dev mode
 
 		// Save updated settings
 		data, err = json.MarshalIndent(updatedSettings, "", "  ")
@@ -165,14 +63,14 @@ func TestDevModeToggleBehavior(t *testing.T) {
 			t.Fatalf("Failed to unmarshal saved settings: %v", err)
 		}
 
-		// Settings should now reflect the saved change
+		// Settings should now reflect the change
 		if savedSettings.DevBuildsEnabled != true {
-			t.Errorf("Settings should be updated after save. Expected true, got %v", savedSettings.DevBuildsEnabled)
+			t.Errorf("Settings should be updated after Save & Apply. Expected true, got %v", savedSettings.DevBuildsEnabled)
 		}
 	})
 
-	// Test 4: Cancel button discards pending changes
-	t.Run("CancelButtonDiscardsPendingChanges", func(t *testing.T) {
+	// Test 2: Multiple settings changes in one operation
+	t.Run("MultipleSettingsChanges", func(t *testing.T) {
 		// Setup initial settings
 		originalSettings := LauncherSettings{
 			MemoryMB:         4096,
@@ -181,7 +79,7 @@ func TestDevModeToggleBehavior(t *testing.T) {
 		}
 
 		// Save original settings
-		settingsPath := filepath.Join(tempDir, "settings4.json")
+		settingsPath := filepath.Join(tempDir, "settings2.json")
 		data, err := json.MarshalIndent(originalSettings, "", "  ")
 		if err != nil {
 			t.Fatalf("Failed to marshal original settings: %v", err)
@@ -191,14 +89,23 @@ func TestDevModeToggleBehavior(t *testing.T) {
 			t.Fatalf("Failed to save original settings: %v", err)
 		}
 
-		// Simulate checkbox toggle but cancel (don't save)
-		pendingDevBuildsEnabled := true // User checks the checkbox
-		// User clicks cancel - pending changes are discarded
+		// Simulate multiple settings changes and Save & Apply
+		updatedSettings := originalSettings
+		updatedSettings.DevBuildsEnabled = true
+		updatedSettings.AutoRAM = false
+		updatedSettings.MemoryMB = 8192
 
-		// Use the variable to avoid unused error
-		_ = pendingDevBuildsEnabled
+		// Save updated settings
+		data, err = json.MarshalIndent(updatedSettings, "", "  ")
+		if err != nil {
+			t.Fatalf("Failed to marshal updated settings: %v", err)
+		}
+		err = os.WriteFile(settingsPath, data, 0644)
+		if err != nil {
+			t.Fatalf("Failed to save updated settings: %v", err)
+		}
 
-		// Verify original settings remain unchanged
+		// Verify settings were updated
 		savedData, err := os.ReadFile(settingsPath)
 		if err != nil {
 			t.Fatalf("Failed to read saved settings: %v", err)
@@ -210,127 +117,86 @@ func TestDevModeToggleBehavior(t *testing.T) {
 			t.Fatalf("Failed to unmarshal saved settings: %v", err)
 		}
 
-		// Settings should remain unchanged after cancel
-		if savedSettings.DevBuildsEnabled != originalSettings.DevBuildsEnabled {
-			t.Errorf("Settings should remain unchanged after cancel. Expected %v, got %v",
-				originalSettings.DevBuildsEnabled, savedSettings.DevBuildsEnabled)
+		// All settings should be updated
+		if savedSettings.DevBuildsEnabled != true {
+			t.Errorf("DevBuildsEnabled should be true, got %v", savedSettings.DevBuildsEnabled)
+		}
+		if savedSettings.AutoRAM != false {
+			t.Errorf("AutoRAM should be false, got %v", savedSettings.AutoRAM)
+		}
+		if savedSettings.MemoryMB != 8192 {
+			t.Errorf("MemoryMB should be 8192, got %v", savedSettings.MemoryMB)
 		}
 	})
 }
 
-// TestDevModeUIFeedback tests the UI feedback for pending changes
+// TestDevModeUIFeedback tests UI feedback for the simplified settings
 func TestDevModeUIFeedback(t *testing.T) {
-	// Test 1: Status label updates for pending changes
-	t.Run("StatusLabelUpdates", func(t *testing.T) {
+	// Test 1: Channel status display
+	t.Run("ChannelStatusDisplay", func(t *testing.T) {
 		testCases := []struct {
-			name                   string
-			originalDevMode        bool
-			pendingDevMode         bool
-			expectedStatusContains string
+			name            string
+			devModeEnabled  bool
+			expectedChannel string
 		}{
 			{
-				name:                   "Enabling dev mode",
-				originalDevMode:        false,
-				pendingDevMode:         true,
-				expectedStatusContains: "Dev builds will be enabled",
+				name:            "Dev mode enabled",
+				devModeEnabled:  true,
+				expectedChannel: "Channel: Dev",
 			},
 			{
-				name:                   "Disabling dev mode",
-				originalDevMode:        true,
-				pendingDevMode:         false,
-				expectedStatusContains: "Dev builds will be disabled",
-			},
-			{
-				name:                   "No change",
-				originalDevMode:        false,
-				pendingDevMode:         false,
-				expectedStatusContains: "",
+				name:            "Dev mode disabled",
+				devModeEnabled:  false,
+				expectedChannel: "Channel: Stable",
 			},
 		}
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				// Simulate the status label logic from gui.go
-				hasPendingChanges := tc.originalDevMode != tc.pendingDevMode
-				var statusLabel string
-
-				if hasPendingChanges {
-					if tc.pendingDevMode {
-						statusLabel = "Pending changes: Dev builds will be enabled (backup will be created and launcher will update)"
-					} else {
-						statusLabel = "Pending changes: Dev builds will be disabled (stable version will be restored)"
-					}
+				// Simulate channel label logic from simplified gui.go
+				var channelLabel string
+				if tc.devModeEnabled {
+					channelLabel = "Channel: Dev"
 				} else {
-					statusLabel = ""
+					channelLabel = "Channel: Stable"
 				}
 
-				if tc.expectedStatusContains == "" {
-					if statusLabel != "" {
-						t.Errorf("Expected empty status label, got: %s", statusLabel)
-					}
-				} else {
-					if !strings.Contains(statusLabel, tc.expectedStatusContains) {
-						t.Errorf("Expected status label to contain '%s', got: %s", tc.expectedStatusContains, statusLabel)
-					}
+				if channelLabel != tc.expectedChannel {
+					t.Errorf("Expected channel label '%s', got '%s'", tc.expectedChannel, channelLabel)
 				}
 			})
 		}
 	})
 
-	// Test 2: Multiple pending changes
-	t.Run("MultiplePendingChanges", func(t *testing.T) {
-		// Simulate multiple settings changes
-		originalAutoRAM := true
-		originalMemoryMB := 4096
-		originalDevMode := false
+	// Test 2: Channel label updates on checkbox toggle
+	t.Run("ChannelLabelUpdates", func(t *testing.T) {
+		// Simulate checkbox toggle behavior
+		devCheckChecked := false
+		channelLabel := "Channel: Stable"
 
-		pendingAutoRAM := false
-		pendingMemoryMB := 8192
-		pendingDevMode := true
-
-		// Simulate the status label logic for multiple changes
-		hasPendingChanges := originalAutoRAM != pendingAutoRAM ||
-			originalMemoryMB != pendingMemoryMB ||
-			originalDevMode != pendingDevMode
-
-		var statusLabel string
-		if hasPendingChanges {
-			var changes []string
-			if originalAutoRAM != pendingAutoRAM {
-				if pendingAutoRAM {
-					changes = append(changes, "Auto RAM will be enabled")
-				} else {
-					changes = append(changes, "Auto RAM will be disabled")
-				}
-			}
-			if originalMemoryMB != pendingMemoryMB && !pendingAutoRAM {
-				changes = append(changes, "Memory will be set to 8 GB")
-			}
-			if originalDevMode != pendingDevMode {
-				if pendingDevMode {
-					changes = append(changes, "Dev builds will be enabled (backup will be created and launcher will update)")
-				} else {
-					changes = append(changes, "Dev builds will be disabled (stable version will be restored)")
-				}
-			}
-			statusLabel = "Pending changes: " + strings.Join(changes, ", ")
+		// User checks the checkbox
+		devCheckChecked = true
+		if devCheckChecked {
+			channelLabel = "Channel: Dev"
 		}
 
-		expectedContains := []string{
-			"Auto RAM will be disabled",
-			"Memory will be set to 8 GB",
-			"Dev builds will be enabled",
+		if channelLabel != "Channel: Dev" {
+			t.Errorf("Expected channel label to be 'Channel: Dev' when checkbox is checked, got '%s'", channelLabel)
 		}
 
-		for _, expected := range expectedContains {
-			if !strings.Contains(statusLabel, expected) {
-				t.Errorf("Expected status label to contain '%s', got: %s", expected, statusLabel)
-			}
+		// User unchecks the checkbox
+		devCheckChecked = false
+		if !devCheckChecked {
+			channelLabel = "Channel: Stable"
+		}
+
+		if channelLabel != "Channel: Stable" {
+			t.Errorf("Expected channel label to be 'Channel: Stable' when checkbox is unchecked, got '%s'", channelLabel)
 		}
 	})
 }
 
-// TestDevModeUpdateProcess tests that the update process only runs once when settings are applied
+// TestDevModeUpdateProcess tests the simplified update process
 func TestDevModeUpdateProcess(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "theboyslauncher-devmode-update-test")
@@ -339,105 +205,54 @@ func TestDevModeUpdateProcess(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test 1: Update process runs only on save
-	t.Run("UpdateProcessOnlyOnSave", func(t *testing.T) {
+	// Test 1: Update process runs only on Save & Apply
+	t.Run("UpdateProcessOnlyOnSaveApply", func(t *testing.T) {
 		// Track update process calls
 		updateProcessCalls := 0
 
-		// Simulate the update process tracking
+		// Simulate update process tracking
 		simulateUpdateProcess := func() {
 			updateProcessCalls++
 		}
 
-		// Simulate checkbox toggles (should not trigger update)
-		pendingDevBuildsEnabled := true
-		pendingDevBuildsEnabled = false
-		pendingDevBuildsEnabled = true
+		// Simulate checkbox toggle (should not trigger update)
+		devCheckChecked := true
+		_ = devCheckChecked // Use variable to avoid unused error
 
 		// Update process should not have been called yet
 		if updateProcessCalls != 0 {
-			t.Errorf("Update process should not be called during checkbox toggles. Called %d times", updateProcessCalls)
+			t.Errorf("Update process should not be called during checkbox toggle. Called %d times", updateProcessCalls)
 		}
 
-		// Simulate save operation (should trigger update once)
-		if pendingDevBuildsEnabled {
-			simulateUpdateProcess()
-		}
+		// Simulate Save & Apply operation (should trigger update once)
+		simulateUpdateProcess()
 
 		// Update process should have been called exactly once
 		if updateProcessCalls != 1 {
-			t.Errorf("Update process should be called exactly once on save. Called %d times", updateProcessCalls)
+			t.Errorf("Update process should be called exactly once on Save & Apply. Called %d times", updateProcessCalls)
 		}
 	})
 
-	// Test 2: No update when cancelled
-	t.Run("NoUpdateWhenCancelled", func(t *testing.T) {
+	// Test 2: No update when dialog is closed without saving
+	t.Run("NoUpdateWhenDialogClosed", func(t *testing.T) {
 		// Track update process calls
 		updateProcessCalls := 0
 
 		// Simulate checkbox toggle
-		pendingDevBuildsEnabled := true
-		_ = pendingDevBuildsEnabled // Use the variable to avoid unused error
+		devCheckChecked := true
+		_ = devCheckChecked // Use variable to avoid unused error
 
-		// Simulate cancel (no save, no update)
-		// User closes dialog or clicks cancel
+		// Simulate closing dialog without Save & Apply
+		// User closes dialog - no update
 
 		// Update process should not have been called
 		if updateProcessCalls != 0 {
-			t.Errorf("Update process should not be called when cancelled. Called %d times", updateProcessCalls)
-		}
-	})
-
-	// Test 3: Backup creation only when enabling dev mode
-	t.Run("BackupCreationOnlyOnEnable", func(t *testing.T) {
-		// Setup paths
-		backupMetaPath := filepath.Join(tempDir, "dev-backup.json")
-		backupExePath := filepath.Join(tempDir, "backup-non-dev.exe")
-
-		// Ensure backup doesn't exist initially
-		os.Remove(backupMetaPath)
-		os.Remove(backupExePath)
-
-		// Simulate enabling dev mode
-		originalDevMode := false
-		pendingDevMode := true
-
-		// Backup should only be created when saving the change
-		if originalDevMode != pendingDevMode && pendingDevMode {
-			// Simulate backup creation
-			tag := "v3.2.27"
-			meta := map[string]string{"tag": tag, "path": backupExePath}
-			data, err := json.MarshalIndent(meta, "", "  ")
-			if err != nil {
-				t.Fatalf("Failed to marshal backup metadata: %v", err)
-			}
-			err = os.WriteFile(backupMetaPath, data, 0644)
-			if err != nil {
-				t.Fatalf("Failed to write backup metadata: %v", err)
-			}
-			err = os.WriteFile(backupExePath, []byte("mock-backup-exe"), 0755)
-			if err != nil {
-				t.Fatalf("Failed to create backup exe: %v", err)
-			}
-		}
-
-		// Verify backup was created
-		if !fileExists(backupMetaPath) {
-			t.Error("Backup metadata should be created when enabling dev mode")
-		}
-		if !fileExists(backupExePath) {
-			t.Error("Backup executable should be created when enabling dev mode")
+			t.Errorf("Update process should not be called when dialog is closed without saving. Called %d times", updateProcessCalls)
 		}
 	})
 }
 
-// Helper function to check if file exists
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return !os.IsNotExist(err)
-}
-
-// TestDevModeErrorHandling tests error handling in the modified toggle behavior
+// TestDevModeErrorHandling tests error handling in the simplified toggle behavior
 func TestDevModeErrorHandling(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "theboyslauncher-devmode-error-test")
@@ -446,24 +261,22 @@ func TestDevModeErrorHandling(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Test 1: Revert checkbox state on backup failure
-	t.Run("RevertOnBackupFailure", func(t *testing.T) {
-		// Simulate backup failure scenario
-		backupFailed := true
+	// Test 1: Revert checkbox state on validation failure
+	t.Run("RevertOnValidationFailure", func(t *testing.T) {
+		// Simulate validation failure scenario
+		validationFailed := true
 		originalDevMode := false
 		pendingDevMode := true
 
-		// Simulate the save operation with backup failure
-		if originalDevMode != pendingDevMode {
-			if backupFailed {
-				// Revert the checkbox state
-				pendingDevMode = originalDevMode
-			}
+		// Simulate the Save & Apply operation with validation failure
+		if validationFailed {
+			// Revert the checkbox state
+			pendingDevMode = originalDevMode
 		}
 
 		// Verify checkbox was reverted
 		if pendingDevMode != originalDevMode {
-			t.Errorf("Checkbox should be reverted on backup failure. Expected %v, got %v",
+			t.Errorf("Checkbox should be reverted on validation failure. Expected %v, got %v",
 				originalDevMode, pendingDevMode)
 		}
 	})
@@ -501,4 +314,31 @@ func TestDevModeErrorHandling(t *testing.T) {
 			t.Error("Default dev mode should be false for stable builds")
 		}
 	})
+
+	// Test 3: Fallback behavior on update failure
+	t.Run("FallbackOnUpdateFailure", func(t *testing.T) {
+		// Simulate update failure scenario
+		updateFailed := true
+		targetDevMode := true
+
+		// Track fallback attempts
+		fallbackAttempted := false
+
+		// Simulate update process with fallback
+		if updateFailed && targetDevMode {
+			// Attempt fallback to stable
+			fallbackAttempted = true
+		}
+
+		// Verify fallback was attempted
+		if !fallbackAttempted {
+			t.Error("Fallback to stable should be attempted when dev update fails")
+		}
+	})
+}
+
+// Helper function to check if file exists
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }

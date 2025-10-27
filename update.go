@@ -196,16 +196,39 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 		// fall through to normal latest release
 	}
 
-	// Fallback: find the first release tag on the releases page (latest)
+	// Fallback: find release tags on the releases page
 	tagPattern := fmt.Sprintf(`/%s/%s/releases/tag/([^"']+)`, regexp.QuoteMeta(owner), regexp.QuoteMeta(repo))
 	tagRe := regexp.MustCompile(tagPattern)
-	tagMatches := tagRe.FindStringSubmatch(html)
+	tagMatches := tagRe.FindAllStringSubmatch(html, -1)
 
-	if len(tagMatches) < 2 {
+	if len(tagMatches) == 0 {
 		return "", "", fmt.Errorf("could not find any release tags for %s/%s", owner, repo)
 	}
 
-	tag = tagMatches[1]
+	// Extract all tags
+	var allTags []string
+	for _, match := range tagMatches {
+		if len(match) >= 2 {
+			allTags = append(allTags, match[1])
+		}
+	}
+
+	// If preferPrerelease is false, filter out dev/prerelease versions
+	if !preferPrerelease {
+		var stableTags []string
+		for _, tag := range allTags {
+			if !isPrereleaseTag(tag) {
+				stableTags = append(stableTags, tag)
+			}
+		}
+		if len(stableTags) == 0 {
+			return "", "", fmt.Errorf("no stable releases found for %s/%s", owner, repo)
+		}
+		tag = stableTags[0] // Return the first stable tag found
+	} else {
+		// When preferring prerelease, return the first tag found
+		tag = allTags[0]
+	}
 
 	assetURL = fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", owner, repo, tag, wantName)
 
@@ -227,6 +250,20 @@ func fetchLatestAssetPreferPrerelease(owner, repo, wantName string, preferPrerel
 	}
 
 	return tag, assetURL, nil
+}
+
+// isPrereleaseTag checks if a version tag represents a prerelease/dev version
+func isPrereleaseTag(tag string) bool {
+	tag = strings.ToLower(tag)
+	prereleaseIndicators := []string{"-dev", "-beta", "-rc", "-alpha", "-pre"}
+
+	for _, indicator := range prereleaseIndicators {
+		if strings.Contains(tag, indicator) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // replaceAndRestart replaces the current executable with the new one and launches it

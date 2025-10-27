@@ -353,3 +353,302 @@ func TestForceUpdateChannelSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterStableReleasesLogic(t *testing.T) {
+	testCases := []struct {
+		name              string
+		availableVersions []string
+		preferDev         bool
+		expectedVersion   string
+		shouldError       bool
+	}{
+		{
+			name: "MixedDevAndStable",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae", // Latest dev version
+				"v3.2.29",             // Latest stable version
+				"v3.2.28-beta",        // Beta version
+				"v3.2.27",             // Older stable version
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.29", // Should return latest stable, not dev
+			shouldError:     false,
+		},
+		{
+			name: "OnlyDevVersions",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae",
+				"v3.2.29-dev.abc123",
+				"v3.2.28-dev.def456",
+			},
+			preferDev:   false,
+			shouldError: true, // Should error when no stable versions exist
+		},
+		{
+			name: "OnlyStableVersions",
+			availableVersions: []string{
+				"v3.2.29",
+				"v3.2.28",
+				"v3.2.27",
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.29", // Should return latest stable
+			shouldError:     false,
+		},
+		{
+			name: "MixedPrereleaseTypes",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae", // Dev
+				"v3.2.29-beta.1",      // Beta
+				"v3.2.28-rc.2",        // Release candidate
+				"v3.2.27-alpha.3",     // Alpha
+				"v3.2.26-pre.4",       // Pre
+				"v3.2.25",             // Stable
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.25", // Should return only stable version
+			shouldError:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate the filtering logic from fetchLatestAssetPreferPrerelease
+			var result string
+			var err error
+
+			if tc.preferDev {
+				// When preferring dev, return the first version found
+				if len(tc.availableVersions) > 0 {
+					result = tc.availableVersions[0]
+				}
+			} else {
+				// When preferring stable, filter out prerelease versions
+				var stableVersions []string
+				for _, version := range tc.availableVersions {
+					if !isPrereleaseTag(version) {
+						stableVersions = append(stableVersions, version)
+					}
+				}
+				if len(stableVersions) == 0 {
+					err = fmt.Errorf("no stable releases found")
+				} else {
+					result = stableVersions[0]
+				}
+			}
+
+			if tc.shouldError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if result != tc.expectedVersion {
+					t.Errorf("Expected version %s, got %s", tc.expectedVersion, result)
+				}
+			}
+		})
+	}
+}
+
+func TestFetchLatestAssetPreferStableLogic(t *testing.T) {
+	testCases := []struct {
+		name              string
+		availableVersions []string
+		preferDev         bool
+		expectedVersion   string
+		shouldError       bool
+	}{
+		{
+			name: "PreferDevTrue_ShouldReturnDevVersion",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae", // Latest dev version
+				"v3.2.29",             // Latest stable version
+				"v3.2.28-beta",        // Beta version
+				"v3.2.27",             // Older stable version
+			},
+			preferDev:       true,
+			expectedVersion: "v3.2.30-dev.adcb1ae", // Should return latest dev
+			shouldError:     false,
+		},
+		{
+			name: "PreferDevFalse_ShouldReturnLatestStable",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae", // Latest dev version
+				"v3.2.29",             // Latest stable version
+				"v3.2.28-beta",        // Beta version
+				"v3.2.27",             // Older stable version
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.29", // Should return latest stable, not dev
+			shouldError:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate the logic from fetchLatestAssetPreferPrerelease
+			var result string
+			var err error
+
+			if tc.preferDev {
+				// When preferring dev, return the first version found
+				if len(tc.availableVersions) > 0 {
+					result = tc.availableVersions[0]
+				}
+			} else {
+				// When preferring stable, filter out prerelease versions
+				var stableVersions []string
+				for _, version := range tc.availableVersions {
+					if !isPrereleaseTag(version) {
+						stableVersions = append(stableVersions, version)
+					}
+				}
+				if len(stableVersions) == 0 {
+					err = fmt.Errorf("no stable releases found")
+				} else {
+					result = stableVersions[0]
+				}
+			}
+
+			if tc.shouldError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				if result != tc.expectedVersion {
+					t.Errorf("Expected version %s, got %s", tc.expectedVersion, result)
+				}
+			}
+		})
+	}
+}
+
+func TestVersionFilteringEdgeCases(t *testing.T) {
+	testCases := []struct {
+		name              string
+		availableVersions []string
+		preferDev         bool
+		expectedVersion   string
+		shouldError       bool
+		description       string
+	}{
+		{
+			name:              "EmptyVersionList",
+			availableVersions: []string{},
+			preferDev:         false,
+			shouldError:       true,
+			description:       "Should error when no versions are available",
+		},
+		{
+			name:              "EmptyVersionListPreferDev",
+			availableVersions: []string{},
+			preferDev:         true,
+			shouldError:       true,
+			description:       "Should error when no versions are available even when preferring dev",
+		},
+		{
+			name: "SingleDevVersion",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae",
+			},
+			preferDev:       true,
+			expectedVersion: "v3.2.30-dev.adcb1ae",
+			shouldError:     false,
+			description:     "Should return single dev version when preferring dev",
+		},
+		{
+			name: "SingleDevVersionPreferStable",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae",
+			},
+			preferDev:   false,
+			shouldError: true,
+			description: "Should error when only dev version exists but preferring stable",
+		},
+		{
+			name: "SingleStableVersion",
+			availableVersions: []string{
+				"v3.2.29",
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.29",
+			shouldError:     false,
+			description:     "Should return single stable version when preferring stable",
+		},
+		{
+			name: "SingleStableVersionPreferDev",
+			availableVersions: []string{
+				"v3.2.29",
+			},
+			preferDev:       true,
+			expectedVersion: "v3.2.29",
+			shouldError:     false,
+			description:     "Should return stable version even when preferring dev if no dev available",
+		},
+		{
+			name: "ComplexVersionFormats",
+			availableVersions: []string{
+				"v3.2.30-dev.adcb1ae",      // Dev with hash
+				"v3.2.29-beta.1+build.123", // Beta with build metadata
+				"v3.2.28-rc.2",             // Release candidate
+				"v3.2.27-alpha.3",          // Alpha
+				"v3.2.26-pre.4",            // Pre
+				"v3.2.25+build.456",        // Stable with build metadata
+				"v3.2.24",                  // Stable
+			},
+			preferDev:       false,
+			expectedVersion: "v3.2.25+build.456", // Should return first stable (with build metadata)
+			shouldError:     false,
+			description:     "Should handle complex version formats correctly",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate the filtering logic from fetchLatestAssetPreferPrerelease
+			var result string
+			var err error
+
+			if tc.preferDev {
+				// When preferring dev, return the first version found
+				if len(tc.availableVersions) > 0 {
+					result = tc.availableVersions[0]
+				} else {
+					err = fmt.Errorf("no releases found")
+				}
+			} else {
+				// When preferring stable, filter out prerelease versions
+				var stableVersions []string
+				for _, version := range tc.availableVersions {
+					if !isPrereleaseTag(version) {
+						stableVersions = append(stableVersions, version)
+					}
+				}
+				if len(stableVersions) == 0 {
+					err = fmt.Errorf("no stable releases found")
+				} else {
+					result = stableVersions[0]
+				}
+			}
+
+			if tc.shouldError {
+				if err == nil {
+					t.Errorf("Expected error but got none: %s", tc.description)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v (%s)", err, tc.description)
+				}
+				if result != tc.expectedVersion {
+					t.Errorf("Expected version %s, got %s (%s)", tc.expectedVersion, result, tc.description)
+				}
+			}
+		})
+	}
+}
