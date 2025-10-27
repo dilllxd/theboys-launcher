@@ -115,7 +115,9 @@ UserAskedAboutAutomaticJavaDownload=true
 
 		// Fix Qt plugin RPATH settings on Linux to ensure plugins can find bundled libraries
 		if runtime.GOOS == "linux" {
-			if err := fixQtPluginRPATH(dir); err != nil {
+			// Use the actual base directory where Prism executable is located
+			actualPrismDir := getPrismBaseDir(dir)
+			if err := fixQtPluginRPATH(actualPrismDir); err != nil {
 				logf("%s", warnLine(fmt.Sprintf("Failed to fix Qt plugin RPATH: %v", err)))
 				// Don't fail the entire operation, just log the warning
 			}
