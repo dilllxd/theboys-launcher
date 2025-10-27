@@ -239,20 +239,62 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Generate changelog
-        id: changelog
+      - name: Generate release notes
+        id: release-notes
         run: |
           git fetch --tags
-          TAG=${{ needs.bump_version.outputs.tag }}
+          VERSION="${{ needs.bump_version.outputs.version }}"
+          TAG="${{ needs.bump_version.outputs.tag }}"
           PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -n1 || true)
           if [ -z "$PREV_TAG" ]; then
-            BODY=$(git log --pretty=format:'%h %s (%an)' -n 50)
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" -n 50)
           else
-            BODY=$(git log --pretty=format:'%h %s (%an)' ${PREV_TAG}..${TAG})
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" ${PREV_TAG}..${TAG})
           fi
+          
+          # Generate formatted release notes
+          cat << EOF > release_notes.md
+          ## TheBoysLauncher $VERSION
+
+          ### 📦 Downloads:
+
+          #### Windows:
+          - **TheBoysLauncher.exe** - Standalone executable
+          - **TheBoysLauncher-Setup-$VERSION.msi** - Professional MSI installer
+
+          #### macOS:
+          - **TheBoysLauncher-mac-universal** - Universal binary (Intel + Apple Silicon)
+
+          #### Linux:
+          - **TheBoysLauncher-linux** - Universal binary
+
+          ### 🚀 Installation:
+
+          **Windows:**
+          1. Download MSI installer for professional installation with complete uninstall support
+          2. Or download standalone executable if you prefer portable usage
+
+          **macOS:**
+          1. Download universal binary
+          2. Make it executable: \`chmod +x TheBoysLauncher-mac-universal\`
+          3. Run it: \`./TheBoysLauncher-mac-universal\`
+
+          **Linux:**
+          1. Download binary
+          2. Make it executable: \`chmod +x TheBoysLauncher-linux\`
+          3. Run it: \`./TheBoysLauncher-linux\`
+
+          ### ⚠️ Important:
+          - macOS users may need to allow the app to run in Security & Privacy settings
+          - Windows SmartScreen may warn about unsigned software
+
+          ### 📝 Changes:
+          $CHANGELOG
+          EOF
+          
           {
             echo "body<<EOF"
-            echo "$BODY"
+            cat release_notes.md
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -261,8 +303,8 @@ jobs:
         uses: actions/create-release@v1
         with:
           tag_name: ${{ needs.bump_version.outputs.tag }}
-          release_name: ${{ needs.bump_version.outputs.tag }}
-          body: ${{ steps.changelog.outputs.body }}
+          release_name: TheBoysLauncher ${{ needs.bump_version.outputs.full_version }}
+          body: ${{ steps.release-notes.outputs.body }}
           draft: false
           prerelease: false
         env:

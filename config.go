@@ -18,7 +18,7 @@ const (
 	// Self-update source (GitHub Releases of this EXE)
 	UPDATE_OWNER      = "dilllxd"
 	UPDATE_REPO       = "theboyslauncher"
-	remoteModpacksURL = "https://raw.githubusercontent.com/dilllxd/theboyslauncher/refs/heads/main/config/modpacks.json"
+	remoteModpacksURL = "https://modpacks.dylan.lol/modpacks.json"
 
 	envCacheBust = "THEBOYS_CACHEBUST"
 	envNoPause   = "THEBOYS_NOPAUSE"
