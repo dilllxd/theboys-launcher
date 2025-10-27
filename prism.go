@@ -249,7 +249,12 @@ func fetchLatestPrismPortableURL() (string, error) {
 		patterns = append(patterns, fmt.Sprintf("PrismLauncher-macos-%s.zip", latestTag))
 		patterns = append(patterns, fmt.Sprintf("PrismLauncher-darwin-%s.zip", latestTag))
 	} else {
-		// Linux fallback
+		// Linux: prioritize Qt6 Portable for better compatibility, fallback to Qt5
+		// Priority 1: Qt6 Portable (newer, more compatible)
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-Qt6-Portable-%s.tar.gz", latestTag))
+		// Priority 2: Qt5 Portable (fallback for older systems)
+		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-Qt5-Portable-%s.tar.gz", latestTag))
+		// Fallbacks for older naming conventions
 		patterns = append(patterns, fmt.Sprintf("PrismLauncher-Linux-%s.tar.gz", latestTag))
 		patterns = append(patterns, fmt.Sprintf("PrismLauncher-linux-%s.tar.gz", latestTag))
 	}
