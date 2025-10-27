@@ -17,7 +17,7 @@ concurrency:
 jobs:
   reset-dev:
     runs-on: ubuntu-latest
-    if: '!github.event.release.prerelease && github.actor != "github-actions[bot]"'
+    if: '!github.event.release.prerelease && github.actor != ''github-actions[bot]'''
     
     steps:
       - name: Checkout repository
