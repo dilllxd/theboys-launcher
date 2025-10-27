@@ -122,8 +122,11 @@ func TestGetPrismExecutablePath(t *testing.T) {
 	var expected string
 	if runtime.GOOS == "windows" {
 		expected = "/test/path/PrismLauncher.exe"
-	} else {
+	} else if runtime.GOOS == "darwin" {
 		expected = "/test/path/Prism Launcher.app/Contents/MacOS/PrismLauncher"
+	} else {
+		// Linux and other platforms
+		expected = "/test/path/PrismLauncher"
 	}
 
 	if result != expected {
