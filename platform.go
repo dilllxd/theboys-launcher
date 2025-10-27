@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Platform-specific constants
@@ -52,15 +53,60 @@ func GetPrismExeName() string {
 
 // getPrismExecutablePath returns the full path to the Prism executable
 func GetPrismExecutablePath(prismDir string) string {
+	// First check for direct executable (flat structure)
+	directPath := getDirectPrismExecutablePath(prismDir)
+	if exists(directPath) {
+		logf("DEBUG: Found Prism executable at direct path: %s", directPath)
+		return directPath
+	}
+
+	// Check for versioned subdirectory structure (e.g., PrismLauncher-9.4/)
+	if runtime.GOOS != "darwin" { // macOS doesn't use portable builds with subdirectories
+		files, err := os.ReadDir(prismDir)
+		if err == nil {
+			for _, file := range files {
+				if file.IsDir() && strings.Contains(file.Name(), "PrismLauncher") {
+					nestedPath := getDirectPrismExecutablePath(filepath.Join(prismDir, file.Name()))
+					if exists(nestedPath) {
+						logf("DEBUG: Found Prism executable in versioned subdirectory: %s", nestedPath)
+						return nestedPath
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to direct path
+	logf("DEBUG: Using fallback path for Prism executable: %s", directPath)
+	return directPath
+}
+
+// getDirectPrismExecutablePath returns the path to the Prism executable assuming a flat structure
+func getDirectPrismExecutablePath(baseDir string) string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(prismDir, "PrismLauncher.exe")
+		return filepath.Join(baseDir, "PrismLauncher.exe")
 	} else if runtime.GOOS == "darwin" {
 		// macOS: executable is inside the app bundle (note the space in the name)
-		return filepath.Join(prismDir, "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
+		return filepath.Join(baseDir, "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
 	} else {
-		// Linux: executable is directly in the prism directory
-		return filepath.Join(prismDir, "PrismLauncher")
+		// Linux: executable is directly in the directory
+		return filepath.Join(baseDir, "PrismLauncher")
 	}
+}
+
+// getPrismBaseDir returns the actual base directory where Prism executable is located
+// This handles both flat and nested directory structures
+func getPrismBaseDir(prismDir string) string {
+	prismExe := GetPrismExecutablePath(prismDir)
+	baseDir := filepath.Dir(prismExe)
+
+	// For macOS, the base dir should be the parent of the app bundle
+	if runtime.GOOS == "darwin" && strings.HasSuffix(baseDir, "MacOS") {
+		baseDir = filepath.Dir(filepath.Dir(baseDir)) // Go up two levels: MacOS -> Contents -> Prism Launcher.app
+	}
+
+	logf("DEBUG: Prism base directory detected as: %s", baseDir)
+	return baseDir
 }
 
 // getPathSeparator returns the platform-specific PATH separator

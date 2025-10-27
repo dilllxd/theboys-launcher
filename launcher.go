@@ -25,15 +25,18 @@ func buildQtEnvironment(prismDir, jreDir string) []string {
 
 	// Add Qt-specific environment variables for Linux only
 	if runtime.GOOS == "linux" {
+		// Use the actual base directory where Prism executable is located
+		actualPrismDir := getPrismBaseDir(prismDir)
+
 		// Set Qt plugin path to bundled plugins directory
-		qtPluginPath := filepath.Join(prismDir, "plugins")
+		qtPluginPath := filepath.Join(actualPrismDir, "plugins")
 		if exists(qtPluginPath) {
 			qtEnv = append(qtEnv, "QT_PLUGIN_PATH="+qtPluginPath)
 			logf("DEBUG: Setting QT_PLUGIN_PATH=%s", qtPluginPath)
 		}
 
 		// Set library path to bundled libraries directory
-		qtLibPath := filepath.Join(prismDir, "lib")
+		qtLibPath := filepath.Join(actualPrismDir, "lib")
 		if exists(qtLibPath) {
 			// Prepend to LD_LIBRARY_PATH to prioritize bundled libraries
 			existingLdPath := os.Getenv("LD_LIBRARY_PATH")
@@ -59,12 +62,16 @@ func logQtEnvironment(prismDir string) {
 		return
 	}
 
+	// Use the actual base directory where Prism executable is located
+	actualPrismDir := getPrismBaseDir(prismDir)
+
 	logf("=== Qt Environment Debug ===")
-	logf("Prism Directory: %s", prismDir)
+	logf("Original Prism Directory: %s", prismDir)
+	logf("Actual Prism Base Directory: %s", actualPrismDir)
 
 	// Check directory structure
-	pluginsDir := filepath.Join(prismDir, "plugins")
-	libDir := filepath.Join(prismDir, "lib")
+	pluginsDir := filepath.Join(actualPrismDir, "plugins")
+	libDir := filepath.Join(actualPrismDir, "lib")
 
 	logf("Plugins Directory: %s (exists: %v)", pluginsDir, exists(pluginsDir))
 	logf("Lib Directory: %s (exists: %v)", libDir, exists(libDir))
@@ -113,7 +120,14 @@ func fixQtPluginRPATH(prismDir string) error {
 		return nil // Not an error, just skip the fix
 	}
 
-	pluginsDir := filepath.Join(prismDir, "plugins")
+	// Use the actual base directory where Prism executable is located
+	actualPrismDir := getPrismBaseDir(prismDir)
+	pluginsDir := filepath.Join(actualPrismDir, "plugins")
+	libDir := filepath.Join(actualPrismDir, "lib")
+
+	logf("DEBUG: Using plugins directory: %s", pluginsDir)
+	logf("DEBUG: Using lib directory: %s", libDir)
+
 	if !exists(pluginsDir) {
 		logf("%s", warnLine("Plugins directory not found, skipping RPATH fixing"))
 		return nil
@@ -137,25 +151,22 @@ func fixQtPluginRPATH(prismDir string) error {
 	for _, plugin := range criticalPlugins {
 		pluginPath := filepath.Join(pluginsDir, plugin)
 		if exists(pluginPath) {
-			// Use patchelf to set the correct RPATH
-			// $ORIGIN/../../lib points from the plugin directory to the lib directory
-			cmd := exec.Command("patchelf", "--set-rpath", "$ORIGIN/../../lib", pluginPath)
+			// Calculate relative path from plugin to lib directory
+			// This handles both flat and nested directory structures
+			relativeLibPath := calculateRelativePath(pluginPath, libDir)
+
+			cmd := exec.Command("patchelf", "--set-rpath", relativeLibPath, pluginPath)
 			if err := cmd.Run(); err != nil {
 				errMsg := fmt.Sprintf("Failed to fix RPATH for %s: %v", plugin, err)
 				logf("%s", warnLine(errMsg))
 				errors = append(errors, errMsg)
 			} else {
-				logf("Fixed RPATH for %s", plugin)
+				logf("Fixed RPATH for %s (using %s)", plugin, relativeLibPath)
 				fixedCount++
 			}
 		} else {
 			logf("Plugin not found: %s (skipping)", plugin)
 		}
-	}
-
-	// Also fix any additional plugins in subdirectories
-	if fixedCount > 0 {
-		logf("%s", successLine(fmt.Sprintf("Fixed RPATH for %d Qt plugins", fixedCount)))
 	}
 
 	// Fix all .so files in plugins directory recursively as a fallback
@@ -176,12 +187,15 @@ func fixQtPluginRPATH(prismDir string) error {
 			}
 		}
 
+		// Calculate relative path from plugin to lib directory
+		relativeLibPath := calculateRelativePath(path, libDir)
+
 		// Fix RPATH for additional plugins
-		cmd := exec.Command("patchelf", "--set-rpath", "$ORIGIN/../../lib", path)
+		cmd := exec.Command("patchelf", "--set-rpath", relativeLibPath, path)
 		if err := cmd.Run(); err != nil {
 			logf("Failed to fix RPATH for %s: %v", filepath.Base(path), err)
 		} else {
-			logf("Fixed RPATH for additional plugin: %s", filepath.Base(path))
+			logf("Fixed RPATH for additional plugin: %s (using %s)", filepath.Base(path), relativeLibPath)
 			fixedCount++
 		}
 
@@ -202,6 +216,31 @@ func fixQtPluginRPATH(prismDir string) error {
 	}
 
 	return nil
+}
+
+// calculateRelativePath calculates the relative path from a plugin to the lib directory
+func calculateRelativePath(pluginPath, libDir string) string {
+	// Get the directory containing the plugin
+	pluginDir := filepath.Dir(pluginPath)
+
+	// Calculate relative path from plugin directory to lib directory
+	relPath, err := filepath.Rel(pluginDir, libDir)
+	if err != nil {
+		// Fallback to $ORIGIN/../../lib if calculation fails
+		logf("DEBUG: Failed to calculate relative path, using fallback: %v", err)
+		return "$ORIGIN/../../lib"
+	}
+
+	// Convert to $ORIGIN-based relative path for RPATH
+	if relPath == "." {
+		return "$ORIGIN"
+	}
+
+	// Replace backslashes with forward slashes for consistency
+	relPath = strings.ReplaceAll(relPath, "\\", "/")
+
+	// Prefix with $ORIGIN for RPATH compatibility
+	return "$ORIGIN/" + relPath
 }
 
 // -------------------- Launcher Logic --------------------
