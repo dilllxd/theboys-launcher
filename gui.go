@@ -1509,14 +1509,19 @@ func (g *GUI) showSettings() {
 
 	// Save & Apply button that handles all changes
 	saveApplyBtn := widget.NewButtonWithIcon("Save & Apply", theme.DocumentSaveIcon(), func() {
+		// Close the settings dialog immediately
+		pop.Hide()
+
+		// Show loading in main UI instead of dialog
 		g.showLoading(true, "Applying settings...")
+		g.updateStatus("Applying settings...")
 
 		go func() {
 			defer g.showLoading(false, "")
 
 			// Handle dev mode changes with validation
 			if devCheck.Checked != settings.DevBuildsEnabled {
-				g.showLoading(true, "Validating update availability...")
+				g.updateStatus("Validating update availability...")
 
 				// Pre-update validation: check if the target version is available
 				targetDevMode := devCheck.Checked
@@ -1536,11 +1541,6 @@ func (g *GUI) showSettings() {
 						dialog.ShowError(fmt.Errorf("Failed to validate update availability: %v\n\nPlease check your internet connection and try again.", validationErr), g.window)
 						// Revert checkbox to current state
 						devCheck.SetChecked(settings.DevBuildsEnabled)
-						if settings.DevBuildsEnabled {
-							channelLabel.SetText("Channel: Dev")
-						} else {
-							channelLabel.SetText("Channel: Stable")
-						}
 					})
 					return
 				}
@@ -1557,21 +1557,16 @@ func (g *GUI) showSettings() {
 						// Revert changes
 						settings.DevBuildsEnabled = !targetDevMode
 						devCheck.SetChecked(settings.DevBuildsEnabled)
-						if settings.DevBuildsEnabled {
-							channelLabel.SetText("Channel: Dev")
-						} else {
-							channelLabel.SetText("Channel: Stable")
-						}
 					})
 					return
 				}
 
 				// Force update to the target channel
-				g.showLoading(true, fmt.Sprintf("Updating to latest %s version...", map[bool]string{true: "dev", false: "stable"}[targetDevMode]))
+				g.updateStatus(fmt.Sprintf("Updating to latest %s version...", map[bool]string{true: "dev", false: "stable"}[targetDevMode]))
 				updateErr := forceUpdate(g.root, g.exePath, targetDevMode, func(msg string) {
 					logf("%s", infoLine(msg))
 					fyne.Do(func() {
-						g.showLoading(true, msg)
+						g.updateStatus(msg)
 					})
 				})
 
@@ -1582,12 +1577,12 @@ func (g *GUI) showSettings() {
 					if targetDevMode {
 						logf("%s", infoLine("Attempting fallback to stable channel..."))
 						fyne.Do(func() {
-							g.showLoading(true, "Attempting fallback to stable...")
+							g.updateStatus("Attempting fallback to stable...")
 						})
 						fallbackErr := forceUpdate(g.root, g.exePath, false, func(msg string) {
 							logf("%s", infoLine(fmt.Sprintf("Fallback: %s", msg)))
 							fyne.Do(func() {
-								g.showLoading(true, msg)
+								g.updateStatus(msg)
 							})
 						})
 
@@ -1599,11 +1594,6 @@ func (g *GUI) showSettings() {
 								settings.DevBuildsEnabled = !targetDevMode
 								devCheck.SetChecked(settings.DevBuildsEnabled)
 								saveSettings(g.root)
-								if settings.DevBuildsEnabled {
-									channelLabel.SetText("Channel: Dev")
-								} else {
-									channelLabel.SetText("Channel: Stable")
-								}
 							})
 						} else {
 							logf("%s", successLine("Successfully fell back to stable channel"))
@@ -1611,7 +1601,6 @@ func (g *GUI) showSettings() {
 								dialog.ShowInformation("Update Fallback", "Failed to update to dev version, but successfully fell back to stable channel.\n\nDev builds have been disabled.", g.window)
 								settings.DevBuildsEnabled = false
 								devCheck.SetChecked(false)
-								channelLabel.SetText("Channel: Stable")
 								saveSettings(g.root)
 							})
 						}
@@ -1623,11 +1612,6 @@ func (g *GUI) showSettings() {
 							settings.DevBuildsEnabled = !targetDevMode
 							devCheck.SetChecked(settings.DevBuildsEnabled)
 							saveSettings(g.root)
-							if settings.DevBuildsEnabled {
-								channelLabel.SetText("Channel: Dev")
-							} else {
-								channelLabel.SetText("Channel: Stable")
-							}
 						})
 					}
 					return
@@ -1649,7 +1633,6 @@ func (g *GUI) showSettings() {
 
 			fyne.Do(func() {
 				g.updateStatus("Settings applied successfully")
-				pop.Hide()
 			})
 		}()
 	})
