@@ -28,7 +28,7 @@ func selfUpdate(root, exePath string, report func(string)) error {
 
 	// Prefer prerelease/dev builds if the user has enabled them
 	preferDev := settings.DevBuildsEnabled
-	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension(), preferDev)
+	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")
@@ -230,14 +230,18 @@ func normalizeTag(t string) string {
 	if len(t) > 0 && (t[0] == 'v' || t[0] == 'V') {
 		t = t[1:]
 	}
-	if i := strings.IndexAny(t, "-+"); i >= 0 {
-		t = t[:i]
-	}
+	// Don't strip prerelease information - keep it for proper comparison
 	return t
 }
 
 func parseSemverInts(t string) (major, minor, patch int) {
-	parts := strings.Split(t, ".")
+	// Split version to separate core version from prerelease
+	coreVersion := t
+	if i := strings.Index(t, "-"); i >= 0 {
+		coreVersion = t[:i]
+	}
+
+	parts := strings.Split(coreVersion, ".")
 	get := func(i int) int {
 		if i >= len(parts) || parts[i] == "" {
 			return 0
@@ -248,9 +252,94 @@ func parseSemverInts(t string) (major, minor, patch int) {
 	return get(0), get(1), get(2)
 }
 
+func getPrerelease(t string) string {
+	if i := strings.Index(t, "-"); i >= 0 {
+		return t[i+1:]
+	}
+	return ""
+}
+
+func comparePrerelease(a, b string) int {
+	// According to semver:
+	// 1. A version without prerelease is considered higher than one with prerelease
+	// 2. Prerelease is compared dot-separated identifiers
+	// 3. Numeric identifiers are compared numerically
+	// 4. Alphanumeric identifiers are compared lexically
+	// 5. Numeric identifiers are lower than alphanumeric identifiers
+
+	if a == "" && b != "" {
+		return 1 // a is stable, b is prerelease -> a is newer
+	}
+	if a != "" && b == "" {
+		return -1 // a is prerelease, b is stable -> b is newer
+	}
+	if a == "" && b == "" {
+		return 0 // both are stable
+	}
+
+	// Both have prerelease, compare them
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var aPart, bPart string
+		if i < len(aParts) {
+			aPart = aParts[i]
+		}
+		if i < len(bParts) {
+			bPart = bParts[i]
+		}
+
+		// If one has fewer parts, the one with more parts is considered newer
+		if aPart == "" && bPart != "" {
+			return -1
+		}
+		if aPart != "" && bPart == "" {
+			return 1
+		}
+
+		// Try to compare as numbers
+		aNum, aErr := strconv.Atoi(aPart)
+		bNum, bErr := strconv.Atoi(bPart)
+
+		if aErr == nil && bErr == nil {
+			// Both numeric, compare numerically
+			if aNum < bNum {
+				return -1
+			}
+			if aNum > bNum {
+				return 1
+			}
+		} else if aErr == nil {
+			// a is numeric, b is alphanumeric -> a is lower
+			return -1
+		} else if bErr == nil {
+			// a is alphanumeric, b is numeric -> a is higher
+			return 1
+		} else {
+			// Both alphanumeric, compare lexically
+			if aPart < bPart {
+				return -1
+			}
+			if aPart > bPart {
+				return 1
+			}
+		}
+	}
+
+	return 0 // prereleases are equal
+}
+
 func compareSemver(a, b string) int {
+	// Compare core version (major.minor.patch)
 	amaj, amin, apat := parseSemverInts(a)
 	bmaj, bmin, bpat := parseSemverInts(b)
+
 	if amaj != bmaj {
 		if amaj < bmaj {
 			return -1
@@ -269,5 +358,9 @@ func compareSemver(a, b string) int {
 		}
 		return 1
 	}
-	return 0
+
+	// Core versions are equal, compare prerelease
+	aPre := getPrerelease(a)
+	bPre := getPrerelease(b)
+	return comparePrerelease(aPre, bPre)
 }

@@ -102,17 +102,14 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             binary_name: TheBoysLauncher-linux
-            native_name: ""
             artifact_name: TheBoysLauncher-Linux
           - os: windows-latest
             platform: windows
             binary_name: TheBoysLauncher.exe
-            native_name: ""
             artifact_name: TheBoysLauncher-Windows
           - os: macos-latest
             platform: darwin
             binary_name: TheBoysLauncher-mac-universal
-            native_name: TheBoysLauncher-mac-native
             artifact_name: TheBoysLauncher-macOS
     runs-on: ${{ matrix.os }}
     steps:
@@ -158,11 +155,6 @@ jobs:
         if: ${{ matrix.platform != 'windows' }}
         run: chmod +x ${{ matrix.binary_name }}
 
-      - name: Build macOS native executable
-        if: ${{ matrix.platform == 'darwin' }}
-        run: |
-          go build -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.native_name }} .
-          chmod +x ${{ matrix.native_name }}
 
       - name: Ensure WiX is installed
         if: ${{ matrix.platform == 'windows' }}
@@ -222,13 +214,6 @@ jobs:
           path: ${{ matrix.binary_name }}
           retention-days: 14
 
-      - name: Upload macOS native executable
-        if: ${{ matrix.platform == 'darwin' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}-Native
-          path: ${{ matrix.native_name }}
-          retention-days: 14
 
       - name: Upload Windows installer
         if: ${{ matrix.platform == 'windows' }}

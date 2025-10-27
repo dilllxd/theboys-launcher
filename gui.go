@@ -1488,7 +1488,7 @@ func (g *GUI) showSettings() {
 			go func() {
 				defer g.showLoading(false, "")
 
-				tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, launcherExeName+getExecutableExtension(), false)
+				tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
 				if err != nil {
 					// Failed to fetch stable asset; revert checkbox on main thread
 					logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))

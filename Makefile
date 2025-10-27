@@ -8,7 +8,7 @@ VERSION ?= v3.0.1
 all: build
 
 # Platform-specific builds
-.PHONY: build-windows build-macos build-macos-arm64 build-macos-universal build-all
+.PHONY: build-windows build-macos build-macos-arm64 build-macos-universal build-linux build-all
 
 # Build Windows (simplified - no version info files)
 build-windows: check-icon
@@ -38,14 +38,32 @@ build-macos-universal: build-macos build-macos-arm64
 	@lipo -create build/amd64/TheBoysLauncher build/arm64/TheBoysLauncher -output build/universal/TheBoysLauncher
 	@echo "Universal binary created: build/universal/TheBoysLauncher"
 
+# Build Linux
+build-linux:
+	@echo "Building TheBoysLauncher for Linux..."
+	@mkdir -p build/linux
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o build/linux/TheBoysLauncher-linux .
+	@echo "Linux build complete: build/linux/TheBoysLauncher-linux"
+
 # Build all platforms
-build-all: build-windows build-macos-universal
+build-all: build-windows build-linux build-macos-universal
 	@echo "All builds complete!"
 	@echo "Windows: build/windows/TheBoysLauncher.exe"
+	@echo "Linux: build/linux/TheBoysLauncher-linux"
 	@echo "macOS Universal: build/universal/TheBoysLauncher"
 
 # Build for current platform (preserves existing behavior)
-build: build-windows
+build:
+	@if [ "$(shell go env GOOS)" = "windows" ]; then \
+		$(MAKE) build-windows; \
+	elif [ "$(shell go env GOOS)" = "linux" ]; then \
+		$(MAKE) build-linux; \
+	elif [ "$(shell go env GOOS)" = "darwin" ]; then \
+		$(MAKE) build-macos-universal; \
+	else \
+		echo "Unsupported platform: $(shell go env GOOS)"; \
+		exit 1; \
+	fi
 	@echo "Build complete!"
 
 # macOS packaging targets
@@ -93,7 +111,7 @@ dmg-macos: dmg-macos-intel dmg-macos-arm64 dmg-macos-universal
 	@echo "All macOS DMGs complete!"
 
 # Package all platforms with DMGs
-package-all: build-windows package-macos dmg-macos
+package-all: build-windows build-linux package-macos dmg-macos
 	@echo "All platform packages complete!"
 
 # Code signing removed - no longer supported
@@ -162,6 +180,7 @@ help:
 	@echo "Build Targets:"
 	@echo "  build                - Build for current platform (Windows)"
 	@echo "  build-windows        - Build Windows executable"
+	@echo "  build-linux          - Build Linux executable"
 	@echo "  build-macos          - Build macOS Intel"
 	@echo "  build-macos-arm64    - Build macOS Apple Silicon"
 	@echo "  build-macos-universal- Build macOS Universal binary"
@@ -196,6 +215,7 @@ help:
 	@echo ""
 	@echo "Output directories:"
 	@echo "  build/windows/     - Windows executables"
+	@echo "  build/linux/       - Linux executables"
 	@echo "  build/amd64/       - macOS Intel builds"
 	@echo "  build/arm64/       - macOS Apple Silicon builds"
 	@echo "  build/universal/   - macOS Universal builds"

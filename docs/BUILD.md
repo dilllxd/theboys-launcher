@@ -137,6 +137,7 @@ This creates:
 - `build/windows/TheBoysLauncher.exe`
 - `build/amd64/TheBoysLauncher` (macOS Intel)
 - `build/arm64/TheBoysLauncher` (macOS ARM64)
+- `build/linux/TheBoysLauncher` (Linux)
 
 #### Create Universal macOS Binary
 ```bash
@@ -167,7 +168,7 @@ go build -ldflags="-s -w -X main.version=v3.0.1" -o TheBoysLauncher-arm64 .
 #### Linux
 ```bash
 export GOOS=linux GOARCH=amd64 CGO_ENABLED=0
-go build -ldflags="-s -w -X main.version=v3.0.1" -o TheBoysLauncher .
+go build -ldflags="-s -w -X main.version=v3.0.1" -o TheBoysLauncher-linux .
 ```
 
 ## 📦 Packaging
@@ -318,10 +319,12 @@ build/
 ├── arm64/
 │   ├── TheBoysLauncher              # macOS ARM64 executable
 │   └── TheBoysLauncher.app/         # macOS ARM64 app bundle
-└── universal/
-    ├── TheBoysLauncher              # macOS Universal executable
-    ├── TheBoysLauncher.app/         # macOS Universal app bundle
-    └── TheBoysLauncher-Universal.dmg # macOS Universal DMG
+├── universal/
+│   ├── TheBoysLauncher              # macOS Universal executable
+│   ├── TheBoysLauncher.app/         # macOS Universal app bundle
+│   └── TheBoysLauncher-Universal.dmg # macOS Universal DMG
+└── linux/
+    └── TheBoysLauncher-linux        # Linux executable
 ```
 
 ### File Sizes (Approximate)
@@ -329,6 +332,7 @@ build/
 - macOS executable: ~30 MB
 - macOS app bundle: ~35 MB
 - macOS DMG: ~45 MB
+- Linux executable: ~25 MB
 
 ## 🔄 CI/CD Integration
 
@@ -376,6 +380,7 @@ mkdir -p release
 
 # Copy artifacts
 cp build/windows/TheBoysLauncher.exe release/TheBoysLauncher-${VERSION}.exe
+cp build/linux/TheBoysLauncher-linux release/TheBoysLauncher-${VERSION}-linux
 cp -r build/universal/TheBoysLauncher.app release/TheBoysLauncher.app
 cp build/universal/TheBoysLauncher-Universal.dmg release/TheBoysLauncher-${VERSION}-Universal.dmg
 ```

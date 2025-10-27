@@ -15,7 +15,7 @@ import (
 // -------------------- Prism + Instance --------------------
 
 func ensurePrism(dir string) (bool, error) {
-	if exists(getPrismExecutablePath(dir)) {
+	if exists(GetPrismExecutablePath(dir)) {
 		return false, nil
 	}
 
@@ -66,8 +66,8 @@ func ensurePrism(dir string) (bool, error) {
 		var tempAppPath string
 		possiblePaths := []string{
 			filepath.Join(tempDir, "Prism Launcher.app"), // Correct name with space
-			filepath.Join(tempDir, "PrismLauncher.app"), // Fallback for no space
-			filepath.Join(tempDir, "PrismLauncher"), // Maybe it's just the app contents
+			filepath.Join(tempDir, "PrismLauncher.app"),  // Fallback for no space
+			filepath.Join(tempDir, "PrismLauncher"),      // Maybe it's just the app contents
 		}
 
 		for _, path := range possiblePaths {

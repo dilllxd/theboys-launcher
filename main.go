@@ -1,8 +1,8 @@
 //go:generate goversioninfo -64 -icon=icon.ico
 
-// TheBoysLauncher.exe - Minecraft bootstrapper for Windows with Fyne GUI
+// TheBoysLauncher - Minecraft bootstrapper with Fyne GUI
 // - Self-updates from GitHub Releases (latest tag, no downgrades)
-// - Stores data in user's home directory (C:\Users\Username\.theboyslauncher)
+// - Stores data in user's home directory (~/.theboyslauncher)
 // - Downloads Prism Launcher (portable) - prefers MinGW w64 on amd64
 // - Downloads Java dynamically based on Minecraft version (Temurin JRE) (Adoptium API w/ GitHub fallback)
 // - Downloads packwiz bootstrap dynamically (GitHub assets discovery)
@@ -15,9 +15,9 @@
 //
 // Build (set your version!):
 //   go generate
-//   go build -ldflags="-s -w -X main.version=v3.0.0" -o TheBoysLauncher.exe
+//   go build -ldflags="-s -w -X main.version=v3.0.0" -o TheBoysLauncher
 //
-// Usage for players: run TheBoysLauncher.exe from any location. Data will be stored in your home directory.
+// Usage for players: run TheBoysLauncher from any location. Data will be stored in your home directory.
 
 package main
 
