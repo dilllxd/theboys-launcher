@@ -113,6 +113,14 @@ UserAskedAboutAutomaticJavaDownload=true
 			return false, err
 		}
 
+		// Fix Qt plugin RPATH settings on Linux to ensure plugins can find bundled libraries
+		if runtime.GOOS == "linux" {
+			if err := fixQtPluginRPATH(dir); err != nil {
+				logf("%s", warnLine(fmt.Sprintf("Failed to fix Qt plugin RPATH: %v", err)))
+				// Don't fail the entire operation, just log the warning
+			}
+		}
+
 		// Force portable mode and disable automatic Java management
 		cfg := filepath.Join(dir, "prismlauncher.cfg")
 		prismConfig := `Portable=true
