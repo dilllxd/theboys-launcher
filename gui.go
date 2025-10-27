@@ -1430,43 +1430,51 @@ func (g *GUI) uploadLogToMclogs() {
 func (g *GUI) showSettings() {
 	memLabel := widget.NewLabel("")
 
+	// Store original settings to compare for changes
+	originalAutoRAM := settings.AutoRAM
+	originalMemoryMB := settings.MemoryMB
+	originalDevBuildsEnabled := settings.DevBuildsEnabled
+
+	// Temporary variables to track pending changes
+	pendingAutoRAM := settings.AutoRAM
+	pendingMemoryMB := settings.MemoryMB
+	pendingDevBuildsEnabled := settings.DevBuildsEnabled
+
 	autoCheck := widget.NewCheck("Enable Auto RAM", nil)
-	autoCheck.SetChecked(settings.AutoRAM)
+	autoCheck.SetChecked(pendingAutoRAM)
 
 	memSlider := widget.NewSlider(2, 16)
 	memSlider.Step = 1
-	memSlider.SetValue(float64(clampMemoryMB(settings.MemoryMB) / 1024))
+	memSlider.SetValue(float64(clampMemoryMB(pendingMemoryMB) / 1024))
 
 	applyManual := func(v float64) {
-		settings.MemoryMB = clampMemoryMB(int(v) * 1024)
+		pendingMemoryMB = clampMemoryMB(int(v) * 1024)
 		memLabel.SetText(fmt.Sprintf("Manual RAM: %.0f GB", v))
-		g.updateMemorySummaryLabel()
 	}
 
 	refreshUI := func() {
-		if settings.AutoRAM {
+		if pendingAutoRAM {
 			memLabel.SetText(fmt.Sprintf("Auto RAM baseline: %d GB", DefaultAutoMemoryMB()/1024))
 			memSlider.Hide()
 		} else {
 			memSlider.Show()
-			memSlider.SetValue(float64(clampMemoryMB(settings.MemoryMB) / 1024))
-			memLabel.SetText(fmt.Sprintf("Manual RAM: %d GB", settings.MemoryMB/1024))
+			memSlider.SetValue(float64(clampMemoryMB(pendingMemoryMB) / 1024))
+			memLabel.SetText(fmt.Sprintf("Manual RAM: %d GB", pendingMemoryMB/1024))
 		}
-		g.updateMemorySummaryLabel()
 	}
 
 	autoCheck.OnChanged = func(on bool) {
-		settings.AutoRAM = on
+		pendingAutoRAM = on
 		if on {
-			settings.MemoryMB = clampMemoryMB(DefaultAutoMemoryMB())
+			pendingMemoryMB = clampMemoryMB(DefaultAutoMemoryMB())
 		} else {
-			settings.MemoryMB = clampMemoryMB(int(memSlider.Value) * 1024)
+			pendingMemoryMB = clampMemoryMB(int(memSlider.Value) * 1024)
 		}
 		refreshUI()
 	}
 
 	memSlider.OnChanged = func(v float64) {
-		if settings.AutoRAM {
+		if pendingAutoRAM {
 			return
 		}
 		applyManual(v)
@@ -1474,122 +1482,56 @@ func (g *GUI) showSettings() {
 
 	// Dev builds checkbox
 	devCheck := widget.NewCheck("Enable dev builds (pre-release)", nil)
-	devCheck.SetChecked(settings.DevBuildsEnabled)
+	devCheck.SetChecked(pendingDevBuildsEnabled)
 
 	// backup metadata file path
 	backupMetaPath := filepath.Join(g.root, "dev-backup.json")
 	backupExePath := filepath.Join(g.root, "backup-non-dev"+getExecutableExtension())
 
-	devCheck.OnChanged = func(on bool) {
-		// If enabling, create a backup of the current stable version and force update to dev
-		if on {
-			// Avoid blocking UI - show progress and run in goroutine
-			g.showLoading(true, "Preparing dev mode...")
-			go func() {
-				defer g.showLoading(false, "")
+	// Status label to show pending changes
+	statusLabel := widget.NewLabel("")
+	statusLabel.Wrapping = fyne.TextWrapWord
 
-				// Check if backup already exists
-				if !exists(backupMetaPath) || !exists(backupExePath) {
-					g.showLoading(true, "Creating backup of current stable version...")
-					// Fetch current stable version for backup
-					tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
-					if err != nil {
-						// Failed to fetch stable asset; revert checkbox on main thread
-						logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))
-						fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to fetch stable backup; dev builds not enabled"})
-						fyne.Do(func() { devCheck.SetChecked(false) })
-						return
-					}
+	// Function to check if there are pending changes
+	hasPendingChanges := func() bool {
+		return originalAutoRAM != pendingAutoRAM ||
+			originalMemoryMB != pendingMemoryMB ||
+			originalDevBuildsEnabled != pendingDevBuildsEnabled
+	}
 
-					// Download stable exe to backup path
-					if err := downloadTo(assetURL, backupExePath, 0755); err != nil {
-						logf("%s", warnLine(fmt.Sprintf("Failed to download backup exe: %v", err)))
-						fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to download backup; dev builds not enabled"})
-						fyne.Do(func() { devCheck.SetChecked(false) })
-						return
-					}
-
-					// Write metadata
-					meta := map[string]string{"tag": tag, "path": backupExePath}
-					if data, jerr := json.MarshalIndent(meta, "", "  "); jerr == nil {
-						_ = os.WriteFile(backupMetaPath, data, 0644)
-					}
-				}
-
-				// Save settings first
-				settings.DevBuildsEnabled = true
-				logf("%s", infoLine("GUI: User enabled dev builds setting"))
-				if err := saveSettings(g.root); err != nil {
-					logf("%s", warnLine(fmt.Sprintf("Failed to save settings after enabling dev builds: %v", err)))
-				} else {
-					logf("%s", successLine("GUI: Dev builds setting enabled and saved"))
-				}
-
-				// Force update to latest dev version
-				g.showLoading(true, "Updating to latest dev version...")
-				if err := forceUpdate(g.root, g.exePath, true, func(msg string) {
-					logf("%s", infoLine(msg))
-					fyne.Do(func() {
-						g.showLoading(true, msg)
-					})
-				}); err != nil {
-					logf("%s", warnLine(fmt.Sprintf("Failed to update to dev version: %v", err)))
-					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to dev version"})
-					fyne.Do(func() {
-						devCheck.SetChecked(false)
-						settings.DevBuildsEnabled = false
-						saveSettings(g.root)
-						g.updateStatus("Failed to enable dev builds")
-					})
-					return
-				}
-			}()
+	// Function to update status label based on pending changes
+	updateStatusLabel := func() {
+		if !hasPendingChanges() {
+			statusLabel.SetText("")
 			return
 		}
 
-		// Disabling dev builds: handle backup restoration or force update to stable
-		g.showLoading(true, "Switching to stable channel...")
-		go func() {
-			defer g.showLoading(false, "")
-
-			// Save settings first
-			settings.DevBuildsEnabled = false
-			logf("%s", infoLine("GUI: User disabled dev builds setting"))
-			if err := saveSettings(g.root); err != nil {
-				logf("%s", warnLine(fmt.Sprintf("Failed to save settings after disabling dev builds: %v", err)))
+		var changes []string
+		if originalAutoRAM != pendingAutoRAM {
+			if pendingAutoRAM {
+				changes = append(changes, "Auto RAM will be enabled")
 			} else {
-				logf("%s", successLine("GUI: Dev builds setting disabled and saved"))
+				changes = append(changes, "Auto RAM will be disabled")
 			}
-
-			// Check if backup exists and restore it
-			if exists(backupMetaPath) && exists(backupExePath) {
-				g.showLoading(true, "Restoring stable version from backup...")
-				if err := replaceAndRestart(g.exePath, backupExePath); err != nil {
-					logf("%s", warnLine(fmt.Sprintf("Failed to restore backup: %v", err)))
-					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to restore backup"})
-					fyne.Do(func() {
-						g.updateStatus("Failed to restore stable version")
-					})
-					return
-				}
+		}
+		if originalMemoryMB != pendingMemoryMB && !pendingAutoRAM {
+			changes = append(changes, fmt.Sprintf("Memory will be set to %d GB", pendingMemoryMB/1024))
+		}
+		if originalDevBuildsEnabled != pendingDevBuildsEnabled {
+			if pendingDevBuildsEnabled {
+				changes = append(changes, "Dev builds will be enabled (backup will be created and launcher will update)")
 			} else {
-				// No backup available, force update to latest stable
-				g.showLoading(true, "Updating to latest stable version...")
-				if err := forceUpdate(g.root, g.exePath, false, func(msg string) {
-					logf("%s", infoLine(msg))
-					fyne.Do(func() {
-						g.showLoading(true, msg)
-					})
-				}); err != nil {
-					logf("%s", warnLine(fmt.Sprintf("Failed to update to stable version: %v", err)))
-					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to stable version"})
-					fyne.Do(func() {
-						g.updateStatus("Failed to disable dev builds")
-					})
-					return
-				}
+				changes = append(changes, "Dev builds will be disabled (stable version will be restored)")
 			}
-		}()
+		}
+
+		statusLabel.SetText("Pending changes: " + strings.Join(changes, ", "))
+	}
+
+	// Update status label when dev mode checkbox is toggled
+	devCheck.OnChanged = func(on bool) {
+		pendingDevBuildsEnabled = on
+		updateStatusLabel()
 	}
 
 	refreshUI()
@@ -1631,8 +1573,8 @@ func (g *GUI) showSettings() {
 
 	// helper to refresh channel/backup UI
 	refreshChannelUI := func() {
-		if settings.DevBuildsEnabled {
-			channelLabel.SetText("Channel: Dev (enabled)")
+		if pendingDevBuildsEnabled {
+			channelLabel.SetText("Channel: Dev (pending)")
 		} else {
 			channelLabel.SetText("Channel: Stable")
 		}
@@ -1663,11 +1605,133 @@ func (g *GUI) showSettings() {
 	refreshChannelUI()
 
 	saveBtn := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
-		if err := saveSettings(g.root); err != nil {
-			g.updateStatus(fmt.Sprintf("Failed to save settings: %v", err))
+		// Apply pending changes to actual settings
+		settings.AutoRAM = pendingAutoRAM
+		settings.MemoryMB = pendingMemoryMB
+
+		// Handle dev mode changes separately
+		if originalDevBuildsEnabled != pendingDevBuildsEnabled {
+			// Show loading and handle dev mode change in background
+			g.showLoading(true, "Applying dev mode changes...")
+			go func() {
+				defer g.showLoading(false, "")
+
+				// If enabling, create a backup of the current stable version and force update to dev
+				if pendingDevBuildsEnabled {
+					// Check if backup already exists
+					if !exists(backupMetaPath) || !exists(backupExePath) {
+						g.showLoading(true, "Creating backup of current stable version...")
+						// Fetch current stable version for backup
+						tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
+						if err != nil {
+							// Failed to fetch stable asset; revert checkbox on main thread
+							logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))
+							fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to fetch stable backup; dev builds not enabled"})
+							fyne.Do(func() {
+								devCheck.SetChecked(false)
+								pendingDevBuildsEnabled = false
+								updateStatusLabel()
+							})
+							return
+						}
+
+						// Download stable exe to backup path
+						if err := downloadTo(assetURL, backupExePath, 0755); err != nil {
+							logf("%s", warnLine(fmt.Sprintf("Failed to download backup exe: %v", err)))
+							fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to download backup; dev builds not enabled"})
+							fyne.Do(func() {
+								devCheck.SetChecked(false)
+								pendingDevBuildsEnabled = false
+								updateStatusLabel()
+							})
+							return
+						}
+
+						// Write metadata
+						meta := map[string]string{"tag": tag, "path": backupExePath}
+						if data, jerr := json.MarshalIndent(meta, "", "  "); jerr == nil {
+							_ = os.WriteFile(backupMetaPath, data, 0644)
+						}
+					}
+
+					// Save settings first
+					settings.DevBuildsEnabled = true
+					logf("%s", infoLine("GUI: User enabled dev builds setting"))
+					if err := saveSettings(g.root); err != nil {
+						logf("%s", warnLine(fmt.Sprintf("Failed to save settings after enabling dev builds: %v", err)))
+					} else {
+						logf("%s", successLine("GUI: Dev builds setting enabled and saved"))
+					}
+
+					// Force update to latest dev version
+					g.showLoading(true, "Updating to latest dev version...")
+					if err := forceUpdate(g.root, g.exePath, true, func(msg string) {
+						logf("%s", infoLine(msg))
+						fyne.Do(func() {
+							g.showLoading(true, msg)
+						})
+					}); err != nil {
+						logf("%s", warnLine(fmt.Sprintf("Failed to update to dev version: %v", err)))
+						fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to dev version"})
+						fyne.Do(func() {
+							devCheck.SetChecked(false)
+							settings.DevBuildsEnabled = false
+							pendingDevBuildsEnabled = false
+							saveSettings(g.root)
+							g.updateStatus("Failed to enable dev builds")
+							updateStatusLabel()
+						})
+						return
+					}
+				} else {
+					// Disabling dev builds: handle backup restoration or force update to stable
+					settings.DevBuildsEnabled = false
+					logf("%s", infoLine("GUI: User disabled dev builds setting"))
+					if err := saveSettings(g.root); err != nil {
+						logf("%s", warnLine(fmt.Sprintf("Failed to save settings after disabling dev builds: %v", err)))
+					} else {
+						logf("%s", successLine("GUI: Dev builds setting disabled and saved"))
+					}
+
+					// Check if backup exists and restore it
+					if exists(backupMetaPath) && exists(backupExePath) {
+						g.showLoading(true, "Restoring stable version from backup...")
+						if err := replaceAndRestart(g.exePath, backupExePath); err != nil {
+							logf("%s", warnLine(fmt.Sprintf("Failed to restore backup: %v", err)))
+							fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to restore backup"})
+							fyne.Do(func() {
+								g.updateStatus("Failed to restore stable version")
+							})
+							return
+						}
+					} else {
+						// No backup available, force update to latest stable
+						g.showLoading(true, "Updating to latest stable version...")
+						if err := forceUpdate(g.root, g.exePath, false, func(msg string) {
+							logf("%s", infoLine(msg))
+							fyne.Do(func() {
+								g.showLoading(true, msg)
+							})
+						}); err != nil {
+							logf("%s", warnLine(fmt.Sprintf("Failed to update to stable version: %v", err)))
+							fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to stable version"})
+							fyne.Do(func() {
+								g.updateStatus("Failed to disable dev builds")
+							})
+							return
+						}
+					}
+				}
+			}()
 		} else {
-			g.updateStatus("Settings saved")
+			// No dev mode change, just save other settings
+			if err := saveSettings(g.root); err != nil {
+				g.updateStatus(fmt.Sprintf("Failed to save settings: %v", err))
+			} else {
+				g.updateStatus("Settings saved")
+			}
 		}
+
 		g.updateMemorySummaryLabel()
 	})
 
@@ -1675,6 +1739,7 @@ func (g *GUI) showSettings() {
 		widget.NewLabel("Launcher Settings"),
 		autoCheck,
 		devCheck,
+		statusLabel,
 		container.NewVBox(
 			container.NewHBox(channelLabel, layout.NewSpacer()),
 			container.NewHBox(backupLabel, layout.NewSpacer()),
@@ -1694,7 +1759,17 @@ func (g *GUI) showSettings() {
 	), g.window.Canvas())
 
 	closeBtn := widget.NewButton("Close", func() {
-		pop.Hide()
+		// Check if there are pending changes
+		if hasPendingChanges() {
+			confirm := dialog.NewConfirm("Unsaved Changes", "You have unsaved changes. Are you sure you want to close?", func(ok bool) {
+				if ok {
+					pop.Hide()
+				}
+			}, g.window)
+			confirm.Show()
+		} else {
+			pop.Hide()
+		}
 	})
 
 	dialogContent.Add(container.NewHBox(layout.NewSpacer(), closeBtn))
