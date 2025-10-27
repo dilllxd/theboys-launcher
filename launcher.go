@@ -14,6 +14,89 @@ import (
 	"time"
 )
 
+// -------------------- Qt Environment Helper Functions --------------------
+
+// buildQtEnvironment builds Qt-specific environment variables for Linux
+func buildQtEnvironment(prismDir, jreDir string) []string {
+	qtEnv := []string{
+		"JAVA_HOME=" + jreDir,
+		"PATH=" + BuildPathEnv(filepath.Join(jreDir, "bin")),
+	}
+
+	// Add Qt-specific environment variables for Linux only
+	if runtime.GOOS == "linux" {
+		// Set Qt plugin path to bundled plugins directory
+		qtPluginPath := filepath.Join(prismDir, "plugins")
+		if exists(qtPluginPath) {
+			qtEnv = append(qtEnv, "QT_PLUGIN_PATH="+qtPluginPath)
+			logf("DEBUG: Setting QT_PLUGIN_PATH=%s", qtPluginPath)
+		}
+
+		// Set library path to bundled libraries directory
+		qtLibPath := filepath.Join(prismDir, "lib")
+		if exists(qtLibPath) {
+			// Prepend to LD_LIBRARY_PATH to prioritize bundled libraries
+			existingLdPath := os.Getenv("LD_LIBRARY_PATH")
+			if existingLdPath != "" {
+				qtEnv = append(qtEnv, "LD_LIBRARY_PATH="+qtLibPath+":"+existingLdPath)
+			} else {
+				qtEnv = append(qtEnv, "LD_LIBRARY_PATH="+qtLibPath)
+			}
+			logf("DEBUG: Setting LD_LIBRARY_PATH=%s", qtLibPath)
+		}
+
+		// Additional Qt environment variables for better compatibility
+		qtEnv = append(qtEnv, "QT_QPA_PLATFORM=xcb")           // Force X11 backend
+		qtEnv = append(qtEnv, "QT_XCB_GL_INTEGRATION=xcb_glx") // OpenGL integration
+	}
+
+	return qtEnv
+}
+
+// logQtEnvironment logs Qt environment setup for debugging
+func logQtEnvironment(prismDir string) {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	logf("=== Qt Environment Debug ===")
+	logf("Prism Directory: %s", prismDir)
+
+	// Check directory structure
+	pluginsDir := filepath.Join(prismDir, "plugins")
+	libDir := filepath.Join(prismDir, "lib")
+
+	logf("Plugins Directory: %s (exists: %v)", pluginsDir, exists(pluginsDir))
+	logf("Lib Directory: %s (exists: %v)", libDir, exists(libDir))
+
+	// List plugin directories if they exist
+	if exists(pluginsDir) {
+		files, err := os.ReadDir(pluginsDir)
+		if err == nil {
+			logf("Plugin directories found:")
+			for _, file := range files {
+				if file.IsDir() {
+					logf("  - %s", file.Name())
+				}
+			}
+		}
+	}
+
+	// Check for critical plugin files
+	criticalPlugins := []string{
+		"platforms/libqxcb.so",
+		"imageformats/libqjpeg.so",
+		"iconengines/libqsvgicon.so",
+	}
+
+	for _, plugin := range criticalPlugins {
+		pluginPath := filepath.Join(pluginsDir, plugin)
+		logf("Plugin %s: %v", plugin, exists(pluginPath))
+	}
+
+	logf("=== End Qt Environment Debug ===")
+}
+
 // -------------------- Launcher Logic --------------------
 
 func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.Process, progressCb func(stage string, step, total int)) {
@@ -344,13 +427,26 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	logf("DEBUG: Using Prism executable: %s", prismExe)
 	logf("DEBUG: Working directory: %s", prismDir)
 
+	// Log Qt environment setup for debugging
+	logQtEnvironment(prismDir)
+
 	// Launch the instance directly (this should not show the Prism GUI)
 	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
-	launch.Env = append(os.Environ(),
-		"JAVA_HOME="+jreDir,
-		"PATH="+BuildPathEnv(filepath.Join(jreDir, "bin")),
-	)
+
+	// Build Qt environment variables
+	qtEnv := buildQtEnvironment(prismDir, jreDir)
+	launch.Env = append(os.Environ(), qtEnv...)
+
+	// Log environment variables for debugging
+	if runtime.GOOS == "linux" {
+		for _, env := range launch.Env {
+			if strings.Contains(env, "QT_") || strings.Contains(env, "LD_LIBRARY_PATH") {
+				logf("DEBUG: Environment variable: %s", env)
+			}
+		}
+	}
+
 	launch.Stdout, launch.Stderr = out, out
 
 	// Start the process and wait for it to complete (keeps console open)
@@ -359,10 +455,11 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		logf("%s", stepLine("Opening Prism Launcher UI instead"))
 		launchFallback := exec.Command(prismExe, "--dir", ".")
 		launchFallback.Dir = prismDir
-		launchFallback.Env = append(os.Environ(),
-			"JAVA_HOME="+jreDir,
-			"PATH="+BuildPathEnv(filepath.Join(jreDir, "bin")),
-		)
+
+		// Use the same Qt environment setup for fallback
+		qtEnv := buildQtEnvironment(prismDir, jreDir)
+		launchFallback.Env = append(os.Environ(), qtEnv...)
+
 		launchFallback.Stdout, launchFallback.Stderr = out, out
 		if err := launchFallback.Start(); err != nil {
 			logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
