@@ -295,6 +295,17 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 
 	report("Ensuring Prism Launcher")
 	logf("%s", stepLine("Ensuring Prism Launcher portable build"))
+
+	// Check and install Qt dependencies if needed (Linux only)
+	if runtime.GOOS == "linux" {
+		logf("%s", stepLine("Checking Qt dependencies"))
+		if err := ensureQtDependencies(); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Qt dependency check failed: %v", err)))
+			// Don't fail the entire operation, just warn the user
+			logf("%s", warnLine("Prism Launcher may fail to start without Qt dependencies"))
+		}
+	}
+
 	prismDownloaded, err := ensurePrism(prismDir)
 	if err != nil {
 		fail(err)
