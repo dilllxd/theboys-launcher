@@ -8,10 +8,11 @@ This document summarizes the comprehensive testing results for TheBoysLauncher's
  This testing report documents the QA process performed for TheBoysLauncher v0.9. During the test cycle, we validated installer behavior, modpack synchronization, and Java runtime management on Windows 10 and Windows 11.
 ### Tests Performed
 - **Platform Detection Functions**: ✅ PASSED
-  - `getLauncherExeName()` returns "TheBoysLauncher.exe" on Windows
-  - `getJavaBinName()` returns "java.exe" on Windows
-  - `getPrismExeName()` returns "PrismLauncher.exe" on Windows
-  - `getPathSeparator()` returns ";" on Windows
+  - `getLauncherExeName()` returns "TheBoysLauncher.exe" on Windows, "TheBoysLauncher" on macOS/Linux
+  - `getLauncherAssetName()` returns "TheBoysLauncher.exe" on Windows, "TheBoysLauncher-mac-universal" on macOS, "TheBoysLauncher-linux" on Linux
+  - `getJavaBinName()` returns "java.exe" on Windows, "java" on macOS/Linux
+  - `getPrismExeName()` returns "PrismLauncher.exe" on Windows, "PrismLauncher" on macOS/Linux
+  - `getPathSeparator()` returns ";" on Windows, ":" on macOS/Linux
 
 - **Build Constraints**: ✅ PASSED
   - Windows builds compile successfully with `-tags windows`

@@ -22,14 +22,10 @@
   <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoysLauncher is already installed." />
 
     <!-- Features -->
-      <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
+    <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
-      <!-- ShortcutsFeature is a child feature that users can enable/disable in the UI -->
-      <!-- Default Level=0 means not installed by default; user can enable the feature in the feature selection dialog -->
-      <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="0" Absent="allow">
-        <ComponentRef Id="ApplicationShortcut" />
-        <ComponentRef Id="DesktopShortcut" />
-      </Feature>
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
 
     <!-- Directories -->
@@ -39,18 +35,18 @@
       </Directory>
 
       <!-- Start Menu -->
-        <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher"/>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="TheBoysLauncher" />
       </Directory>
 
       <!-- Desktop -->
-      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id="DesktopFolder" />
     </Directory>
 
     <!-- Components -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <!-- Main executable -->
-  <Component Id="MainExecutable">
+  <Component Id="MainExecutable" Guid="*">
     <File Id="TheBoysLauncherEXE"
       Source="$(var.TheBoysLauncher.TargetPath)"
       KeyPath="yes" />
@@ -63,25 +59,24 @@
           <RegistryValue Type="string" Value="TheBoys Modpack File" />
           <RegistryValue Type="string" Name="DefaultIcon" Value="[INSTALLFOLDER]TheBoysLauncher.exe,0" />
         </RegistryKey>
-        <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
+      <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
           <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]TheBoysLauncher.exe&quot; &quot;%1&quot;" />
         </RegistryKey>
       </Component>
 
       <!-- Icon file -->
-      <Component Id="IconFile">
+      <Component Id="IconFile" Guid="*">
         <File Id="IconICO" Source="$(var.ProjectDir)icon.ico" />
       </Component>
 
       <!-- License file -->
-      <Component Id="LicenseFile">
+      <Component Id="LicenseFile" Guid="*">
         <File Id="LicenseRTF" Source="$(var.ProjectDir)wix\LICENSE.rtf" />
       </Component>
     </ComponentGroup>
 
   <!-- Start Menu Shortcut -->
-  <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
-    <Condition>CREATE_STARTMENU_SHORTCUT="1"</Condition>
+  <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="*">
   <Shortcut Id="ApplicationStartMenuShortcut"
         Name="TheBoysLauncher"
         Description="TheBoys Minecraft Modpack Launcher"
@@ -99,8 +94,7 @@
     </Component>
 
   <!-- Desktop Shortcut (optional) -->
-    <Component Id="DesktopShortcut" Directory="DesktopFolder">
-      <Condition>CREATE_DESKTOP_SHORTCUT="1"</Condition>
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="*">
       <Shortcut Id="ApplicationDesktopShortcut"
                 Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
@@ -119,42 +113,35 @@
   <!-- Icons -->
   <Icon Id="IconICO" SourceFile="$(var.ProjectDir)icon.ico" />
 
-  <!-- Properties to control shortcut creation (default = 0 -> not created) -->
-  <Property Id="CREATE_DESKTOP_SHORTCUT" Value="0" />
-  <Property Id="CREATE_STARTMENU_SHORTCUT" Value="0" />
-  <!-- Properties for custom actions -->
+  <!-- Properties -->
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   <!-- Ensure installed product shows an icon in Add/Remove Programs -->
   <Property Id="ARPPRODUCTICON" Value="IconICO" />
 
-  <!-- UI Reference: use a simple InstallDir UI, and add a custom dialog to ask about shortcuts -->
-  <UIRef Id="WixUI_InstallDir" />
+  <!-- Provide optional run checkbox on exit -->
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch TheBoysLauncher" />
+  <Property Id="WixShellExecTarget" Value="[#TheBoysLauncherEXE]" />
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
-  <!-- Custom dialog to ask about creating shortcuts (appears after InstallDirDlg) -->
+  <!-- Base UI with custom shortcut dialog -->
+  <UIRef Id="WixUI_InstallDir" />
+  <UIRef Id="WixUI_Common" />
+
   <UI>
     <DialogRef Id="InstallDirDlg" />
-    <!-- After InstallDir, show ShortcutDlg to ask user about shortcuts -->
-    <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ShortcutDlg">1</Publish>
+    <DialogRef Id="BrowseDlg" />
+    <DialogRef Id="DiskCostDlg" />
+    <DialogRef Id="ErrorDlg" />
+    <DialogRef Id="FatalError" />
+    <DialogRef Id="FilesInUse" />
+    <DialogRef Id="MsiRMFilesInUse" />
+    <DialogRef Id="PrepareDlg" />
+    <DialogRef Id="ProgressDlg" />
+    <DialogRef Id="ResumeDlg" />
+    <DialogRef Id="UserExit" />
 
-    <Dialog Id="ShortcutDlg" Width="370" Height="270" Title="Create Shortcuts">
-      <Control Id="Banner" Type="Banner" X="0" Y="0" Width="370" Height="60"/>
-      <Control Id="Description" Type="Text" X="15" Y="70" Width="340" Height="30" Transparent="yes" NoPrefix="yes">
-        <Text>Please choose whether you want shortcuts created for TheBoysLauncher.</Text>
-      </Control>
-
-      <Control Id="StartMenuCheck" Type="CheckBox" X="20" Y="110" Width="330" Height="17" Property="CREATE_STARTMENU_SHORTCUT" CheckBoxValue="1" Text="Create a Start Menu shortcut" />
-      <Control Id="DesktopCheck" Type="CheckBox" X="20" Y="140" Width="330" Height="17" Property="CREATE_DESKTOP_SHORTCUT" CheckBoxValue="1" Text="Create a Desktop shortcut" />
-
-      <Control Id="Back" Type="PushButton" X="180" Y="235" Width="56" Height="17" Text="&amp;Back">
-        <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
-      </Control>
-      <Control Id="Next" Type="PushButton" X="240" Y="235" Width="56" Height="17" Text="&amp;Next">
-        <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
-      </Control>
-      <Control Id="Cancel" Type="PushButton" X="300" Y="235" Width="56" Height="17" Text="Cancel">
-        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
-      </Control>
-    </Dialog>
+    <!-- Launch application on exit when checkbox selected -->
+    <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
   </UI>
 
   <!-- License agreement -->
@@ -168,9 +155,16 @@
                   Return="ignore"
                   HideTarget="no" />
 
+    <CustomAction Id="LaunchApplication"
+                  FileKey="TheBoysLauncherEXE"
+                  ExeCommand=""
+                  Return="asyncNoWait"
+                  Impersonate="yes" />
+
     <InstallExecuteSequence>
       <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
     </InstallExecuteSequence>
+    <UIRef Id="WixUI_ErrorProgressText" />
 
   </Product>
 </Wix>

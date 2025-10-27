@@ -31,9 +31,9 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 **Note for macOS users**: The launcher is not signed, so you may need to right-click → Open or go to System Preferences → Security & Privacy to allow it to run.
 
 ### Linux
-1. Download the latest `TheBoysLauncher-linux.tar.gz` from [Releases](https://github.com/dilllxd/theboyslauncher/releases)
-2. Extract the archive
-3. Run `./TheBoysLauncher` from the extracted directory
+1. Download the latest `TheBoysLauncher-linux` from [Releases](https://github.com/dilllxd/theboyslauncher/releases)
+2. Make the binary executable: `chmod +x TheBoysLauncher-linux`
+3. Run `./TheBoysLauncher-linux` from the downloaded directory
 
 ## 🛠️ Building from Source
 
@@ -64,6 +64,7 @@ make build-all
 
 # Build specific platforms
 make build-windows          # Windows executable
+make build-linux            # Linux executable
 make build-macos-intel      # macOS Intel
 make build-macos-arm64      # macOS Apple Silicon
 make build-macos-universal  # macOS Universal binary
@@ -81,6 +82,10 @@ make package-all
 # Windows
 export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
 go build -ldflags="-s -w -H=windowsgui" -o TheBoysLauncher.exe .
+
+# Linux
+export GOOS=linux GOARCH=amd64 CGO_ENABLED=0
+go build -ldflags="-s -w" -o TheBoysLauncher-linux .
 
 # macOS Intel
 export GOOS=darwin GOARCH=amd64 CGO_ENABLED=1

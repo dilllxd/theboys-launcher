@@ -13,21 +13,37 @@ const (
 
 // Platform-specific executable names
 var (
-	LauncherExeName = getLauncherExeName()
-	PrismExeName    = getPrismExeName()
-	JavaBinName     = getJavaBinName()
-	JavawBinName    = getJavawBinName()
+	LauncherExeName   = GetLauncherExeName()
+	LauncherAssetName = GetLauncherAssetName()
+	PrismExeName      = GetPrismExeName()
+	JavaBinName       = GetJavaBinName()
+	JavawBinName      = GetJavawBinName()
 )
 
 // Platform detection functions
-func getLauncherExeName() string {
+func GetLauncherExeName() string {
 	if runtime.GOOS == "windows" {
 		return "TheBoysLauncher.exe"
 	}
 	return "TheBoysLauncher"
 }
 
-func getPrismExeName() string {
+// getLauncherAssetName returns the platform-specific asset name for updates
+func GetLauncherAssetName() string {
+	if runtime.GOOS == "windows" {
+		return "TheBoysLauncher.exe"
+	} else if runtime.GOOS == "darwin" {
+		// macOS uses the universal binary name
+		return "TheBoysLauncher-mac-universal"
+	} else if runtime.GOOS == "linux" {
+		// Linux uses the platform-specific binary name
+		return "TheBoysLauncher-linux"
+	}
+	// Fallback for other platforms
+	return "TheBoysLauncher"
+}
+
+func GetPrismExeName() string {
 	if runtime.GOOS == "windows" {
 		return "PrismLauncher.exe"
 	}
@@ -35,7 +51,7 @@ func getPrismExeName() string {
 }
 
 // getPrismExecutablePath returns the full path to the Prism executable
-func getPrismExecutablePath(prismDir string) string {
+func GetPrismExecutablePath(prismDir string) string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(prismDir, "PrismLauncher.exe")
 	}
@@ -44,7 +60,7 @@ func getPrismExecutablePath(prismDir string) string {
 }
 
 // getPathSeparator returns the platform-specific PATH separator
-func getPathSeparator() string {
+func GetPathSeparator() string {
 	if runtime.GOOS == "windows" {
 		return ";"
 	}
@@ -52,8 +68,8 @@ func getPathSeparator() string {
 }
 
 // buildPathEnv creates a platform-specific PATH environment variable
-func buildPathEnv(additionalPath string) string {
-	separator := getPathSeparator()
+func BuildPathEnv(additionalPath string) string {
+	separator := GetPathSeparator()
 	return additionalPath + separator + os.Getenv("PATH")
 }
 
@@ -93,14 +109,14 @@ func getPrismDataDir() string {
 	return filepath.Join(dataHome, "PrismLauncher")
 }
 
-func getJavaBinName() string {
+func GetJavaBinName() string {
 	if runtime.GOOS == "windows" {
 		return "java.exe"
 	}
 	return "java"
 }
 
-func getJavawBinName() string {
+func GetJavawBinName() string {
 	if runtime.GOOS == "windows" {
 		return "javaw.exe"
 	}
@@ -123,5 +139,5 @@ func IsLinux() bool {
 
 // Platform support check
 func IsSupportedPlatform() bool {
-	return IsWindows() || IsDarwin()
+	return IsWindows() || IsDarwin() || IsLinux()
 }
