@@ -89,6 +89,69 @@ func selfUpdate(root, exePath string, report func(string)) error {
 	return nil
 }
 
+// forceUpdate forces an update to the latest version regardless of current version
+func forceUpdate(root, exePath string, preferDev bool, report func(string)) error {
+	_ = root
+
+	notify := func(msg string) {
+		if report != nil {
+			report(msg)
+		}
+	}
+
+	notify("Checking for latest launcher version...")
+
+	// Fetch the latest asset based on preference (dev or stable)
+	tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
+	if err != nil || tag == "" || assetURL == "" {
+		if err == nil {
+			err = errors.New("update metadata missing")
+		}
+		notify(fmt.Sprintf("Failed to fetch latest version: %v", err))
+		return err
+	}
+
+	channel := "stable"
+	if preferDev {
+		channel = "dev"
+	}
+
+	logf("Force updating to latest %s version: %s", channel, tag)
+	notify(fmt.Sprintf("Downloading %s version %s...", channel, tag))
+	logf("%s", stepLine("Downloading update..."))
+
+	tmpNew := exePath + ".new"
+	if err := downloadTo(assetURL, tmpNew, 0755); err != nil {
+		notify(fmt.Sprintf("Update download failed: %v", err))
+		return err
+	}
+
+	// Remove quarantine attribute on macOS (no-op on Windows)
+	if err := removeQuarantineAttribute(tmpNew); err != nil {
+		notify(fmt.Sprintf("Warning: Failed to remove quarantine attribute: %v", err))
+		// Don't fail the update, just warn the user
+	}
+
+	notify("Update downloaded successfully")
+	logf("%s", successLine("Update downloaded successfully"))
+	notify("Preparing to restart with the new version...")
+	logf("%s", stepLine("The launcher will now restart to apply the update"))
+	logf("Please wait while the launcher restarts with the new version...")
+	logf("")
+	logf("Restarting in 10 seconds...")
+
+	time.Sleep(10 * time.Second)
+	notify("Restarting to apply update...")
+
+	if err := replaceAndRestart(exePath, tmpNew); err != nil {
+		notify(fmt.Sprintf("Failed to restart launcher: %v", err))
+		return fmt.Errorf("failed to replace launcher: %w", err)
+	}
+
+	os.Exit(0)
+	return nil
+}
+
 // fetchLatestAssetPreferPrerelease fetches the latest asset URL for the desired binary.
 // If preferPrerelease is true it will attempt to find a prerelease tag (containing "dev") first,
 // otherwise it falls back to the latest normal release.

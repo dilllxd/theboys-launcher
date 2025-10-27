@@ -1481,73 +1481,115 @@ func (g *GUI) showSettings() {
 	backupExePath := filepath.Join(g.root, "backup-non-dev"+getExecutableExtension())
 
 	devCheck.OnChanged = func(on bool) {
-		// If enabling, create a backup of the latest stable executable so we can restore later
+		// If enabling, create a backup of the current stable version and force update to dev
 		if on {
 			// Avoid blocking UI - show progress and run in goroutine
-			g.showLoading(true, "Preparing dev-build backup...")
+			g.showLoading(true, "Preparing dev mode...")
 			go func() {
 				defer g.showLoading(false, "")
 
-				tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
-				if err != nil {
-					// Failed to fetch stable asset; revert checkbox on main thread
-					logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))
-					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to fetch stable backup; dev builds not enabled"})
-					fyne.Do(func() { devCheck.SetChecked(false) })
-					return
+				// Check if backup already exists
+				if !exists(backupMetaPath) || !exists(backupExePath) {
+					g.showLoading(true, "Creating backup of current stable version...")
+					// Fetch current stable version for backup
+					tag, assetURL, err := fetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, false)
+					if err != nil {
+						// Failed to fetch stable asset; revert checkbox on main thread
+						logf("%s", warnLine(fmt.Sprintf("Failed to prepare backup for dev builds: %v", err)))
+						fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to fetch stable backup; dev builds not enabled"})
+						fyne.Do(func() { devCheck.SetChecked(false) })
+						return
+					}
+
+					// Download stable exe to backup path
+					if err := downloadTo(assetURL, backupExePath, 0755); err != nil {
+						logf("%s", warnLine(fmt.Sprintf("Failed to download backup exe: %v", err)))
+						fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to download backup; dev builds not enabled"})
+						fyne.Do(func() { devCheck.SetChecked(false) })
+						return
+					}
+
+					// Write metadata
+					meta := map[string]string{"tag": tag, "path": backupExePath}
+					if data, jerr := json.MarshalIndent(meta, "", "  "); jerr == nil {
+						_ = os.WriteFile(backupMetaPath, data, 0644)
+					}
 				}
 
-				// download stable exe to backup path
-				if err := downloadTo(assetURL, backupExePath, 0755); err != nil {
-					logf("%s", warnLine(fmt.Sprintf("Failed to download backup exe: %v", err)))
-					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to download backup; dev builds not enabled"})
-					fyne.Do(func() { devCheck.SetChecked(false) })
-					return
-				}
-
-				// write metadata
-				meta := map[string]string{"tag": tag, "path": backupExePath}
-				if data, jerr := json.MarshalIndent(meta, "", "  "); jerr == nil {
-					_ = os.WriteFile(backupMetaPath, data, 0644)
-				}
-
+				// Save settings first
 				settings.DevBuildsEnabled = true
+				logf("%s", infoLine("GUI: User enabled dev builds setting"))
 				if err := saveSettings(g.root); err != nil {
 					logf("%s", warnLine(fmt.Sprintf("Failed to save settings after enabling dev builds: %v", err)))
+				} else {
+					logf("%s", successLine("GUI: Dev builds setting enabled and saved"))
 				}
 
-				fyne.Do(func() {
-					g.updateStatus("Dev builds enabled")
-				})
+				// Force update to latest dev version
+				g.showLoading(true, "Updating to latest dev version...")
+				if err := forceUpdate(g.root, g.exePath, true, func(msg string) {
+					logf("%s", infoLine(msg))
+					fyne.Do(func() {
+						g.showLoading(true, msg)
+					})
+				}); err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to update to dev version: %v", err)))
+					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to dev version"})
+					fyne.Do(func() {
+						devCheck.SetChecked(false)
+						settings.DevBuildsEnabled = false
+						saveSettings(g.root)
+						g.updateStatus("Failed to enable dev builds")
+					})
+					return
+				}
 			}()
 			return
 		}
 
-		// Disabling dev builds: offer to restore backup if present
-		settings.DevBuildsEnabled = false
-		if err := saveSettings(g.root); err != nil {
-			logf("%s", warnLine(fmt.Sprintf("Failed to save settings after disabling dev builds: %v", err)))
-		}
+		// Disabling dev builds: handle backup restoration or force update to stable
+		g.showLoading(true, "Switching to stable channel...")
+		go func() {
+			defer g.showLoading(false, "")
 
-		// If backup metadata exists, ask user to restore now (this will restart the launcher)
-		if exists(backupMetaPath) && exists(backupExePath) {
-			fyne.Do(func() {
-				confirm := dialog.NewConfirm("Restore previous launcher?", "A backup of the previous non-dev launcher was found. Restore it now? This will restart the launcher.", func(ok bool) {
-					if ok {
-						// Perform replace and restart
-						go func() {
-							// Use replaceAndRestart from update.go
-							_ = replaceAndRestart(g.exePath, backupExePath)
-						}()
-					} else {
-						g.updateStatus("Dev builds disabled (no restore)")
-					}
-				}, g.window)
-				confirm.Show()
-			})
-		} else {
-			g.updateStatus("Dev builds disabled")
-		}
+			// Save settings first
+			settings.DevBuildsEnabled = false
+			logf("%s", infoLine("GUI: User disabled dev builds setting"))
+			if err := saveSettings(g.root); err != nil {
+				logf("%s", warnLine(fmt.Sprintf("Failed to save settings after disabling dev builds: %v", err)))
+			} else {
+				logf("%s", successLine("GUI: Dev builds setting disabled and saved"))
+			}
+
+			// Check if backup exists and restore it
+			if exists(backupMetaPath) && exists(backupExePath) {
+				g.showLoading(true, "Restoring stable version from backup...")
+				if err := replaceAndRestart(g.exePath, backupExePath); err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to restore backup: %v", err)))
+					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to restore backup"})
+					fyne.Do(func() {
+						g.updateStatus("Failed to restore stable version")
+					})
+					return
+				}
+			} else {
+				// No backup available, force update to latest stable
+				g.showLoading(true, "Updating to latest stable version...")
+				if err := forceUpdate(g.root, g.exePath, false, func(msg string) {
+					logf("%s", infoLine(msg))
+					fyne.Do(func() {
+						g.showLoading(true, msg)
+					})
+				}); err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to update to stable version: %v", err)))
+					fyne.CurrentApp().SendNotification(&fyne.Notification{Title: "Dev builds", Content: "Failed to update to stable version"})
+					fyne.Do(func() {
+						g.updateStatus("Failed to disable dev builds")
+					})
+					return
+				}
+			}
+		}()
 	}
 
 	refreshUI()

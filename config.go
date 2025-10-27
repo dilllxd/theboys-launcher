@@ -102,9 +102,13 @@ func loadSettings(root string) error {
 			if !settings.AutoRAM {
 				settings.MemoryMB = clampMemoryMB(settings.MemoryMB)
 			}
-			if isDevBuild() && !settings.DevBuildsEnabled {
-				settings.DevBuildsEnabled = true
-				_ = saveSettings(root)
+			// Only log dev build status without overriding user preference
+			if isDevBuild() {
+				if settings.DevBuildsEnabled {
+					logf("%s", infoLine(fmt.Sprintf("Dev build detected (version: %s), dev builds already enabled by user preference", version)))
+				} else {
+					logf("%s", infoLine(fmt.Sprintf("Dev build detected (version: %s), dev builds disabled by user preference", version)))
+				}
 			}
 			return nil
 		}
@@ -112,17 +116,29 @@ func loadSettings(root string) error {
 
 	// Use defaults if loading failed
 	settings = defaultSettings
+	// Log when using default dev builds setting
+	if isDevBuild() && settings.DevBuildsEnabled {
+		logf("%s", infoLine(fmt.Sprintf("New installation detected with dev build (version: %s), dev builds enabled by default", version)))
+	}
 	return saveSettings(root)
 }
 
 // saveSettings saves current settings to settings.json
 func saveSettings(root string) error {
 	settingsPath := filepath.Join(root, "settings.json")
+	logf("%s", infoLine(fmt.Sprintf("Saving settings: DevBuildsEnabled=%t, AutoRAM=%t, MemoryMB=%d",
+		settings.DevBuildsEnabled, settings.AutoRAM, settings.MemoryMB)))
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(settingsPath, data, 0644)
+	err = os.WriteFile(settingsPath, data, 0644)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to write settings file: %v", err)))
+	} else {
+		logf("%s", successLine("Settings saved successfully"))
+	}
+	return err
 }
 
 // resetToAutoSettings resets memory to auto-detected values

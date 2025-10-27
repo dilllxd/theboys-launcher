@@ -90,6 +90,22 @@ else
     exit 1
 fi
 
+echo "Running forceUpdate tests..."
+if go test -v -run TestForceUpdate; then
+    print_status "PASS" "forceUpdate function tests passed"
+else
+    print_status "FAIL" "forceUpdate function tests failed"
+    exit 1
+fi
+
+echo "Running GUI dev mode toggle tests..."
+if go test -v tests/gui_test.go tests/devbuilds_test.go -run TestGUIDevMode; then
+    print_status "PASS" "GUI dev mode toggle tests passed"
+else
+    print_status "FAIL" "GUI dev mode toggle tests failed"
+    exit 1
+fi
+
 # Test 5: Cross-platform compilation test
 print_status "INFO" "Test 5: Testing cross-platform compilation..."
 
@@ -212,7 +228,8 @@ echo ""
 echo "Test Summary:"
 echo "- ✅ Code compilation"
 echo "- ✅ Go modules verification"
-echo "- ✅ Unit tests (platform, version, update)"
+echo "- ✅ Unit tests (platform, version, update, forceUpdate)"
+echo "- ✅ GUI dev mode toggle tests"
 echo "- ✅ Cross-platform compilation"
 echo "- ✅ GitHub Actions workflow validation"
 echo "- ✅ Required files check"
@@ -220,4 +237,4 @@ echo "- ✅ Version file validation"
 echo "- ✅ Test coverage analysis"
 echo "- ✅ Makefile validation"
 echo ""
-echo "The launcher is ready for deployment! 🚀"
+echo "The enhanced launcher is ready for deployment! 🚀"
