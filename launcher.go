@@ -51,6 +51,15 @@ func buildQtEnvironment(prismDir, jreDir string) []string {
 		// Additional Qt environment variables for better compatibility
 		qtEnv = append(qtEnv, "QT_QPA_PLATFORM=xcb")           // Force X11 backend
 		qtEnv = append(qtEnv, "QT_XCB_GL_INTEGRATION=xcb_glx") // OpenGL integration
+
+		// Qt debug variables for comprehensive logging
+		qtEnv = append(qtEnv, "QT_DEBUG_PLUGINS=1")         // Enable detailed plugin loading information
+		qtEnv = append(qtEnv, "QT_LOGGING_RULES*=true")     // Enable comprehensive logging
+		qtEnv = append(qtEnv, "QT_DEBUG_PLUGINS_VERBOSE=1") // More verbose plugin debugging
+		qtEnv = append(qtEnv, "QT_QPA_VERBOSE=1")           // QPA platform debugging
+		qtEnv = append(qtEnv, "QT_XCB_DEBUG=1")             // XCB backend debugging
+
+		logf("DEBUG: Enabled Qt debug variables for troubleshooting")
 	}
 
 	return qtEnv
@@ -112,7 +121,7 @@ func fixQtPluginRPATH(prismDir string) error {
 		return nil
 	}
 
-	logf("%s", stepLine("Fixing Qt plugin RPATH settings"))
+	logf("%s", stepLine("Fixing Qt plugin RPATH settings and permissions"))
 
 	// Check if patchelf is available
 	if _, err := exec.LookPath("patchelf"); err != nil {
@@ -131,6 +140,13 @@ func fixQtPluginRPATH(prismDir string) error {
 	if !exists(pluginsDir) {
 		logf("%s", warnLine("Plugins directory not found, skipping RPATH fixing"))
 		return nil
+	}
+
+	// First, fix permissions for all .so files in plugins directory
+	logf("%s", stepLine("Fixing plugin permissions"))
+	if err := fixPluginPermissions(pluginsDir); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to fix plugin permissions: %v", err)))
+		// Don't fail the entire operation, just log the warning
 	}
 
 	// Fix RPATH for critical Qt plugins
@@ -163,6 +179,15 @@ func fixQtPluginRPATH(prismDir string) error {
 			} else {
 				logf("Fixed RPATH for %s (using %s)", plugin, relativeLibPath)
 				fixedCount++
+
+				// Verify RPATH was set correctly
+				if err := verifyRPATH(pluginPath, relativeLibPath); err != nil {
+					errMsg := fmt.Sprintf("RPATH verification failed for %s: %v", plugin, err)
+					logf("%s", warnLine(errMsg))
+					errors = append(errors, errMsg)
+				} else {
+					logf("Verified RPATH for %s", plugin)
+				}
 			}
 		} else {
 			logf("Plugin not found: %s (skipping)", plugin)
@@ -197,6 +222,13 @@ func fixQtPluginRPATH(prismDir string) error {
 		} else {
 			logf("Fixed RPATH for additional plugin: %s (using %s)", filepath.Base(path), relativeLibPath)
 			fixedCount++
+
+			// Verify RPATH was set correctly
+			if err := verifyRPATH(path, relativeLibPath); err != nil {
+				logf("RPATH verification failed for %s: %v", filepath.Base(path), err)
+			} else {
+				logf("Verified RPATH for %s", filepath.Base(path))
+			}
 		}
 
 		return nil
@@ -213,6 +245,195 @@ func fixQtPluginRPATH(prismDir string) error {
 		logf("%s", successLine(fmt.Sprintf("Successfully fixed RPATH for %d Qt plugins", fixedCount)))
 	} else {
 		logf("%s", warnLine("No Qt plugins found to fix RPATH for"))
+	}
+
+	return nil
+}
+
+// fixPluginPermissions fixes permissions for all .so files in the plugins directory
+func fixPluginPermissions(pluginsDir string) error {
+	return filepath.Walk(pluginsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-.so files
+		if info.IsDir() || !strings.HasSuffix(path, ".so") {
+			return nil
+		}
+
+		// Set execute permissions (755) for plugin files
+		currentMode := info.Mode()
+		newMode := currentMode | 0111 // Add execute bit for owner, group, and others
+
+		if newMode != currentMode {
+			if err := os.Chmod(path, newMode); err != nil {
+				logf("Failed to set permissions for %s: %v", filepath.Base(path), err)
+				return err
+			}
+			logf("Fixed permissions for %s", filepath.Base(path))
+		}
+
+		return nil
+	})
+}
+
+// verifyRPATH verifies that the RPATH was set correctly for a plugin
+func verifyRPATH(pluginPath, expectedRPATH string) error {
+	// Use patchelf to check the current RPATH
+	cmd := exec.Command("patchelf", "--print-rpath", pluginPath)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to read RPATH: %w", err)
+	}
+
+	actualRPATH := strings.TrimSpace(string(output))
+
+	// For $ORIGIN-based paths, we need to check if the expected pattern is contained
+	if strings.HasPrefix(expectedRPATH, "$ORIGIN") {
+		if !strings.Contains(actualRPATH, expectedRPATH) {
+			return fmt.Errorf("RPATH mismatch: expected to contain '%s', got '%s'", expectedRPATH, actualRPATH)
+		}
+	} else {
+		// For absolute paths, check exact match
+		if actualRPATH != expectedRPATH {
+			return fmt.Errorf("RPATH mismatch: expected '%s', got '%s'", expectedRPATH, actualRPATH)
+		}
+	}
+
+	return nil
+}
+
+// checkPluginDependencies checks if plugins can find their dependencies using ldd
+func checkPluginDependencies(prismDir string) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+
+	logf("%s", stepLine("Checking plugin dependencies"))
+
+	// Check if ldd is available
+	if _, err := exec.LookPath("ldd"); err != nil {
+		logf("%s", warnLine("ldd not found, skipping dependency checking"))
+		return nil // Not an error, just skip the check
+	}
+
+	// Use the actual base directory where Prism executable is located
+	actualPrismDir := getPrismBaseDir(prismDir)
+	pluginsDir := filepath.Join(actualPrismDir, "plugins")
+
+	if !exists(pluginsDir) {
+		logf("%s", warnLine("Plugins directory not found, skipping dependency checking"))
+		return nil
+	}
+
+	// Check critical plugins
+	criticalPlugins := []string{
+		"platforms/libqxcb.so",
+		"imageformats/libqjpeg.so",
+		"iconengines/libqsvgicon.so",
+	}
+
+	var missingDeps []string
+	var checkedPlugins int
+
+	for _, plugin := range criticalPlugins {
+		pluginPath := filepath.Join(pluginsDir, plugin)
+		if exists(pluginPath) {
+			checkedPlugins++
+			logf("Checking dependencies for %s", plugin)
+
+			// Run ldd to check dependencies
+			cmd := exec.Command("ldd", pluginPath)
+			output, err := cmd.Output()
+			if err != nil {
+				logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", plugin, err)))
+				continue
+			}
+
+			// Parse ldd output for missing dependencies
+			lines := strings.Split(string(output), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "not found") {
+					// Extract the library name
+					parts := strings.Fields(line)
+					if len(parts) > 0 {
+						missingLib := parts[0]
+						missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", plugin, missingLib))
+						logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", plugin, missingLib)))
+					}
+				}
+			}
+		} else {
+			logf("Plugin not found: %s (skipping dependency check)", plugin)
+		}
+	}
+
+	// Check all .so files in plugins directory recursively
+	err := filepath.Walk(pluginsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and non-.so files
+		if info.IsDir() || !strings.HasSuffix(path, ".so") {
+			return nil
+		}
+
+		// Skip files we already processed
+		for _, plugin := range criticalPlugins {
+			if strings.HasSuffix(path, plugin) {
+				return nil
+			}
+		}
+
+		checkedPlugins++
+		pluginName := filepath.Base(path)
+		logf("Checking dependencies for additional plugin: %s", pluginName)
+
+		// Run ldd to check dependencies
+		cmd := exec.Command("ldd", path)
+		output, err := cmd.Output()
+		if err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", pluginName, err)))
+			return nil
+		}
+
+		// Parse ldd output for missing dependencies
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.Contains(line, "not found") {
+				// Extract the library name
+				parts := strings.Fields(line)
+				if len(parts) > 0 {
+					missingLib := parts[0]
+					missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", pluginName, missingLib))
+					logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", pluginName, missingLib)))
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Error during recursive dependency checking: %v", err)))
+	}
+
+	// Report results
+	if len(missingDeps) > 0 {
+		logf("%s", warnLine(fmt.Sprintf("Found %d missing dependencies across %d plugins", len(missingDeps), checkedPlugins)))
+		logf("Missing dependencies:")
+		for _, dep := range missingDeps {
+			logf("  - %s", dep)
+		}
+		return fmt.Errorf("plugin dependencies missing: %s", strings.Join(missingDeps, "; "))
+	} else if checkedPlugins > 0 {
+		logf("%s", successLine(fmt.Sprintf("All dependencies resolved for %d plugins", checkedPlugins)))
+	} else {
+		logf("%s", warnLine("No plugins found to check dependencies"))
 	}
 
 	return nil
@@ -587,6 +808,14 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	// Log Qt environment setup for debugging
 	logQtEnvironment(prismDir)
 
+	// Check plugin dependencies before launching
+	if runtime.GOOS == "linux" {
+		if err := checkPluginDependencies(prismDir); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Plugin dependency check failed: %v", err)))
+			// Don't fail the launch, but warn the user
+		}
+	}
+
 	// Launch the instance directly (this should not show the Prism GUI)
 	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
 	launch.Dir = prismDir
@@ -604,11 +833,28 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		}
 	}
 
-	launch.Stdout, launch.Stderr = out, out
+	// Capture both stdout and stderr for better error reporting
+	var stdoutBuf, stderrBuf bytes.Buffer
+	multiWriter := io.MultiWriter(out, &stdoutBuf)
+	multiErrWriter := io.MultiWriter(out, &stderrBuf)
+
+	launch.Stdout = multiWriter
+	launch.Stderr = multiErrWriter
+
+	logf("DEBUG: Starting Prism launch with command: %s", launch.String())
 
 	// Start the process and wait for it to complete (keeps console open)
 	if err := launch.Start(); err != nil {
 		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
+
+		// Log captured output for debugging
+		if stdoutBuf.Len() > 0 {
+			logf("DEBUG: Captured stdout before failure:\n%s", stdoutBuf.String())
+		}
+		if stderrBuf.Len() > 0 {
+			logf("DEBUG: Captured stderr before failure:\n%s", stderrBuf.String())
+		}
+
 		logf("%s", stepLine("Opening Prism Launcher UI instead"))
 		launchFallback := exec.Command(prismExe, "--dir", ".")
 		launchFallback.Dir = prismDir
@@ -617,21 +863,68 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		qtEnv := buildQtEnvironment(prismDir, jreDir)
 		launchFallback.Env = append(os.Environ(), qtEnv...)
 
-		launchFallback.Stdout, launchFallback.Stderr = out, out
+		// Capture fallback output as well
+		var fallbackStdout, fallbackStderr bytes.Buffer
+		launchFallback.Stdout = io.MultiWriter(out, &fallbackStdout)
+		launchFallback.Stderr = io.MultiWriter(out, &fallbackStderr)
+
 		if err := launchFallback.Start(); err != nil {
 			logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
+
+			// Log captured fallback output for debugging
+			if fallbackStdout.Len() > 0 {
+				logf("DEBUG: Captured fallback stdout:\n%s", fallbackStdout.String())
+			}
+			if fallbackStderr.Len() > 0 {
+				logf("DEBUG: Captured fallback stderr:\n%s", fallbackStderr.String())
+			}
+
 			return
 		}
 		*prismProcess = launchFallback.Process
 		logf("%s", successLine(fmt.Sprintf("Prism Launcher UI launched for %s (PID: %d)", packName, launchFallback.Process.Pid)))
 		// Wait for the GUI process to complete
 		launchFallback.Wait()
+
+		// Log fallback completion output for debugging
+		if fallbackStdout.Len() > 0 {
+			logf("DEBUG: Fallback process stdout:\n%s", fallbackStdout.String())
+		}
+		if fallbackStderr.Len() > 0 {
+			logf("DEBUG: Fallback process stderr:\n%s", fallbackStderr.String())
+		}
 	} else {
 		// Store the process reference for signal handling
 		*prismProcess = launch.Process
 		logf("%s", successLine(fmt.Sprintf("%s launched (PID: %d)", packName, launch.Process.Pid)))
+
 		// Wait for the game process to complete
-		launch.Wait()
+		err := launch.Wait()
+
+		// Log completion output for debugging
+		if stdoutBuf.Len() > 0 {
+			logf("DEBUG: Process stdout:\n%s", stdoutBuf.String())
+		}
+		if stderrBuf.Len() > 0 {
+			logf("DEBUG: Process stderr:\n%s", stderrBuf.String())
+		}
+
+		// Check if the process exited with an error
+		if err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Prism process exited with error: %v", err)))
+
+			// Analyze the output for common Qt issues
+			stderrStr := stderrBuf.String()
+			if strings.Contains(stderrStr, "cannot open shared object file") {
+				logf("%s", warnLine("Detected missing shared library - check Qt dependencies"))
+			}
+			if strings.Contains(stderrStr, "Could not load the Qt platform plugin") {
+				logf("%s", warnLine("Detected Qt platform plugin issue - check plugin permissions and RPATH"))
+			}
+			if strings.Contains(stderrStr, "Permission denied") {
+				logf("%s", warnLine("Detected permission issue - check plugin and library permissions"))
+			}
+		}
 	}
 
 	logf("%s", successLine(fmt.Sprintf("Prism Launcher closed for %s", packName)))
