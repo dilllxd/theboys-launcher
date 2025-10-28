@@ -525,6 +525,457 @@ func calculateRelativePath(pluginPath, libDir string) string {
 	return "$ORIGIN/" + relPath
 }
 
+// -------------------- Error Analysis Functions --------------------
+
+// analyzePrismError analyzes error output from Prism to identify common issues
+func analyzePrismError(stderrStr, stdoutStr string) []string {
+	var issues []string
+	combinedOutput := stderrStr + "\n" + stdoutStr
+
+	// Log the raw error output for debugging
+	logf("=== Prism Error Analysis ===")
+	logf("Raw stderr output:")
+	logf("%s", stderrStr)
+	if stdoutStr != "" {
+		logf("Raw stdout output:")
+		logf("%s", stdoutStr)
+	}
+
+	// Check for unusual colon format that might indicate Prism-specific errors
+	if strings.Contains(combinedOutput, ":") && !strings.Contains(combinedOutput, " ") {
+		lines := strings.Split(combinedOutput, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.Contains(line, ":") && !strings.Contains(line, " ") {
+				logf("%s", warnLine(fmt.Sprintf("Detected unusual colon format error: %s", line)))
+				issues = append(issues, fmt.Sprintf("Unusual error format: %s", line))
+			}
+		}
+	}
+
+	// Check for common Qt library issues
+	if strings.Contains(combinedOutput, "cannot open shared object file") {
+		issues = append(issues, "Missing shared library - Qt dependencies may be incomplete")
+		logf("%s", warnLine("Detected missing shared library error"))
+	}
+
+	// Check for Qt platform plugin issues
+	if strings.Contains(combinedOutput, "Could not load the Qt platform plugin") {
+		issues = append(issues, "Qt platform plugin loading failed - check plugin permissions and RPATH")
+		logf("%s", warnLine("Detected Qt platform plugin issue"))
+	}
+
+	// Check for permission issues
+	if strings.Contains(combinedOutput, "Permission denied") {
+		issues = append(issues, "Permission denied - check file and directory permissions")
+		logf("%s", warnLine("Detected permission issue"))
+	}
+
+	// Check for GL/GLX issues
+	if strings.Contains(combinedOutput, "GLX") || strings.Contains(combinedOutput, "OpenGL") {
+		issues = append(issues, "Graphics/GLX issue - may need graphics drivers or different Qt platform")
+		logf("%s", warnLine("Detected graphics/GLX issue"))
+	}
+
+	// Check for Java-related issues
+	if strings.Contains(combinedOutput, "JAVA_HOME") || strings.Contains(combinedOutput, "java.lang") {
+		issues = append(issues, "Java configuration issue - check JAVA_HOME and Java path")
+		logf("%s", warnLine("Detected Java configuration issue"))
+	}
+
+	// Check for patchelf-related issues
+	if strings.Contains(combinedOutput, "patchelf") || strings.Contains(combinedOutput, "RPATH") {
+		issues = append(issues, "RPATH/library linking issue - patchelf may have failed")
+		logf("%s", warnLine("Detected RPATH/library linking issue"))
+	}
+
+	logf("=== End Prism Error Analysis ===")
+	return issues
+}
+
+// provideErrorContext provides user-friendly error context based on identified issues
+func provideErrorContext(issues []string) {
+	if len(issues) == 0 {
+		logf("%s", infoLine("No specific issues identified in error output"))
+		return
+	}
+
+	logf("%s", sectionLine("Error Analysis Results"))
+	logf("%s", warnLine(fmt.Sprintf("Identified %d issue(s):", len(issues))))
+
+	for i, issue := range issues {
+		logf("%d. %s", i+1, issue)
+	}
+
+	logf("%s", sectionLine("Recommended Solutions"))
+
+	for _, issue := range issues {
+		switch {
+		case strings.Contains(issue, "Missing shared library"):
+			logf("%s", infoLine("• Run: sudo apt install libqt6core6t64 libqt6gui6 libqt6widgets6 libqt6network6 libqt6svg6"))
+			logf("%s", infoLine("• Ensure patchelf is installed: sudo apt install patchelf"))
+		case strings.Contains(issue, "Qt platform plugin"):
+			logf("%s", infoLine("• Check plugin permissions in the plugins directory"))
+			logf("%s", infoLine("• Verify RPATH settings with: readelf -d plugins/platforms/libqxcb.so"))
+		case strings.Contains(issue, "Permission denied"):
+			logf("%s", infoLine("• Fix permissions: chmod +x plugins/**/*.so"))
+			logf("%s", infoLine("• Check directory ownership: ls -la prism/"))
+		case strings.Contains(issue, "Graphics/GLX"):
+			logf("%s", infoLine("• Try different Qt platform: export QT_QPA_PLATFORM=wayland"))
+			logf("%s", infoLine("• Update graphics drivers"))
+		case strings.Contains(issue, "Java configuration"):
+			logf("%s", infoLine("• Verify Java installation: java -version"))
+			logf("%s", infoLine("• Check JAVA_HOME is set correctly"))
+		case strings.Contains(issue, "RPATH/library linking"):
+			logf("%s", infoLine("• Reinstall patchelf: sudo apt install --reinstall patchelf"))
+			logf("%s", infoLine("• Manually fix RPATH: patchelf --set-rpath '$ORIGIN/../lib' plugins/**/*.so"))
+		case strings.Contains(issue, "Unusual error format"):
+			logf("%s", infoLine("• This may be a Prism Launcher internal error"))
+			logf("%s", infoLine("• Try launching Prism GUI directly for more details"))
+		}
+	}
+}
+
+// createPrismWrapperScript creates a wrapper script for launching Prism with proper environment
+func createPrismWrapperScript(prismDir, jreDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", nil // Only needed on Linux
+	}
+
+	logf("%s", stepLine("Creating Prism wrapper script"))
+
+	// Create wrapper script path
+	wrapperPath := filepath.Join(prismDir, "launch-prism-wrapper.sh")
+
+	// Get the actual Prism executable path
+	prismExe := GetPrismExecutablePath(prismDir)
+
+	// Build the wrapper script content
+	wrapperContent := fmt.Sprintf(`#!/bin/bash
+# Prism Launcher Wrapper Script
+# This script ensures proper environment setup for Prism Launcher
+
+set -e
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PRISM_EXE="%s"
+JRE_DIR="%s"
+
+# Log function for debugging
+log_debug() {
+	   echo "[WRAPPER DEBUG] $1" >&2
+}
+
+log_debug "Starting Prism wrapper script"
+log_debug "Script directory: $SCRIPT_DIR"
+log_debug "Prism executable: $PRISM_EXE"
+log_debug "JRE directory: $JRE_DIR"
+
+# Ensure patchelf is installed
+if ! command -v patchelf &> /dev/null; then
+	   echo "[WRAPPER ERROR] patchelf is not installed" >&2
+	   echo "[WRAPPER INFO] Attempting to install patchelf..." >&2
+	   
+	   # Try to install patchelf
+	   if command -v apt &> /dev/null; then
+	       sudo apt update && sudo apt install -y patchelf
+	   elif command -v dnf &> /dev/null; then
+	       sudo dnf install -y patchelf
+	   elif command -v yum &> /dev/null; then
+	       sudo yum install -y patchelf
+	   elif command -v pacman &> /dev/null; then
+	       sudo pacman -S --noconfirm patchelf
+	   else
+	       echo "[WRAPPER ERROR] Cannot install patchelf - no supported package manager found" >&2
+	       exit 1
+	   fi
+	   
+	   # Verify installation
+	   if ! command -v patchelf &> /dev/null; then
+	       echo "[WRAPPER ERROR] patchelf installation failed" >&2
+	       exit 1
+	   fi
+	   
+	   echo "[WRAPPER SUCCESS] patchelf installed successfully" >&2
+fi
+
+# Fix RPATH for Qt plugins if needed
+PLUGINS_DIR="$SCRIPT_DIR/plugins"
+LIB_DIR="$SCRIPT_DIR/lib"
+
+if [ -d "$PLUGINS_DIR" ]; then
+	   log_debug "Fixing RPATH for Qt plugins"
+	   
+	   # Fix critical plugins
+	   for plugin in platforms/libqxcb.so imageformats/libqjpeg.so iconengines/libqsvgicon.so; do
+	       plugin_path="$PLUGINS_DIR/$plugin"
+	       if [ -f "$plugin_path" ]; then
+	           log_debug "Fixing RPATH for $plugin"
+	           # Calculate relative path to lib directory
+	           rel_path="$(dirname "$plugin_path" | sed "s|$SCRIPT_DIR||" | sed 's|^/||' | sed 's|[^/][^/]*|..|g')/lib"
+	           if [ "$rel_path" = "/lib" ]; then
+	               rel_path="$LIB_DIR"
+	           fi
+	           
+	           # Set RPATH
+	           if patchelf --set-rpath "\$ORIGIN/$rel_path" "$plugin_path" 2>/dev/null; then
+	               log_debug "Successfully fixed RPATH for $plugin"
+	           else
+	               log_debug "Failed to fix RPATH for $plugin (may not be an ELF file)"
+	           fi
+	       fi
+	   done
+fi
+
+# Set environment variables
+export JAVA_HOME="$JRE_DIR"
+export PATH="$JRE_DIR/bin:$PATH"
+
+# Qt environment variables
+if [ -d "$PLUGINS_DIR" ]; then
+	   export QT_PLUGIN_PATH="$PLUGINS_DIR"
+	   log_debug "Set QT_PLUGIN_PATH=$QT_PLUGIN_PATH"
+fi
+
+if [ -d "$LIB_DIR" ]; then
+	   export LD_LIBRARY_PATH="$LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+	   log_debug "Set LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+fi
+
+# Qt debug variables
+export QT_DEBUG_PLUGINS=1
+export QT_LOGGING_RULES="*=true"
+export QT_QPA_PLATFORM=xcb
+export QT_XCB_GL_INTEGRATION=xcb_glx
+
+log_debug "Environment variables set"
+log_debug "Launching Prism: $PRISM_EXE $*"
+
+# Launch Prism with all arguments passed through
+exec "$PRISM_EXE" "$@"
+`, prismExe, jreDir)
+
+	// Write the wrapper script
+	if err := os.WriteFile(wrapperPath, []byte(wrapperContent), 0755); err != nil {
+		return "", fmt.Errorf("failed to create wrapper script: %w", err)
+	}
+
+	logf("%s", successLine(fmt.Sprintf("Created wrapper script: %s", wrapperPath)))
+	return wrapperPath, nil
+}
+
+// launchPrismWithWrapper launches Prism using the wrapper script approach
+func launchPrismWithWrapper(prismDir, jreDir, instanceName string) error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("wrapper script approach only supported on Linux")
+	}
+
+	logf("%s", stepLine("Launching Prism using wrapper script approach"))
+
+	// Create wrapper script
+	wrapperPath, err := createPrismWrapperScript(prismDir, jreDir)
+	if err != nil {
+		return fmt.Errorf("failed to create wrapper script: %w", err)
+	}
+
+	// Launch using the wrapper script
+	var cmd *exec.Cmd
+	if instanceName != "" {
+		cmd = exec.Command(wrapperPath, "--dir", ".", "--launch", instanceName)
+	} else {
+		cmd = exec.Command(wrapperPath, "--dir", ".")
+	}
+
+	cmd.Dir = prismDir
+	cmd.Env = append(os.Environ(), buildQtEnvironment(prismDir, jreDir)...)
+
+	// Capture output for error analysis
+	var stdoutBuf, stderrBuf bytes.Buffer
+	multiWriter := io.MultiWriter(out, &stdoutBuf)
+	multiErrWriter := io.MultiWriter(out, &stderrBuf)
+
+	cmd.Stdout = multiWriter
+	cmd.Stderr = multiErrWriter
+
+	logf("DEBUG: Starting wrapper launch with command: %s", cmd.String())
+
+	// Start the process
+	if err := cmd.Start(); err != nil {
+		// Analyze the error output
+		stderrStr := stderrBuf.String()
+		stdoutStr := stdoutBuf.String()
+		issues := analyzePrismError(stderrStr, stdoutStr)
+		provideErrorContext(issues)
+
+		return fmt.Errorf("failed to launch Prism with wrapper: %w", err)
+	}
+
+	logf("%s", successLine(fmt.Sprintf("Prism launched via wrapper (PID: %d)", cmd.Process.Pid)))
+
+	// Wait for the process to complete
+	err = cmd.Wait()
+
+	// Analyze output even if the process completed
+	stderrStr := stderrBuf.String()
+	stdoutStr := stdoutBuf.String()
+	if err != nil || stderrStr != "" {
+		issues := analyzePrismError(stderrStr, stdoutStr)
+		if len(issues) > 0 {
+			provideErrorContext(issues)
+		}
+	}
+
+	return err
+}
+
+// launchPrismDirect launches Prism directly with enhanced error handling
+func launchPrismDirect(prismExe, prismDir, jreDir, instanceName, packName string, prismProcess **os.Process) error {
+	logf("%s", stepLine("Attempting direct Prism launch"))
+
+	// Launch the instance directly (this should not show the Prism GUI)
+	launch := exec.Command(prismExe, "--dir", ".", "--launch", instanceName)
+	launch.Dir = prismDir
+
+	// Build Qt environment variables
+	qtEnv := buildQtEnvironment(prismDir, jreDir)
+	launch.Env = append(os.Environ(), qtEnv...)
+
+	// Log environment variables for debugging
+	if runtime.GOOS == "linux" {
+		for _, env := range launch.Env {
+			if strings.Contains(env, "QT_") || strings.Contains(env, "LD_LIBRARY_PATH") {
+				logf("DEBUG: Environment variable: %s", env)
+			}
+		}
+	}
+
+	// Capture both stdout and stderr for better error reporting
+	var stdoutBuf, stderrBuf bytes.Buffer
+	multiWriter := io.MultiWriter(out, &stdoutBuf)
+	multiErrWriter := io.MultiWriter(out, &stderrBuf)
+
+	launch.Stdout = multiWriter
+	launch.Stderr = multiErrWriter
+
+	logf("DEBUG: Starting Prism launch with command: %s", launch.String())
+
+	// Start the process and wait for it to complete (keeps console open)
+	if err := launch.Start(); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
+
+		// Log captured output for debugging
+		if stdoutBuf.Len() > 0 {
+			logf("DEBUG: Captured stdout before failure:\n%s", stdoutBuf.String())
+		}
+		if stderrBuf.Len() > 0 {
+			logf("DEBUG: Captured stderr before failure:\n%s", stderrBuf.String())
+		}
+
+		// Analyze the error output
+		stderrStr := stderrBuf.String()
+		stdoutStr := stdoutBuf.String()
+		issues := analyzePrismError(stderrStr, stdoutStr)
+		provideErrorContext(issues)
+
+		return fmt.Errorf("direct launch failed: %w", err)
+	}
+
+	// Store the process reference for signal handling
+	*prismProcess = launch.Process
+	logf("%s", successLine(fmt.Sprintf("%s launched (PID: %d)", packName, launch.Process.Pid)))
+
+	// Wait for the game process to complete
+	err := launch.Wait()
+
+	// Log completion output for debugging
+	if stdoutBuf.Len() > 0 {
+		logf("DEBUG: Process stdout:\n%s", stdoutBuf.String())
+	}
+	if stderrBuf.Len() > 0 {
+		logf("DEBUG: Process stderr:\n%s", stderrBuf.String())
+	}
+
+	// Check if the process exited with an error
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Prism process exited with error: %v", err)))
+
+		// Analyze the output for common issues using our new analysis function
+		stderrStr := stderrBuf.String()
+		stdoutStr := stdoutBuf.String()
+		issues := analyzePrismError(stderrStr, stdoutStr)
+
+		// Provide user-friendly error context and solutions
+		provideErrorContext(issues)
+
+		return fmt.Errorf("Prism process exited with error: %w", err)
+	}
+
+	return nil
+}
+
+// launchPrismGUIFallback launches Prism GUI as a fallback
+func launchPrismGUIFallback(prismExe, prismDir, jreDir, packName string, prismProcess **os.Process) error {
+	logf("%s", stepLine("Opening Prism Launcher UI instead"))
+	launchFallback := exec.Command(prismExe, "--dir", ".")
+	launchFallback.Dir = prismDir
+
+	// Use the same Qt environment setup for fallback
+	qtEnv := buildQtEnvironment(prismDir, jreDir)
+	launchFallback.Env = append(os.Environ(), qtEnv...)
+
+	// Capture fallback output as well
+	var fallbackStdout, fallbackStderr bytes.Buffer
+	launchFallback.Stdout = io.MultiWriter(out, &fallbackStdout)
+	launchFallback.Stderr = io.MultiWriter(out, &fallbackStderr)
+
+	if err := launchFallback.Start(); err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
+
+		// Log captured fallback output for debugging
+		if fallbackStdout.Len() > 0 {
+			logf("DEBUG: Captured fallback stdout:\n%s", fallbackStdout.String())
+		}
+		if fallbackStderr.Len() > 0 {
+			logf("DEBUG: Captured fallback stderr:\n%s", fallbackStderr.String())
+		}
+
+		// Analyze the error output
+		stderrStr := fallbackStderr.String()
+		stdoutStr := fallbackStdout.String()
+		issues := analyzePrismError(stderrStr, stdoutStr)
+		provideErrorContext(issues)
+
+		return fmt.Errorf("GUI fallback failed: %w", err)
+	}
+
+	*prismProcess = launchFallback.Process
+	logf("%s", successLine(fmt.Sprintf("Prism Launcher UI launched for %s (PID: %d)", packName, launchFallback.Process.Pid)))
+
+	// Wait for the GUI process to complete
+	err := launchFallback.Wait()
+
+	// Log fallback completion output for debugging
+	if fallbackStdout.Len() > 0 {
+		logf("DEBUG: Fallback process stdout:\n%s", fallbackStdout.String())
+	}
+	if fallbackStderr.Len() > 0 {
+		logf("DEBUG: Fallback process stderr:\n%s", fallbackStderr.String())
+	}
+
+	// Analyze output even if process completed successfully
+	if err != nil || fallbackStderr.Len() > 0 {
+		stderrStr := fallbackStderr.String()
+		stdoutStr := fallbackStdout.String()
+		issues := analyzePrismError(stderrStr, stdoutStr)
+		if len(issues) > 0 {
+			provideErrorContext(issues)
+		}
+	}
+
+	return err
+}
+
 // -------------------- Launcher Logic --------------------
 
 func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.Process, progressCb func(stage string, step, total int)) {
@@ -869,6 +1320,15 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	// Log Qt environment setup for debugging
 	logQtEnvironment(prismDir)
 
+	// Ensure patchelf is installed before attempting RPATH fixes
+	if runtime.GOOS == "linux" {
+		logf("%s", stepLine("Ensuring patchelf is installed"))
+		if err := ensurePatchelfInstalled(); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to ensure patchelf is installed: %v", err)))
+			logf("%s", warnLine("RPATH fixing may not work properly without patchelf"))
+		}
+	}
+
 	// Check plugin dependencies before launching
 	if runtime.GOOS == "linux" {
 		if err := checkPluginDependencies(prismDir); err != nil {
@@ -877,115 +1337,38 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		}
 	}
 
-	// Launch the instance directly (this should not show the Prism GUI)
-	launch := exec.Command(prismExe, "--dir", ".", "--launch", modpack.InstanceName)
-	launch.Dir = prismDir
+	// Try multiple launch approaches with fallbacks
+	var launchErr error
 
-	// Build Qt environment variables
-	qtEnv := buildQtEnvironment(prismDir, jreDir)
-	launch.Env = append(os.Environ(), qtEnv...)
+	// Approach 1: Direct launch with enhanced error handling
+	launchErr = launchPrismDirect(prismExe, prismDir, jreDir, modpack.InstanceName, packName, prismProcess)
 
-	// Log environment variables for debugging
-	if runtime.GOOS == "linux" {
-		for _, env := range launch.Env {
-			if strings.Contains(env, "QT_") || strings.Contains(env, "LD_LIBRARY_PATH") {
-				logf("DEBUG: Environment variable: %s", env)
+	if launchErr != nil {
+		logf("%s", warnLine(fmt.Sprintf("Direct launch failed: %v", launchErr)))
+
+		// Approach 2: Wrapper script approach (Linux only)
+		if runtime.GOOS == "linux" {
+			logf("%s", stepLine("Attempting wrapper script launch"))
+			launchErr = launchPrismWithWrapper(prismDir, jreDir, modpack.InstanceName)
+			if launchErr != nil {
+				logf("%s", warnLine(fmt.Sprintf("Wrapper script launch failed: %v", launchErr)))
+			} else {
+				logf("%s", successLine("Prism launched successfully via wrapper script"))
+				return
 			}
 		}
-	}
 
-	// Capture both stdout and stderr for better error reporting
-	var stdoutBuf, stderrBuf bytes.Buffer
-	multiWriter := io.MultiWriter(out, &stdoutBuf)
-	multiErrWriter := io.MultiWriter(out, &stderrBuf)
-
-	launch.Stdout = multiWriter
-	launch.Stderr = multiErrWriter
-
-	logf("DEBUG: Starting Prism launch with command: %s", launch.String())
-
-	// Start the process and wait for it to complete (keeps console open)
-	if err := launch.Start(); err != nil {
-		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
-
-		// Log captured output for debugging
-		if stdoutBuf.Len() > 0 {
-			logf("DEBUG: Captured stdout before failure:\n%s", stdoutBuf.String())
-		}
-		if stderrBuf.Len() > 0 {
-			logf("DEBUG: Captured stderr before failure:\n%s", stderrBuf.String())
-		}
-
-		logf("%s", stepLine("Opening Prism Launcher UI instead"))
-		launchFallback := exec.Command(prismExe, "--dir", ".")
-		launchFallback.Dir = prismDir
-
-		// Use the same Qt environment setup for fallback
-		qtEnv := buildQtEnvironment(prismDir, jreDir)
-		launchFallback.Env = append(os.Environ(), qtEnv...)
-
-		// Capture fallback output as well
-		var fallbackStdout, fallbackStderr bytes.Buffer
-		launchFallback.Stdout = io.MultiWriter(out, &fallbackStdout)
-		launchFallback.Stderr = io.MultiWriter(out, &fallbackStderr)
-
-		if err := launchFallback.Start(); err != nil {
-			logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
-
-			// Log captured fallback output for debugging
-			if fallbackStdout.Len() > 0 {
-				logf("DEBUG: Captured fallback stdout:\n%s", fallbackStdout.String())
-			}
-			if fallbackStderr.Len() > 0 {
-				logf("DEBUG: Captured fallback stderr:\n%s", fallbackStderr.String())
-			}
-
-			return
-		}
-		*prismProcess = launchFallback.Process
-		logf("%s", successLine(fmt.Sprintf("Prism Launcher UI launched for %s (PID: %d)", packName, launchFallback.Process.Pid)))
-		// Wait for the GUI process to complete
-		launchFallback.Wait()
-
-		// Log fallback completion output for debugging
-		if fallbackStdout.Len() > 0 {
-			logf("DEBUG: Fallback process stdout:\n%s", fallbackStdout.String())
-		}
-		if fallbackStderr.Len() > 0 {
-			logf("DEBUG: Fallback process stderr:\n%s", fallbackStderr.String())
+		// Approach 3: Fallback to GUI launch
+		logf("%s", stepLine("Attempting fallback to Prism GUI"))
+		launchErr = launchPrismGUIFallback(prismExe, prismDir, jreDir, packName, prismProcess)
+		if launchErr != nil {
+			logf("%s", warnLine(fmt.Sprintf("GUI fallback launch failed: %v", launchErr)))
+			logf("%s", warnLine("All launch attempts failed"))
+		} else {
+			logf("%s", successLine("Prism launched successfully via GUI fallback"))
 		}
 	} else {
-		// Store the process reference for signal handling
-		*prismProcess = launch.Process
-		logf("%s", successLine(fmt.Sprintf("%s launched (PID: %d)", packName, launch.Process.Pid)))
-
-		// Wait for the game process to complete
-		err := launch.Wait()
-
-		// Log completion output for debugging
-		if stdoutBuf.Len() > 0 {
-			logf("DEBUG: Process stdout:\n%s", stdoutBuf.String())
-		}
-		if stderrBuf.Len() > 0 {
-			logf("DEBUG: Process stderr:\n%s", stderrBuf.String())
-		}
-
-		// Check if the process exited with an error
-		if err != nil {
-			logf("%s", warnLine(fmt.Sprintf("Prism process exited with error: %v", err)))
-
-			// Analyze the output for common Qt issues
-			stderrStr := stderrBuf.String()
-			if strings.Contains(stderrStr, "cannot open shared object file") {
-				logf("%s", warnLine("Detected missing shared library - check Qt dependencies"))
-			}
-			if strings.Contains(stderrStr, "Could not load the Qt platform plugin") {
-				logf("%s", warnLine("Detected Qt platform plugin issue - check plugin permissions and RPATH"))
-			}
-			if strings.Contains(stderrStr, "Permission denied") {
-				logf("%s", warnLine("Detected permission issue - check plugin and library permissions"))
-			}
-		}
+		logf("%s", successLine("Prism launched successfully via direct launch"))
 	}
 
 	logf("%s", successLine(fmt.Sprintf("Prism Launcher closed for %s", packName)))

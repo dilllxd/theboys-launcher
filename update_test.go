@@ -21,12 +21,12 @@ func TestFetchLatestAssetPreferPrerelease(t *testing.T) {
 
 	// This would normally make HTTP requests, but we're just testing the function signature
 	// In a complete test suite, you would use httptest.NewServer to mock GitHub responses
-	_, _, err := fetchLatestAssetPreferPrerelease(owner, repo, wantName, preferPrerelease)
+	_, _, err := FetchLatestAssetPreferPrerelease(owner, repo, wantName, preferPrerelease)
 
 	// We expect this to fail since we're not mocking the HTTP requests
 	// The important thing is that the function exists and has the correct signature
 	if err == nil {
-		t.Errorf("Expected fetchLatestAssetPreferPrerelease to fail without mocked HTTP responses")
+		t.Errorf("Expected FetchLatestAssetPreferPrerelease to fail without mocked HTTP responses")
 	}
 }
 

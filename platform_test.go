@@ -81,7 +81,7 @@ func TestGetPathSeparator(t *testing.T) {
 		expected = ";"
 	}
 
-	result := GetPathSeparator()
+	result := getPathSeparator()
 	if result != expected {
 		t.Errorf("GetPathSeparator() = %v, want %v", result, expected)
 	}
@@ -140,12 +140,16 @@ func TestBuildPathEnv(t *testing.T) {
 	additionalPath := "/additional/path"
 	result := BuildPathEnv(additionalPath)
 
-	separator := GetPathSeparator()
-	expected := additionalPath + separator + "PATH"
+	separator := getPathSeparator()
 
-	// Just check that the result contains our expected pattern
-	// The actual PATH will be much longer on Windows due to system PATH
-	if !strings.Contains(result, expected) {
-		t.Errorf("BuildPathEnv() = %v, want to contain %v", result, expected)
+	// Check that the result starts with our additional path followed by the separator
+	if !strings.HasPrefix(result, additionalPath+separator) {
+		t.Errorf("BuildPathEnv() = %v, want to start with %v%s", result, additionalPath, separator)
+	}
+
+	// Check that the result contains something after the separator (the actual PATH)
+	parts := strings.SplitN(result, separator, 2)
+	if len(parts) != 2 || parts[1] == "" {
+		t.Errorf("BuildPathEnv() = %v, want to contain PATH after separator", result)
 	}
 }
