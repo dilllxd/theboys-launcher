@@ -304,19 +304,35 @@ func verifyRPATH(pluginPath, expectedRPATH string) error {
 	return nil
 }
 
-// checkPluginDependencies checks if plugins can find their dependencies using ldd
+// isSharedLibrary checks if a file is a valid shared library using the file command
+func isSharedLibrary(filePath string) bool {
+	// Check if file command is available
+	if _, err := exec.LookPath("file"); err != nil {
+		logf("%s", warnLine("file command not found, skipping library type checking"))
+		return true // Assume it's valid if we can't check
+	}
+
+	cmd := exec.Command("file", filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		logf("Failed to check file type for %s: %v", filepath.Base(filePath), err)
+		return false
+	}
+
+	outputStr := strings.ToLower(string(output))
+	// Check for shared library indicators
+	return strings.Contains(outputStr, "shared object") ||
+		strings.Contains(outputStr, "pie executable") ||
+		strings.Contains(outputStr, "dynamically linked")
+}
+
+// checkPluginDependencies checks if plugins are valid shared libraries and can find their dependencies
 func checkPluginDependencies(prismDir string) error {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
 
 	logf("%s", stepLine("Checking plugin dependencies"))
-
-	// Check if ldd is available
-	if _, err := exec.LookPath("ldd"); err != nil {
-		logf("%s", warnLine("ldd not found, skipping dependency checking"))
-		return nil // Not an error, just skip the check
-	}
 
 	// Use the actual base directory where Prism executable is located
 	actualPrismDir := getPrismBaseDir(prismDir)
@@ -334,34 +350,57 @@ func checkPluginDependencies(prismDir string) error {
 		"iconengines/libqsvgicon.so",
 	}
 
+	var invalidPlugins []string
 	var missingDeps []string
 	var checkedPlugins int
+	var validPlugins int
+
+	// Check if ldd is available for dependency checking
+	lddAvailable := true
+	if _, err := exec.LookPath("ldd"); err != nil {
+		logf("%s", warnLine("ldd not found, will only validate plugin file types"))
+		lddAvailable = false
+	}
 
 	for _, plugin := range criticalPlugins {
 		pluginPath := filepath.Join(pluginsDir, plugin)
 		if exists(pluginPath) {
 			checkedPlugins++
-			logf("Checking dependencies for %s", plugin)
+			logf("Checking plugin: %s", plugin)
 
-			// Run ldd to check dependencies
-			cmd := exec.Command("ldd", pluginPath)
-			output, err := cmd.Output()
-			if err != nil {
-				logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", plugin, err)))
+			// First validate that it's a proper shared library
+			if !isSharedLibrary(pluginPath) {
+				errMsg := fmt.Sprintf("%s: not a valid shared library (may be corrupted or wrong file type)", plugin)
+				invalidPlugins = append(invalidPlugins, errMsg)
+				logf("%s", warnLine(errMsg))
 				continue
 			}
 
-			// Parse ldd output for missing dependencies
-			lines := strings.Split(string(output), "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if strings.Contains(line, "not found") {
-					// Extract the library name
-					parts := strings.Fields(line)
-					if len(parts) > 0 {
-						missingLib := parts[0]
-						missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", plugin, missingLib))
-						logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", plugin, missingLib)))
+			validPlugins++
+			logf("Plugin %s: valid shared library", plugin)
+
+			// Only check dependencies if ldd is available
+			if lddAvailable {
+				logf("Checking dependencies for %s", plugin)
+				cmd := exec.Command("ldd", pluginPath)
+				output, err := cmd.Output()
+				if err != nil {
+					logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", plugin, err)))
+					continue
+				}
+
+				// Parse ldd output for missing dependencies
+				lines := strings.Split(string(output), "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if strings.Contains(line, "not found") {
+						// Extract the library name
+						parts := strings.Fields(line)
+						if len(parts) > 0 {
+							missingLib := parts[0]
+							missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", plugin, missingLib))
+							logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", plugin, missingLib)))
+						}
 					}
 				}
 			}
@@ -390,27 +429,41 @@ func checkPluginDependencies(prismDir string) error {
 
 		checkedPlugins++
 		pluginName := filepath.Base(path)
-		logf("Checking dependencies for additional plugin: %s", pluginName)
+		logf("Checking additional plugin: %s", pluginName)
 
-		// Run ldd to check dependencies
-		cmd := exec.Command("ldd", path)
-		output, err := cmd.Output()
-		if err != nil {
-			logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", pluginName, err)))
+		// First validate that it's a proper shared library
+		if !isSharedLibrary(path) {
+			errMsg := fmt.Sprintf("%s: not a valid shared library (may be corrupted or wrong file type)", pluginName)
+			invalidPlugins = append(invalidPlugins, errMsg)
+			logf("%s", warnLine(errMsg))
 			return nil
 		}
 
-		// Parse ldd output for missing dependencies
-		lines := strings.Split(string(output), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if strings.Contains(line, "not found") {
-				// Extract the library name
-				parts := strings.Fields(line)
-				if len(parts) > 0 {
-					missingLib := parts[0]
-					missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", pluginName, missingLib))
-					logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", pluginName, missingLib)))
+		validPlugins++
+		logf("Plugin %s: valid shared library", pluginName)
+
+		// Only check dependencies if ldd is available
+		if lddAvailable {
+			logf("Checking dependencies for %s", pluginName)
+			cmd := exec.Command("ldd", path)
+			output, err := cmd.Output()
+			if err != nil {
+				logf("%s", warnLine(fmt.Sprintf("Failed to check dependencies for %s: %v", pluginName, err)))
+				return nil
+			}
+
+			// Parse ldd output for missing dependencies
+			lines := strings.Split(string(output), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.Contains(line, "not found") {
+					// Extract the library name
+					parts := strings.Fields(line)
+					if len(parts) > 0 {
+						missingLib := parts[0]
+						missingDeps = append(missingDeps, fmt.Sprintf("%s: %s", pluginName, missingLib))
+						logf("%s", warnLine(fmt.Sprintf("Missing dependency for %s: %s", pluginName, missingLib)))
+					}
 				}
 			}
 		}
@@ -419,21 +472,29 @@ func checkPluginDependencies(prismDir string) error {
 	})
 
 	if err != nil {
-		logf("%s", warnLine(fmt.Sprintf("Error during recursive dependency checking: %v", err)))
+		logf("%s", warnLine(fmt.Sprintf("Error during recursive plugin checking: %v", err)))
 	}
 
 	// Report results
+	if len(invalidPlugins) > 0 {
+		logf("%s", warnLine(fmt.Sprintf("Found %d invalid/corrupted plugins:", len(invalidPlugins))))
+		for _, plugin := range invalidPlugins {
+			logf("  - %s", plugin)
+		}
+		logf("%s", warnLine("Invalid plugins may need to be reinstalled or extracted from the Prism Launcher archive"))
+	}
+
 	if len(missingDeps) > 0 {
-		logf("%s", warnLine(fmt.Sprintf("Found %d missing dependencies across %d plugins", len(missingDeps), checkedPlugins)))
+		logf("%s", warnLine(fmt.Sprintf("Found %d missing dependencies across %d plugins", len(missingDeps), validPlugins)))
 		logf("Missing dependencies:")
 		for _, dep := range missingDeps {
 			logf("  - %s", dep)
 		}
 		return fmt.Errorf("plugin dependencies missing: %s", strings.Join(missingDeps, "; "))
-	} else if checkedPlugins > 0 {
-		logf("%s", successLine(fmt.Sprintf("All dependencies resolved for %d plugins", checkedPlugins)))
+	} else if validPlugins > 0 {
+		logf("%s", successLine(fmt.Sprintf("All %d plugins validated with resolved dependencies", validPlugins)))
 	} else {
-		logf("%s", warnLine("No plugins found to check dependencies"))
+		logf("%s", warnLine("No valid plugins found"))
 	}
 
 	return nil
