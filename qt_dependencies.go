@@ -104,6 +104,7 @@ func getQtPackages(packageManager string) []string {
 			"libqt6network6",
 			"libqt6svg6",
 			"libxcb-cursor0",
+			"patchelf", // Add patchelf for RPATH fixing
 		}
 	case "dnf", "yum":
 		return []string{
@@ -113,12 +114,14 @@ func getQtPackages(packageManager string) []string {
 			"qt6-qtnetwork",
 			"qt6-qtsvg",
 			"libxcb-cursor",
+			"patchelf", // Add patchelf for RPATH fixing
 		}
 	case "pacman":
 		return []string{
 			"qt6-base",
 			"qt6-svg",
 			"libxcb",
+			"patchelf", // Add patchelf for RPATH fixing
 		}
 	case "zypper":
 		return []string{
@@ -128,6 +131,7 @@ func getQtPackages(packageManager string) []string {
 			"libQt6Network6",
 			"libQt6Svg6",
 			"libxcb-cursor0",
+			"patchelf", // Add patchelf for RPATH fixing
 		}
 	default:
 		return []string{}
