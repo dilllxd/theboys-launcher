@@ -51,10 +51,10 @@ func GetPrismExeName() string {
 	return "PrismLauncher"
 }
 
-// getPrismExecutablePath returns the full path to the Prism executable
+// GetPrismExecutablePath returns the full path to the Prism executable
 func GetPrismExecutablePath(prismDir string) string {
 	// First check for direct executable (flat structure)
-	directPath := getDirectPrismExecutablePath(prismDir)
+	directPath := GetDirectPrismExecutablePath(prismDir)
 	if exists(directPath) {
 		logf("DEBUG: Found Prism executable at direct path: %s", directPath)
 		return directPath
@@ -66,7 +66,7 @@ func GetPrismExecutablePath(prismDir string) string {
 		if err == nil {
 			for _, file := range files {
 				if file.IsDir() && strings.Contains(file.Name(), "PrismLauncher") {
-					nestedPath := getDirectPrismExecutablePath(filepath.Join(prismDir, file.Name()))
+					nestedPath := GetDirectPrismExecutablePath(filepath.Join(prismDir, file.Name()))
 					if exists(nestedPath) {
 						logf("DEBUG: Found Prism executable in versioned subdirectory: %s", nestedPath)
 						return nestedPath
@@ -81,8 +81,8 @@ func GetPrismExecutablePath(prismDir string) string {
 	return directPath
 }
 
-// getDirectPrismExecutablePath returns the path to the Prism executable assuming a flat structure
-func getDirectPrismExecutablePath(baseDir string) string {
+// GetDirectPrismExecutablePath returns the path to the Prism executable assuming a flat structure
+func GetDirectPrismExecutablePath(baseDir string) string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(baseDir, "PrismLauncher.exe")
 	} else if runtime.GOOS == "darwin" {
@@ -110,7 +110,7 @@ func getPrismBaseDir(prismDir string) string {
 }
 
 // getPathSeparator returns the platform-specific PATH separator
-func GetPathSeparator() string {
+func getPathSeparator() string {
 	if runtime.GOOS == "windows" {
 		return ";"
 	}
@@ -119,12 +119,12 @@ func GetPathSeparator() string {
 
 // buildPathEnv creates a platform-specific PATH environment variable
 func BuildPathEnv(additionalPath string) string {
-	separator := GetPathSeparator()
+	separator := getPathSeparator()
 	return additionalPath + separator + os.Getenv("PATH")
 }
 
-// getPrismConfigDir returns the Prism configuration directory
-func getPrismConfigDir() string {
+// GetPrismConfigDir returns the Prism configuration directory
+func GetPrismConfigDir() string {
 	if runtime.GOOS == "windows" {
 		// Use our launcher directory for Windows portable
 		return getLauncherHome()
@@ -141,8 +141,8 @@ func getPrismConfigDir() string {
 	return filepath.Join(configHome, "PrismLauncher")
 }
 
-// getPrismDataDir returns the Prism data directory
-func getPrismDataDir() string {
+// GetPrismDataDir returns the Prism data directory
+func GetPrismDataDir() string {
 	if runtime.GOOS == "windows" {
 		// Use our launcher directory for Windows portable
 		return getLauncherHome()

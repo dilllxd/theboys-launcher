@@ -90,7 +90,7 @@ func ensurePrism(dir string) (bool, error) {
 		logf("%s", successLine("Prism Launcher installed in Applications folder"))
 
 		// Create local config directory for our customizations
-		configDir := getPrismConfigDir()
+		configDir := GetPrismConfigDir()
 		os.MkdirAll(configDir, 0755)
 
 		// macOS configuration (disable auto Java management)
@@ -143,7 +143,7 @@ func updatePrismJavaPath(prismDir, javaPath string) error {
 	var cfgPath string
 	if runtime.GOOS == "darwin" {
 		// macOS: use our custom config directory
-		cfgPath = filepath.Join(getPrismConfigDir(), "prismlauncher.cfg")
+		cfgPath = filepath.Join(GetPrismConfigDir(), "prismlauncher.cfg")
 	} else {
 		// Windows/Linux: use portable config directory
 		cfgPath = filepath.Join(prismDir, "prismlauncher.cfg")

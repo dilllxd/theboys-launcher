@@ -356,3 +356,84 @@ func ensureQtDependencies() error {
 	logf("%s", successLine("Qt dependencies successfully installed and verified"))
 	return nil
 }
+
+// ensurePatchelfInstalled ensures that patchelf is installed and available
+// This function provides explicit verification and error handling for patchelf
+func ensurePatchelfInstalled() error {
+	if runtime.GOOS != "linux" {
+		return nil // Only needed on Linux
+	}
+
+	logf("%s", stepLine("Ensuring patchelf is installed"))
+
+	// First check if patchelf is already available
+	if _, err := exec.LookPath("patchelf"); err == nil {
+		// Verify it actually works by running it
+		cmd := exec.Command("patchelf", "--version")
+		if output, err := cmd.Output(); err == nil {
+			version := strings.TrimSpace(string(output))
+			logf("%s", successLine(fmt.Sprintf("patchelf is already installed: %s", version)))
+			return nil
+		} else {
+			logf("%s", warnLine("patchelf found but not working, attempting reinstallation"))
+		}
+	}
+
+	// Get the package manager
+	pm := getPackageManager()
+	if pm == nil {
+		return fmt.Errorf("no supported package manager found for patchelf installation")
+	}
+
+	logf("%s", infoLine(fmt.Sprintf("Installing patchelf using %s", pm.Name)))
+
+	// Update package lists first
+	if pm.UpdateCmd != "" {
+		updateCmd := pm.UpdateCmd
+		if pm.SudoRequired {
+			updateCmd = "sudo " + updateCmd
+		}
+
+		logf("%s", infoLine("Updating package lists..."))
+		cmd := exec.Command("sh", "-c", updateCmd)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to update package lists: %v", err)))
+			// Continue anyway, as the update might not be critical
+		}
+	}
+
+	// Install patchelf
+	installCmd := pm.InstallCmd + " patchelf"
+	if pm.SudoRequired {
+		installCmd = "sudo " + installCmd
+	}
+
+	logf("%s", infoLine("Installing patchelf..."))
+	cmd := exec.Command("sh", "-c", installCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to install patchelf: %w", err)
+	}
+
+	// Verify installation was successful
+	logf("%s", stepLine("Verifying patchelf installation"))
+	if _, err := exec.LookPath("patchelf"); err != nil {
+		return fmt.Errorf("patchelf installation verification failed: patchelf not found in PATH")
+	}
+
+	// Test that patchelf actually works
+	cmd = exec.Command("patchelf", "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("patchelf installation verification failed: %w", err)
+	}
+
+	version := strings.TrimSpace(string(output))
+	logf("%s", successLine(fmt.Sprintf("patchelf successfully installed: %s", version)))
+	return nil
+}
