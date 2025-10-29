@@ -71,11 +71,12 @@
       <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
           <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]TheBoysLauncher.exe&quot; &quot;%1&quot;" />
         
+        </RegistryKey>
+        
         <!-- Registry entry for installation path -->
         <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
           <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
           <RegistryValue Type="string" Name="Version" Value="$(var.ProductVersion)" />
-        </RegistryKey>
         </RegistryKey>
       </Component>
 
