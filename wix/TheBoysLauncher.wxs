@@ -22,20 +22,26 @@
   <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoysLauncher is already installed." />
 
     <!-- Features -->
-  <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
+  <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1" Display="expand">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="IconFile" />
       <ComponentRef Id="LicenseFile" />
-      <!-- Shortcut components are optional and controlled by features -->
-  <Feature Id="ShortcutsFeature" Title="Create Shortcuts" Level="1" Absent="allow">
+      
+      <!-- Start Menu Shortcut Feature (optional) -->
+      <Feature Id="StartMenuShortcutFeature" Title="Create Start Menu Shortcut" Description="Add a shortcut to the Start Menu" Level="1" Absent="allow">
         <ComponentRef Id="ApplicationShortcut" />
+      </Feature>
+      
+      <!-- Desktop Shortcut Feature (optional) -->
+      <Feature Id="DesktopShortcutFeature" Title="Create Desktop Shortcut" Description="Add a shortcut to the Desktop" Level="1" Absent="allow">
         <ComponentRef Id="DesktopShortcut" />
       </Feature>
     </Feature>
 
     <!-- Directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="LocalAppDataFolder">
+      <!-- Allow custom installation directory -->
+      <Directory Id="PersonalFolder">
         <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
       </Directory>
 
@@ -69,7 +75,7 @@
       <!-- Registry entry for installed version -->
       <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
         <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
-        <RegistryValue Type="string" Name="Version" Value="3.2.0" />
+        <RegistryValue Type="string" Name="Version" Value="$(var.ProductVersion)" />
       </RegistryKey>
     </Component>
 
@@ -95,7 +101,7 @@
       <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
       <RegistryValue Root="HKCU"
                      Key="Software\TheBoysLauncher"
-                     Name="installed"
+                     Name="startmenu_shortcut"
                      Type="integer"
                      Value="1"
                      KeyPath="yes" />
@@ -125,8 +131,18 @@
   <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
   <Property Id="ARPPRODUCTICON" Value="IconICO" />
 
+  <!-- Provide optional run checkbox on exit -->
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch TheBoysLauncher" />
+  <Property Id="WixShellExecTarget" Value="[#TheBoysLauncherEXE]" />
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+
   <!-- UI Reference: use Mondo UI to include feature selection (checkboxes) and install directory -->
   <UIRef Id="WixUI_Mondo" />
+
+  <UI>
+    <!-- Launch application on exit when checkbox selected -->
+    <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
+  </UI>
 
   <!-- License agreement -->
   <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
@@ -138,6 +154,11 @@
                   Execute="deferred"
                   Return="ignore"
                   HideTarget="yes" />
+    <CustomAction Id="LaunchApplication"
+                  FileKey="TheBoysLauncherEXE"
+                  ExeCommand=""
+                  Return="asyncNoWait"
+                  Impersonate="yes" />
 
     <InstallExecuteSequence>
       <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
