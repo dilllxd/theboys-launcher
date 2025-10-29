@@ -168,6 +168,9 @@ jobs:
         if: ${{ matrix.platform != 'windows' }}
         run: chmod +x ${{ matrix.binary_name }}
 
+      - name: Create zip file for macOS
+        if: ${{ matrix.platform == 'darwin' }}
+        run: zip "${{ matrix.binary_name }}.zip" "${{ matrix.binary_name }}"
 
       - name: Ensure WiX is installed
         if: ${{ matrix.platform == 'windows' }}
@@ -221,10 +224,19 @@ jobs:
           Move-Item $msi.FullName $target -Force
 
       - name: Upload primary binary
+        if: ${{ matrix.platform != 'darwin' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.binary_name }}
+          retention-days: 14
+
+      - name: Upload macOS zip file
+        if: ${{ matrix.platform == 'darwin' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_name }}.zip
           retention-days: 14
 
 
@@ -276,8 +288,8 @@ jobs:
           - **TheBoysLauncher-Setup-$VERSION.msi** - Professional MSI installer
 
           #### macOS:
-          - **TheBoysLauncher-mac-amd64** - Intel (x86_64) binary
-          - **TheBoysLauncher-mac-arm64** - Apple Silicon (ARM64) binary
+          - **TheBoysLauncher-mac-amd64.zip** - Intel (x86_64) binary
+          - **TheBoysLauncher-mac-arm64.zip** - Apple Silicon (ARM64) binary
 
           #### Linux:
           - **TheBoysLauncher-linux** - Universal binary
@@ -289,11 +301,11 @@ jobs:
           2. Or download standalone executable if you prefer portable usage
 
           **macOS:**
-          1. Download the appropriate binary for your architecture:
-             - Intel Mac: TheBoysLauncher-mac-amd64
-             - Apple Silicon Mac: TheBoysLauncher-mac-arm64
-          2. Make it executable: \`chmod +x TheBoysLauncher-mac-*\`
-          3. Run it: \`./TheBoysLauncher-mac-*\`
+          1. Download the appropriate zip file for your architecture:
+             - Intel Mac: TheBoysLauncher-mac-amd64.zip
+             - Apple Silicon Mac: TheBoysLauncher-mac-arm64.zip
+          2. Extract the zip file
+          3. Run the extracted binary
 
           **Linux:**
           1. Download binary
@@ -336,6 +348,9 @@ jobs:
 
           echo "Assets to upload:"
           find release-artifacts -type f -print
+
+          # Ensure executable permissions for macOS binaries
+          find release-artifacts -name "*mac*" -type f -exec chmod +x {} \;
 
           while IFS= read -r file; do
             base=$(basename "$file")
