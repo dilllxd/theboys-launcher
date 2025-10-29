@@ -110,12 +110,12 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: amd64
-            binary_name: TheBoysLauncher-mac-amd64.bin
+            binary_name: TheBoysLauncher-mac-amd64
             artifact_name: TheBoysLauncher-macOS-amd64
           - os: macos-latest
             platform: darwin
             arch: arm64
-            binary_name: TheBoysLauncher-mac-arm64.bin
+            binary_name: TheBoysLauncher-mac-arm64
             artifact_name: TheBoysLauncher-macOS-arm64
     runs-on: ${{ matrix.os }}
     steps:
@@ -277,8 +277,8 @@ jobs:
           - **TheBoysLauncher-Setup-$VERSION.msi** - Professional MSI installer
 
           #### macOS:
-          - **TheBoysLauncher-mac-amd64.bin** - Intel (x86_64) binary
-          - **TheBoysLauncher-mac-arm64.bin** - Apple Silicon (ARM64) binary
+          - **TheBoysLauncher-mac-amd64** - Intel (x86_64) binary
+          - **TheBoysLauncher-mac-arm64** - Apple Silicon (ARM64) binary
 
           #### Linux:
           - **TheBoysLauncher-linux** - Universal binary
@@ -291,10 +291,10 @@ jobs:
 
           **macOS:**
           1. Download the appropriate binary for your architecture:
-             - Intel Mac: TheBoysLauncher-mac-amd64.bin
-             - Apple Silicon Mac: TheBoysLauncher-mac-arm64.bin
-          2. Make it executable: \`chmod +x TheBoysLauncher-mac-*.bin\`
-          3. Run it: \`./TheBoysLauncher-mac-*.bin\`
+             - Intel Mac: TheBoysLauncher-mac-amd64
+             - Apple Silicon Mac: TheBoysLauncher-mac-arm64
+          2. Make it executable: \`chmod +x TheBoysLauncher-mac-*\`
+          3. Run it: \`./TheBoysLauncher-mac-*\`
 
           **Linux:**
           1. Download binary
