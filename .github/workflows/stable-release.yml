@@ -109,7 +109,7 @@ jobs:
             artifact_name: TheBoysLauncher-Windows
           - os: macos-latest
             platform: darwin
-            binary_name: TheBoysLauncher-mac-universal
+            binary_name: TheBoysLauncher-mac-universal.bin
             artifact_name: TheBoysLauncher-macOS
     runs-on: ${{ matrix.os }}
     steps:
@@ -276,7 +276,7 @@ jobs:
           - **TheBoysLauncher-Setup-$VERSION.msi** - Professional MSI installer
 
           #### macOS:
-          - **TheBoysLauncher-mac-universal** - Universal binary (Intel + Apple Silicon)
+          - **TheBoysLauncher-mac-universal.bin** - Universal binary (Intel + Apple Silicon)
 
           #### Linux:
           - **TheBoysLauncher-linux** - Universal binary
@@ -289,8 +289,8 @@ jobs:
 
           **macOS:**
           1. Download universal binary
-          2. Make it executable: \`chmod +x TheBoysLauncher-mac-universal\`
-          3. Run it: \`./TheBoysLauncher-mac-universal\`
+          2. Make it executable: \`chmod +x TheBoysLauncher-mac-universal.bin\`
+          3. Run it: \`./TheBoysLauncher-mac-universal.bin\`
 
           **Linux:**
           1. Download binary
