@@ -338,6 +338,9 @@ jobs:
           echo "Assets to upload:"
           find release-artifacts -type f -print
 
+          # Ensure executable permissions for macOS binaries
+          find release-artifacts -name "*mac*" -type f -exec chmod +x {} \;
+
           while IFS= read -r file; do
             base=$(basename "$file")
             echo "Uploading $base"
