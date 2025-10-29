@@ -136,8 +136,8 @@
   <Property Id="WixShellExecTarget" Value="[#TheBoysLauncherEXE]" />
   <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
-  <!-- UI Reference: use Mondo UI to include feature selection (checkboxes) and install directory -->
-  <UIRef Id="WixUI_Mondo" />
+  <!-- UI Reference: use InstallDir UI for simpler flow with directory selection and optional features -->
+  <UIRef Id="WixUI_InstallDir" />
 
   <UI>
     <!-- Launch application on exit when checkbox selected -->
