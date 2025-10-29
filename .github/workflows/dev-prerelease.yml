@@ -97,7 +97,6 @@ jobs:
     if: ${{ needs.bump_version.result == 'success' }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             platform: linux
@@ -107,7 +106,7 @@ jobs:
             platform: windows
             binary_name: TheBoysLauncher.exe
             artifact_name: TheBoysLauncher-Windows
-          - os: macos-latest
+          - os: macos-13
             platform: darwin
             arch: amd64
             binary_name: TheBoysLauncher-mac-amd64
