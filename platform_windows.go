@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 // Windows-specific memory detection is now in memory_windows.go
@@ -26,8 +27,77 @@ func totalRAMMB() int {
 	return validateMemoryResult(totalMB)
 }
 
+// readInstallationPathFromRegistry reads the installation path from the registry
+// Returns the installation path if found and valid, otherwise returns empty string
+func readInstallationPathFromRegistry() string {
+	// Open the registry key for current user
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Software\TheBoysLauncher`, registry.READ)
+	if err != nil {
+		// Registry key doesn't exist or access denied
+		return ""
+	}
+	defer key.Close()
+
+	// Read the InstallPath value
+	installPath, _, err := key.GetStringValue("InstallPath")
+	if err != nil {
+		// InstallPath value doesn't exist
+		return ""
+	}
+
+	// Validate that the path exists and is accessible
+	if installPath == "" {
+		return ""
+	}
+
+	// Check if the path exists
+	if _, err := os.Stat(installPath); err != nil {
+		// Path doesn't exist or is not accessible
+		return ""
+	}
+
+	return installPath
+}
+
+// isInstalledMode determines if the launcher is running in installed mode
+// Returns true if running from a custom installation location (not LocalAppData)
+func isInstalledMode(installPath string) bool {
+	if installPath == "" {
+		return false
+	}
+
+	// Get the default LocalAppData path
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		return false
+	}
+
+	defaultPath := filepath.Join(localAppData, "TheBoysLauncher")
+
+	// Normalize paths for comparison
+	installPath = filepath.Clean(installPath)
+	defaultPath = filepath.Clean(defaultPath)
+
+	// If the installation path is different from the default LocalAppData path,
+	// we're in installed mode
+	return installPath != defaultPath
+}
+
 // Windows-specific directory paths
 func getLauncherHome() string {
+	// First, check the registry for custom installation path
+	installPath := readInstallationPathFromRegistry()
+
+	if installPath != "" {
+		// If we have a custom installation path from registry
+		if isInstalledMode(installPath) {
+			// In installed mode, store data alongside the executable (portable-style)
+			return installPath
+		}
+		// If it's the default path, continue with normal logic
+	}
+
+	// Default behavior for existing installations or when registry is not available
 	// Prefer LocalAppData\TheBoysLauncher on Windows for per-user installs
 	// Falls back to %USERPROFILE%\.theboyslauncher for compatibility
 	appData := os.Getenv("LOCALAPPDATA")
