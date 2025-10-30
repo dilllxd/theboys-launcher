@@ -16,8 +16,8 @@ if (-not (Get-Command light.exe -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-$wxsPath = Join-Path $ProjectDir "wix\TheBoysLauncher.wxs"
-$targetExe = Join-Path $ProjectDir "build\windows\TheBoysLauncher.exe"
+$wxsPath = Join-Path $ProjectDir "wix\Product.wxs"
+$targetExe = Join-Path $ProjectDir "TheBoysLauncher.exe"
 
 if (-not (Test-Path $wxsPath)) {
     Write-Error "Cannot find $wxsPath"
@@ -32,9 +32,7 @@ New-Item -ItemType Directory -Path (Join-Path $ProjectDir 'wixobj') -Force | Out
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
 $wxsPath = Join-Path $ProjectDir "wix\Product.wxs"
-$customUIPath = Join-Path $ProjectDir "wix\CustomUI.wxs"
 $wixObj = Join-Path $ProjectDir 'wixobj\Product.wixobj'
-$customUIObj = Join-Path $ProjectDir 'wixobj\CustomUI.wixobj'
 $msiOut = Join-Path $OutputDir 'TheBoysLauncher.msi'
 
 Write-Host "Running candle.exe for main wxs..." -ForegroundColor Yellow
@@ -48,16 +46,8 @@ candle.exe `
 
 if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed for main wxs"; exit $LASTEXITCODE }
 
-Write-Host "Running candle.exe for custom UI..." -ForegroundColor Yellow
-candle.exe `
-    -ext WixUIExtension `
-    -out $customUIObj `
-    $customUIPath
-
-if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed for custom UI"; exit $LASTEXITCODE }
-
 Write-Host "Running light.exe..." -ForegroundColor Yellow
-light.exe $wixObj $customUIObj -ext WixUIExtension -cultures:"en-us" -out $msiOut
+light.exe $wixObj -ext WixUIExtension -cultures:"en-us" -out $msiOut
 
 if ($LASTEXITCODE -ne 0) { Write-Error "light.exe failed"; exit $LASTEXITCODE }
 
