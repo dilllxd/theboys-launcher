@@ -84,6 +84,224 @@ Type: filesandordirs; Name: "{app}\cache"
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+// Windows API constants and functions for process management
+const
+  WM_CLOSE = $0010;
+  WM_QUIT = $0012;
+  PROCESS_TERMINATE = $0001;
+  SMTO_BLOCK = $0001;
+  SMTO_ABORTIFHUNG = $0002;
+  TIMEOUT_MS = 5000; // 5 seconds timeout for graceful shutdown
+  
+// Use Integer instead of Windows-specific types for Inno Setup compatibility
+function FindWindowByClassName(WindowClassName: string): Integer;
+external 'FindWindowA@user32.dll stdcall';
+
+function SendMessageTimeout(hWnd: Integer; Msg: Integer; wParam: Integer; lParam: Integer; fuFlags: Integer; uTimeout: Integer; out lpdwResult: Integer): Integer;
+external 'SendMessageTimeoutA@user32.dll stdcall';
+
+function PostMessage(hWnd: Integer; Msg: Integer; wParam: Integer; lParam: Integer): Boolean;
+external 'PostMessageA@user32.dll stdcall';
+
+function IsWindow(hWnd: Integer): Boolean;
+external 'IsWindow@user32.dll stdcall';
+
+function GetWindowThreadProcessId(hWnd: Integer; out lpdwProcessId: Cardinal): Cardinal;
+external 'GetWindowThreadProcessId@user32.dll stdcall';
+
+function OpenProcess(dwDesiredAccess: Cardinal; bInheritHandle: Boolean; dwProcessId: Cardinal): Integer;
+external 'OpenProcess@kernel32.dll stdcall';
+
+function TerminateProcess(hProcess: Integer; uExitCode: Cardinal): Boolean;
+external 'TerminateProcess@kernel32.dll stdcall';
+
+function CloseHandle(hObject: Integer): Boolean;
+external 'CloseHandle@kernel32.dll stdcall';
+
+// Function to check if TheBoysLauncher is currently running
+function IsAppRunning: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Use tasklist to check if TheBoysLauncher.exe is running
+  Result := Exec(ExpandConstant('{cmd}'), '/C tasklist /FI "IMAGENAME eq TheBoysLauncher.exe" 2>NUL | find /I "TheBoysLauncher.exe" >NUL', '',
+                 SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := (ResultCode = 0);
+end;
+
+// Function to find and close TheBoysLauncher windows gracefully
+function CloseAppGracefully: Boolean;
+var
+  WindowHandle: Integer;
+  ResultCode: Integer;
+begin
+  Result := False;
+  
+  // Try to find the main window by class name or title
+  WindowHandle := FindWindowByClassName('TTheBoysLauncher');
+  if WindowHandle = 0 then
+    WindowHandle := FindWindowByClassName('TheBoysLauncher');
+  
+  if WindowHandle <> 0 then
+  begin
+    // Send WM_CLOSE message to request graceful shutdown
+    if SendMessageTimeout(WindowHandle, WM_CLOSE, 0, 0, SMTO_BLOCK or SMTO_ABORTIFHUNG, TIMEOUT_MS, ResultCode) <> 0 then
+    begin
+      // Wait a bit for the application to close
+      Sleep(2000);
+      
+      // Check if window still exists
+      if not IsWindow(WindowHandle) then
+      begin
+        Result := True;
+        Exit;
+      end;
+    end;
+    
+    // If WM_CLOSE didn't work, try WM_QUIT
+    if PostMessage(WindowHandle, WM_QUIT, 0, 0) then
+    begin
+      Sleep(2000);
+      if not IsWindow(WindowHandle) then
+      begin
+        Result := True;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+// Function to forcefully terminate TheBoysLauncher processes
+function TerminateAppForcefully: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Use taskkill to forcefully terminate all TheBoysLauncher.exe processes
+  Result := Exec(ExpandConstant('{cmd}'), '/C taskkill /F /IM "TheBoysLauncher.exe" /T', '',
+                 SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  
+  // Wait a moment for processes to terminate
+  Sleep(1000);
+  
+  // Check if we were successful
+  Result := (ResultCode = 0) or (ResultCode = 128); // 128 means no processes found
+end;
+
+// Function to close TheBoysLauncher with multiple methods and user notification
+function EnsureAppClosed: Boolean;
+var
+  AppWasRunning: Boolean;
+  RetryCount: Integer;
+  UserResponse: Integer;
+begin
+  Result := True;
+  AppWasRunning := False;
+  RetryCount := 0;
+  
+  // Check if the application is running
+  if IsAppRunning then
+  begin
+    AppWasRunning := True;
+    
+    // Notify user that we need to close the application
+    UserResponse := MsgBox('TheBoysLauncher is currently running and needs to be closed for uninstallation to continue.' + #13#13 +
+                          'Click "Yes" to close the application automatically.' + #13 +
+                          'Click "No" to cancel the uninstallation.',
+                          mbConfirmation, MB_YESNO);
+    
+    if UserResponse = IDNO then
+    begin
+      Result := False;
+      Exit;
+    end;
+    
+    // Try to close the application gracefully first
+    if CloseAppGracefully then
+    begin
+      // Check if it actually closed
+      if not IsAppRunning then
+        Exit;
+    end;
+    
+    // If graceful closing failed, try force termination
+    if TerminateAppForcefully then
+    begin
+      // Check if it actually closed
+      if not IsAppRunning then
+        Exit;
+    end;
+    
+    // If still running, try multiple times with user notification
+    while (RetryCount < 3) and IsAppRunning do
+    begin
+      Inc(RetryCount);
+      if RetryCount < 3 then
+      begin
+        UserResponse := MsgBox('TheBoysLauncher is still running. Attempt ' + IntToStr(RetryCount) + ' of 3.' + #13#13 +
+                              'Click "Yes" to try again.' + #13 +
+                              'Click "No" to cancel the uninstallation.',
+                              mbConfirmation, MB_YESNO);
+        
+        if UserResponse = IDNO then
+        begin
+          Result := False;
+          Exit;
+        end;
+      end;
+      
+      // Try force termination again
+      TerminateAppForcefully;
+      Sleep(2000); // Wait longer between retries
+    end;
+    
+    // Final check
+    if IsAppRunning then
+    begin
+      MsgBox('Unable to close TheBoysLauncher after multiple attempts.' + #13#13 +
+             'Please close the application manually and try again.',
+             mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+// Enhanced uninstall function with retry logic for locked files
+function UninstallAppFolder: Boolean;
+var
+  ResultCode: Integer;
+  RetryCount: Integer;
+begin
+  Result := False;
+  RetryCount := 0;
+  
+  while (RetryCount < 3) and not Result do
+  begin
+    Inc(RetryCount);
+    
+    // Try to delete the application folder using cmd with force and quiet options
+    if Exec(ExpandConstant('{cmd}'), '/C rmdir /S /Q "' + ExpandConstant('{app}') + '"', '',
+            SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := True;
+    end
+    else
+    begin
+      // If the above fails, try with PowerShell as a fallback
+      if Exec(ExpandConstant('{powershell}'), '-Command "Remove-Item -Path \"' + ExpandConstant('{app}') + '\" -Recurse -Force -ErrorAction SilentlyContinue"', '',
+              SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      begin
+        Result := True;
+      end
+      else
+      begin
+        // Wait before retrying
+        if RetryCount < 3 then
+          Sleep(2000);
+      end;
+    end;
+  end;
+end;
+
 // Custom checkbox for launch after installation
 function ShouldLaunchAfterInstall: Boolean;
 begin
@@ -103,37 +321,19 @@ begin
     WizardForm.RunList.Checked[0] := False;
 end;
 
-// Custom uninstall function to ensure complete cleanup
-function UninstallAppFolder: Boolean;
-var
-  ResultCode: Integer;
-begin
-  // Try to delete the application folder using cmd with force and quiet options
-  // This handles files that might be in use and ensures complete deletion
-  if Exec(ExpandConstant('{cmd}'), '/C rmdir /S /Q "' + ExpandConstant('{app}') + '"', '',
-          SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Result := True;
-  end
-  else
-  begin
-    // If the above fails, try with PowerShell as a fallback
-    if Exec(ExpandConstant('{powershell}'), '-Command "Remove-Item -Path \"' + ExpandConstant('{app}') + '\" -Recurse -Force -ErrorAction SilentlyContinue"', '',
-            SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    begin
-      Result := True;
-    end
-    else
-    begin
-      Result := False;
-    end;
-  end;
-end;
-
 // Enhanced uninstall step to ensure complete cleanup
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
+  begin
+    // Before uninstallation starts, ensure the application is closed
+    if not EnsureAppClosed then
+    begin
+      // Abort the uninstallation if we can't close the app
+      Abort;
+    end;
+  end
+  else if CurUninstallStep = usPostUninstall then
   begin
     // After the standard uninstall, try to remove any remaining files/folders
     UninstallAppFolder();
