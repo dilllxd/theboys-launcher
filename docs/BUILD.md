@@ -15,6 +15,7 @@ This guide provides comprehensive instructions for building TheBoysLauncher on a
 - **PowerShell 5.1+** (included with Windows 10+)
 - **MinGW-w64** (optional, for certain CGO dependencies)
 - **Git for Windows** - [Download](https://git-scm.com/download/win)
+- **Inno Setup** - [Download](https://jrsoftware.org/isdl.php) (for creating Windows installer)
 
 #### macOS
 - **Xcode Command Line Tools**
@@ -195,6 +196,27 @@ brew install create-dmg
 # Create DMG
 ./scripts/create-dmg.sh universal v3.0.1
 ```
+
+### Windows Installer
+
+#### Create Inno Setup Installer
+```bash
+# Build the Windows installer using PowerShell
+./tools/build-windows-msi.ps1
+
+# Or use the build-installer script with a specific version
+./scripts/build-installer.ps1 v3.2.68
+```
+
+The installer will be created in the `installer/` directory with the name `TheBoysLauncher-Setup-{version}.exe`.
+
+#### Inno Setup Features
+- Custom installation directory selection
+- Optional desktop and start menu shortcuts
+- Launch application after installation (checkbox)
+- File association for .theboys files
+- Registry entries for launcher to read installation path
+- Proper uninstall with shortcut removal
 
 ### Icon Conversion
 

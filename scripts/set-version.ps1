@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true, Position=0)]
     [string]$NewVersion,
 
-    [switch]$UpdateInno,  # Keeping name for compatibility, but updates WiX
+    [switch]$UpdateInno,  # Update the Inno Setup .iss file
 
     [switch]$Help
 )
@@ -32,10 +32,10 @@ function Show-Usage {
     Write-Host ""
     Write-ColorOutput "Examples:" "Blue"
     Write-Host "  .\set-version.ps1 3.2.1              # Update version to 3.2.1"
-    Write-Host "  .\set-version.ps1 3.3.0 -UpdateInno # Update version and WiX file"
+    Write-Host "  .\set-version.ps1 3.3.0 -UpdateInno # Update version and Inno Setup file"
     Write-Host ""
     Write-ColorOutput "Options:" "Blue"
-    Write-Host "  -UpdateInno     Also update the WiX .wxs file"
+    Write-Host "  -UpdateInno     Also update the Inno Setup .iss file"
     Write-Host "  -Help, -h       Show this help message"
     exit 1
 }
@@ -100,22 +100,22 @@ $UpdatedContent = $VersionContent | ForEach-Object {
 $UpdatedContent | Set-Content $VersionFile -Encoding UTF8
 Write-ColorOutput "✅ Updated version.env" $Colors.Green
 
-# Update WiX file if requested
+# Update Inno Setup file if requested
 if ($UpdateInno) {
-    $WixFile = Join-Path $ProjectRoot "wix\TheBoysLauncher.wxs"
-    if (Test-Path $WixFile) {
-        $WixContent = Get-Content $WixFile
-        $UpdatedWixContent = $WixContent | ForEach-Object {
-            if ($_ -match 'Version="[^"]*"') {
-                $_ -replace 'Version="[^"]*"', "Version=`"$NewVersion`""
+    $InnoFile = Join-Path $ProjectRoot "TheBoysLauncher.iss"
+    if (Test-Path $InnoFile) {
+        $InnoContent = Get-Content $InnoFile
+        $UpdatedInnoContent = $InnoContent | ForEach-Object {
+            if ($_ -match '^#define MyAppVersion') {
+                "#define MyAppVersion `"$NewVersion`""
             } else {
                 $_
             }
         }
-        $UpdatedWixContent | Set-Content $WixFile -Encoding UTF8
-        Write-ColorOutput "✅ Updated wix\TheBoysLauncher.wxs" $Colors.Green
+        $UpdatedInnoContent | Set-Content $InnoFile -Encoding UTF8
+        Write-ColorOutput "✅ Updated TheBoysLauncher.iss" $Colors.Green
     } else {
-        Write-ColorOutput "⚠️  WiX file not found: $WixFile" $Colors.Yellow
+        Write-ColorOutput "⚠️  Inno Setup file not found: $InnoFile" $Colors.Yellow
     }
 }
 
