@@ -1,26 +1,28 @@
 Param(
-    [string]$Version = "v3.0.1",
+    [string]$Version = "v3.2.68",
     [string]$ProjectDir = (Get-Location).Path,
-    [string]$OutputDir = "$(Join-Path -Path $ProjectDir -ChildPath 'build')"
+    [string]$OutputDir = "$(Join-Path -Path $ProjectDir -ChildPath 'installer')"
 )
 
-Write-Host "Building WiX MSI for TheBoysLauncher..." -ForegroundColor Cyan
+Write-Host "Building Inno Setup installer for TheBoysLauncher..." -ForegroundColor Cyan
 
-# Simple checks
-if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
-    Write-Error "candle.exe not found in PATH. Install WiX Toolset and add its bin to PATH."
+# Check for Inno Setup compiler (ISCC.exe)
+if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue)) {
+    Write-Error "ISCC.exe not found in PATH. Install Inno Setup and add its directory to PATH."
+    Write-Host ""
+    Write-Host "To install Inno Setup:" -ForegroundColor Yellow
+    Write-Host "1. Download from: https://jrsoftware.org/isdl.php" -ForegroundColor Cyan
+    Write-Host "2. Run the installer with default settings" -ForegroundColor Cyan
+    Write-Host "3. Ensure ISCC.exe is in your PATH (usually added automatically)" -ForegroundColor Cyan
+    Write-Host ""
     exit 1
 }
-if (-not (Get-Command light.exe -ErrorAction SilentlyContinue)) {
-    Write-Error "light.exe not found in PATH. Install WiX Toolset and add its bin to PATH."
-    exit 1
-}
 
-$wxsPath = Join-Path $ProjectDir "wix\Product.wxs"
+$issPath = Join-Path $ProjectDir "TheBoysLauncher.iss"
 $targetExe = Join-Path $ProjectDir "TheBoysLauncher.exe"
 
-if (-not (Test-Path $wxsPath)) {
-    Write-Error "Cannot find $wxsPath"
+if (-not (Test-Path $issPath)) {
+    Write-Error "Cannot find $issPath"
     exit 1
 }
 if (-not (Test-Path $targetExe)) {
@@ -28,28 +30,44 @@ if (-not (Test-Path $targetExe)) {
     exit 1
 }
 
-New-Item -ItemType Directory -Path (Join-Path $ProjectDir 'wixobj') -Force | Out-Null
+# Create output directory if it doesn't exist
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
-$wxsPath = Join-Path $ProjectDir "wix\Product.wxs"
-$wixObj = Join-Path $ProjectDir 'wixobj\Product.wixobj'
-$msiOut = Join-Path $OutputDir 'TheBoysLauncher.msi'
+# Update version in the .iss file
+Write-Host "Updating version in Inno Setup script to: $Version" -ForegroundColor Yellow
+$issContent = Get-Content $issPath
+$updatedContent = $issContent | ForEach-Object {
+    if ($_ -match '^#define MyAppVersion') {
+        "#define MyAppVersion `"$Version`""
+    } else {
+        $_
+    }
+}
+$updatedContent | Set-Content $issPath -Encoding UTF8
 
-Write-Host "Running candle.exe for main wxs..." -ForegroundColor Yellow
-candle.exe `
-    -ext WixUIExtension `
-    -dTheBoysLauncher.TargetPath="$targetExe" `
-    -dProjectDir="$ProjectDir\" `
-    -dProductVersion="$Version" `
-    -out $wixObj `
-    $wxsPath
+# Build the installer
+Write-Host "Running ISCC.exe to compile installer..." -ForegroundColor Yellow
+$compilerArgs = @(
+    "/Q",  # Quiet mode (less output)
+    "/O`"$OutputDir`"",  # Output directory
+    "/F`"TheBoysLauncher-Setup-$Version`"",  # Output filename
+    "/DMyAppVersion=`"$Version`"",  # Define version
+    "`"$issPath`""
+)
 
-if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed for main wxs"; exit $LASTEXITCODE }
+$process = Start-Process -FilePath "ISCC.exe" -ArgumentList $compilerArgs -Wait -PassThru -NoNewWindow
 
-Write-Host "Running light.exe..." -ForegroundColor Yellow
-light.exe $wixObj -ext WixUIExtension -cultures:"en-us" -out $msiOut
+if ($process.ExitCode -ne 0) { 
+    Write-Error "ISCC.exe failed with exit code $($process.ExitCode)"
+    exit $process.ExitCode 
+}
 
-if ($LASTEXITCODE -ne 0) { Write-Error "light.exe failed"; exit $LASTEXITCODE }
+$installerPath = Join-Path $OutputDir "TheBoysLauncher-Setup-$Version.exe"
 
-Write-Host "MSI built: $msiOut" -ForegroundColor Green
-Write-Host "Notes: Run the MSI to verify the license (RTF), icon and the feature selection (shortcuts)." -ForegroundColor Cyan
+if (Test-Path $installerPath) {
+    Write-Host "Installer built successfully: $installerPath" -ForegroundColor Green
+    Write-Host "Notes: Run the installer to verify the license, icon, and feature selection (shortcuts)." -ForegroundColor Cyan
+} else {
+    Write-Error "Installer was not created at expected location: $installerPath"
+    exit 1
+}

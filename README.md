@@ -40,7 +40,7 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 ### Prerequisites
 - **Go 1.22+** - [Install Go](https://golang.org/dl/)
 - **For macOS**: Xcode Command Line Tools (`xcode-select --install`)
-- **For Windows**: PowerShell 5.1+ (included with Windows 10+)
+- **For Windows**: PowerShell 5.1+ (included with Windows 10+), Inno Setup (for creating installers)
 
 ### Quick Build
 ```bash
@@ -137,7 +137,7 @@ theboyslauncher/
 │   ├── set-version.sh         # Version updating (Unix)
 │   ├── set-version.ps1        # Version updating (Windows)
 │   ├── validate-version.sh    # Version validation
-│   ├── update-wix-version.ps1 # WiX version sync
+│   ├── update-inno-version.ps1 # Inno Setup version sync
 │   ├── create-app-bundle.sh   # macOS app bundle creation
 │   ├── convert-icon.sh        # Icon conversion for macOS
 │   └── create-dmg.sh          # macOS DMG creation
@@ -150,7 +150,8 @@ theboyslauncher/
 ├── config/                    # Configuration files
 │   ├── modpacks.json          # Modpack configurations
 │   └── openssl.cnf            # OpenSSL configuration
-├── wix/                       # WiX installer configuration
+├── TheBoysLauncher.iss        # Inno Setup installer script
+├── wix/                       # Legacy WiX installer configuration (deprecated)
 │   ├── TheBoysLauncher.wxs    # WiX installer script
 │   └── Product.wxs            # Product configuration
 ├── docs/                      # Documentation
