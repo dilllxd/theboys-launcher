@@ -22,20 +22,12 @@
   <MajorUpgrade DowngradeErrorMessage="A newer version of TheBoysLauncher is already installed." />
 
     <!-- Features -->
-  <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1" Display="expand">
+  <Feature Id="ProductFeature" Title="TheBoysLauncher" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="IconFile" />
       <ComponentRef Id="LicenseFile" />
-      
-      <!-- Start Menu Shortcut Feature (optional) -->
-      <Feature Id="StartMenuShortcutFeature" Title="Create Start Menu Shortcut" Description="Add a shortcut to the Start Menu" Level="1" Absent="allow">
-        <ComponentRef Id="ApplicationShortcut" />
-      </Feature>
-      
-      <!-- Desktop Shortcut Feature (optional) -->
-      <Feature Id="DesktopShortcutFeature" Title="Create Desktop Shortcut" Description="Add a shortcut to the Desktop" Level="1" Absent="allow">
-        <ComponentRef Id="DesktopShortcut" />
-      </Feature>
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
 
     <!-- Directories -->
@@ -91,24 +83,26 @@
 
     <!-- Start Menu Shortcut -->
   <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder">
-  <Shortcut Id="ApplicationStartMenuShortcut"
-        Name="TheBoysLauncher"
-        Description="TheBoys Minecraft Modpack Launcher"
-        Target="[#TheBoysLauncherEXE]"
-        WorkingDirectory="INSTALLFOLDER"
-        Icon="IconICO"
-        IconIndex="0" />
-      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
-      <RegistryValue Root="HKCU"
-                     Key="Software\TheBoysLauncher"
-                     Name="startmenu_shortcut"
-                     Type="integer"
-                     Value="1"
-                     KeyPath="yes" />
-    </Component>
+    <Condition>CREATE_START_MENU_SHORTCUT</Condition>
+    <Shortcut Id="ApplicationStartMenuShortcut"
+          Name="TheBoysLauncher"
+          Description="TheBoys Minecraft Modpack Launcher"
+          Target="[#TheBoysLauncherEXE]"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="IconICO"
+          IconIndex="0" />
+    <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall"/>
+    <RegistryValue Root="HKCU"
+                   Key="Software\TheBoysLauncher"
+                   Name="startmenu_shortcut"
+                   Type="integer"
+                   Value="1"
+                   KeyPath="yes" />
+  </Component>
 
-    <!-- Desktop Shortcut (optional) -->
+    <!-- Desktop Shortcut -->
     <Component Id="DesktopShortcut" Directory="DesktopFolder">
+      <Condition>CREATE_DESKTOP_SHORTCUT</Condition>
       <Shortcut Id="ApplicationDesktopShortcut"
                 Name="TheBoysLauncher"
                 Description="TheBoys Minecraft Modpack Launcher"
@@ -135,14 +129,20 @@
   <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch TheBoysLauncher" />
   <Property Id="WixShellExecTarget" Value="[#TheBoysLauncherEXE]" />
   <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+  
+  <!-- Properties for new checkboxes -->
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT_2" Value="Create Desktop Shortcut" />
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX_2" Value="1" />
+  
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT_3" Value="Create Start Menu Entry" />
+  <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX_3" Value="1" />
+  
+  <!-- Properties to control shortcut creation -->
+  <Property Id="CREATE_DESKTOP_SHORTCUT" Value="0" />
+  <Property Id="CREATE_START_MENU_SHORTCUT" Value="0" />
 
-  <!-- UI Reference: use InstallDir UI for simpler flow with directory selection and optional features -->
-  <UIRef Id="WixUI_InstallDir" />
-
-  <UI>
-    <!-- Launch application on exit when checkbox selected -->
-    <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
-  </UI>
+  <!-- UI Reference: use custom UI with multiple checkboxes -->
+  <UIRef Id="WixUI_InstallDir_Custom" />
 
   <!-- License agreement -->
   <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />

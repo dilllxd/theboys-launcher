@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <Compile Include="Product.wxs" />
+    <Compile Include="CustomUI.wxs" />
   </ItemGroup>
 
   <ItemGroup>
