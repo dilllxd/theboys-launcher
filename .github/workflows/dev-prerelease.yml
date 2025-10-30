@@ -132,8 +132,29 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Set up Go build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum', '**/go.mod') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set Go environment variables
+        run: |
+          echo "GOCACHE=~/.cache/go-build" >> $GITHUB_ENV
+          echo "GOMODCACHE=~/go/pkg/mod" >> $GITHUB_ENV
+          echo "CGO_CFLAGS=-O2" >> $GITHUB_ENV
+
       - name: Install Go dependencies
         run: go mod download
+
+      - name: Pre-compile Fyne dependencies
+        run: |
+          go build -a -o /dev/null fyne.io/fyne/v2/cmd/fyne
+          go build -a -o /dev/null fyne.io/fyne/v2/cmd/fyne-packager
 
       - name: Install system dependencies (Linux)
         if: ${{ matrix.platform == 'linux' }}
@@ -156,13 +177,29 @@ jobs:
         if: ${{ matrix.platform == 'darwin' }}
         shell: bash
         run: |
-          # Build for specific architecture
+          # Build for specific architecture with optimizations
           export GOOS=darwin GOARCH=${{ matrix.arch }} CGO_ENABLED=1
-          go build -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          echo "Starting macOS build for ${{ matrix.arch }} at $(date)"
+          time go build -p $(nproc) -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          echo "Completed macOS build at $(date)"
 
-      - name: Build binary (Other platforms)
-        if: ${{ matrix.platform != 'darwin' }}
-        run: go build -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+      - name: Build binary (Windows)
+        if: ${{ matrix.platform == 'windows' }}
+        shell: bash
+        run: |
+          # Build for Windows with GUI flag and optimizations
+          echo "Starting Windows build at $(date)"
+          time go build -p $(nproc) -ldflags="-s -w -H=windowsgui -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          echo "Completed Windows build at $(date)"
+
+      - name: Build binary (Linux)
+        if: ${{ matrix.platform == 'linux' }}
+        shell: bash
+        run: |
+          # Build for Linux with optimizations
+          echo "Starting Linux build at $(date)"
+          time go build -p $(nproc) -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          echo "Completed Linux build at $(date)"
 
       - name: Make binary executable (Unix)
         if: ${{ matrix.platform != 'windows' }}
@@ -214,12 +251,27 @@ jobs:
         shell: pwsh
         run: |
           $fullVersion = "${{ needs.bump_version.outputs.full_version }}"
+          
+          Write-Host "Looking for installer files..."
+          Get-ChildItem -Filter "*.exe" | ForEach-Object {
+            Write-Host "Found: $($_.Name) ($($_.Length) bytes)"
+          }
+          
           $exe = Get-ChildItem -Filter "TheBoysLauncher-Setup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) {
             Write-Error "Installer not found after build."
+            Write-Host "Current directory contents:"
+            Get-ChildItem -Force | ForEach-Object {
+              if ($_.PSIsContainer) {
+                Write-Host "  [DIR]  $($_.Name)"
+              } else {
+                Write-Host "  [FILE] $($_.Name) ($($_.Length) bytes)"
+              }
+            }
             exit 1
           }
           $target = "TheBoysLauncher-Setup-$fullVersion.exe"
+          Write-Host "Renaming '$($exe.Name)' to '$target'"
           Move-Item $exe.FullName $target -Force
 
       - name: Upload primary binary

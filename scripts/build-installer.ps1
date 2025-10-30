@@ -63,6 +63,9 @@ Write-Host "Running ISCC.exe to compile installer..."
 $installerDir = Join-Path $projectDir 'installer'
 New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
 
+Write-Host "Installer will be created in: $installerDir"
+Write-Host "Expected filename: TheBoysLauncher-Setup-$cleanVersion.exe"
+
 $compilerArgs = @(
     "/Q",  # Quiet mode (less output)
     "/O`"$installerDir`"",  # Output directory
@@ -71,19 +74,42 @@ $compilerArgs = @(
     "`"$issPath`""
 )
 
+Write-Host "ISCC.exe command line: ISCC.exe $($compilerArgs -join ' ')"
+
 $process = Start-Process -FilePath "ISCC.exe" -ArgumentList $compilerArgs -Wait -PassThru -NoNewWindow
 
-if ($process.ExitCode -ne 0) { 
+if ($process.ExitCode -ne 0) {
     Write-Error "ISCC.exe failed with exit code $($process.ExitCode)"
-    exit $process.ExitCode 
+    exit $process.ExitCode
+}
+
+# List files in installer directory after compilation
+Write-Host "Files in installer directory after compilation:"
+Get-ChildItem -Path $installerDir -Force | ForEach-Object {
+    Write-Host "  $($_.Name) ($($_.Length) bytes)"
 }
 
 $installerPath = Join-Path $installerDir "TheBoysLauncher-Setup-$cleanVersion.exe"
+$rootInstallerPath = Join-Path $projectDir "TheBoysLauncher-Setup-$cleanVersion.exe"
 
 if (Test-Path $installerPath) {
-    Write-Host "Installer created: $installerPath"
-    exit 0
+    Write-Host "Installer created in installer directory: $installerPath"
+    
+    # Move the installer to the root directory for CI/CD to find it
+    Write-Host "Moving installer to root directory: $rootInstallerPath"
+    Move-Item -Path $installerPath -Destination $rootInstallerPath -Force
+    
+    if (Test-Path $rootInstallerPath) {
+        Write-Host "Installer successfully moved to: $rootInstallerPath"
+        exit 0
+    } else {
+        Write-Error "Failed to move installer to root directory"
+        exit 6
+    }
 } else {
+    # List files in installer directory for debugging
     Write-Error "Installer was not created at expected location: $installerPath"
+    Write-Host "Contents of installer directory:"
+    Get-ChildItem -Path $installerDir -Force | ForEach-Object { Write-Host "  $($_.Name)" }
     exit 5
 }
