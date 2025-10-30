@@ -24,10 +24,9 @@
       <DialogRef Id="VerifyReadyDlg" />
       <DialogRef Id="MaintenanceWelcomeDlg" />
       <DialogRef Id="MaintenanceTypeDlg" />
-      <DialogRef Id="ExitDialog" />
 
       <!-- Custom Exit Dialog with multiple checkboxes -->
-      <Dialog Id="ExitDialog_Custom" Width="370" Height="270" Title="!(loc.ExitDialog_Title)">
+      <Dialog Id="ExitDialog" Width="370" Height="270" Title="!(loc.ExitDialog_Title)">
         <Control Id="Finish" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUIFinish)" />
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Text="!(loc.WixUICancel)">
           <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
@@ -51,10 +50,10 @@
       <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
       <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
 
-      <Publish Dialog="ExitDialog_Custom" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
-      <Publish Dialog="ExitDialog_Custom" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
-      <Publish Dialog="ExitDialog_Custom" Control="Finish" Event="DoAction" Value="SetCreateDesktopShortcut">WIXUI_EXITDIALOGOPTIONALCHECKBOX_2 = 1</Publish>
-      <Publish Dialog="ExitDialog_Custom" Control="Finish" Event="DoAction" Value="SetCreateStartMenuShortcut">WIXUI_EXITDIALOGOPTIONALCHECKBOX_3 = 1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="SetCreateDesktopShortcut">WIXUI_EXITDIALOGOPTIONALCHECKBOX_2 = 1</Publish>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="SetCreateStartMenuShortcut">WIXUI_EXITDIALOGOPTIONALCHECKBOX_3 = 1</Publish>
 
       <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">1</Publish>
 
