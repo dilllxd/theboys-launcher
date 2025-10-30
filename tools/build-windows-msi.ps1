@@ -31,9 +31,9 @@ if (-not (Test-Path $targetExe)) {
 New-Item -ItemType Directory -Path (Join-Path $ProjectDir 'wixobj') -Force | Out-Null
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
-$wxsPath = Join-Path $ProjectDir "wix\TheBoysLauncher.wxs"
+$wxsPath = Join-Path $ProjectDir "wix\Product.wxs"
 $customUIPath = Join-Path $ProjectDir "wix\CustomUI.wxs"
-$wixObj = Join-Path $ProjectDir 'wixobj\TheBoysLauncher.wixobj'
+$wixObj = Join-Path $ProjectDir 'wixobj\Product.wixobj'
 $customUIObj = Join-Path $ProjectDir 'wixobj\CustomUI.wixobj'
 $msiOut = Join-Path $OutputDir 'TheBoysLauncher.msi'
 
@@ -42,6 +42,7 @@ candle.exe `
     -ext WixUIExtension `
     -dTheBoysLauncher.TargetPath="$targetExe" `
     -dProjectDir="$ProjectDir\" `
+    -dProductVersion="$Version" `
     -out $wixObj `
     $wxsPath
 
