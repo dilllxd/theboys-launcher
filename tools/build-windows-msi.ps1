@@ -39,6 +39,7 @@ $msiOut = Join-Path $OutputDir 'TheBoysLauncher.msi'
 
 Write-Host "Running candle.exe for main wxs..." -ForegroundColor Yellow
 candle.exe `
+    -ext WixUIExtension `
     -dTheBoysLauncher.TargetPath="$targetExe" `
     -dProjectDir="$ProjectDir\" `
     -out $wixObj `
@@ -48,13 +49,14 @@ if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed for main wxs"; exit $L
 
 Write-Host "Running candle.exe for custom UI..." -ForegroundColor Yellow
 candle.exe `
+    -ext WixUIExtension `
     -out $customUIObj `
     $customUIPath
 
 if ($LASTEXITCODE -ne 0) { Write-Error "candle.exe failed for custom UI"; exit $LASTEXITCODE }
 
 Write-Host "Running light.exe..." -ForegroundColor Yellow
-light.exe $wixObj $customUIObj -ext WixUIExtension -out $msiOut
+light.exe $wixObj $customUIObj -ext WixUIExtension -cultures:"en-us" -out $msiOut
 
 if ($LASTEXITCODE -ne 0) { Write-Error "light.exe failed"; exit $LASTEXITCODE }
 

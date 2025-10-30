@@ -19,6 +19,12 @@
       <DialogRef Id="ProgressDlg" />
       <DialogRef Id="ResumeDlg" />
       <DialogRef Id="UserExit" />
+      <DialogRef Id="WelcomeDlg" />
+      <DialogRef Id="InstallDirDlg" />
+      <DialogRef Id="VerifyReadyDlg" />
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <DialogRef Id="ExitDialog" />
 
       <!-- Custom Exit Dialog with multiple checkboxes -->
       <Dialog Id="ExitDialog_Custom" Width="370" Height="270" Title="!(loc.ExitDialog_Title)">
@@ -77,6 +83,14 @@
     
     <!-- Localization strings for the custom checkboxes -->
     <WixLocalization Culture="en-us">
+      <String Id="ExitDialog_Title">Completing TheBoysLauncher Setup</String>
+      <String Id="WixUIFinish">&Finish</String>
+      <String Id="WixUICancel">Cancel</String>
+      <String Id="ExitDialogBitmap">WixUI_Bmp_Dialog</String>
+      <String Id="WixUIBack">&Back</String>
+      <String Id="ExitDialogDescription">Click the Finish button to exit the Setup Wizard.</String>
+      <String Id="ExitDialogTitle">Completing TheBoysLauncher Setup Wizard</String>
+      <String Id="ExitDialogOptionalCheckboxText">Launch TheBoysLauncher</String>
       <String Id="ExitDialogOptionalCheckboxText2">Create Desktop Shortcut</String>
       <String Id="ExitDialogOptionalCheckboxText3">Create Start Menu Entry</String>
     </WixLocalization>
