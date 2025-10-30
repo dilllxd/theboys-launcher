@@ -85,12 +85,18 @@ Type: filesandordirs; Name: "{app}\cache"
 // Custom checkbox for launch after installation
 function ShouldLaunchAfterInstall: Boolean;
 begin
-  Result := WizardForm.RunList.Checked[0];
+  // Check if RunList has any items before accessing index 0
+  if WizardForm.RunList.Items.Count > 0 then
+    Result := WizardForm.RunList.Checked[0]
+  else
+    Result := False; // Default value if RunList is empty
 end;
 
 // Initialize the checkboxes on the finishing page
 procedure InitializeWizard;
 begin
-  // Ensure the launch checkbox is unchecked by default
-  WizardForm.RunList.Checked[0] := False;
+  // Check if RunList has any items before accessing index 0
+  if WizardForm.RunList.Items.Count > 0 then
+    // Ensure the launch checkbox is unchecked by default
+    WizardForm.RunList.Checked[0] := False;
 end;
