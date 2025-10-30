@@ -31,7 +31,7 @@
     <!-- Directories -->
     <Directory Id="TARGETDIR" Name="SourceDir">
       <!-- Allow custom installation directory -->
-      <Directory Id="PersonalFolder">
+      <Directory Id="LocalAppDataFolder">
         <Directory Id="INSTALLFOLDER" Name="TheBoysLauncher" />
       </Directory>
 
@@ -52,18 +52,7 @@
       Source="$(var.TheBoysLauncher.TargetPath)"
       KeyPath="yes" />
 
-        <!-- File association for .theboys files -->
-        <RegistryKey Root="HKCR" Key=".theboys">
-          <RegistryValue Type="string" Value="TheBoysLauncher.File" />
-        </RegistryKey>
-        <RegistryKey Root="HKCR" Key="TheBoysLauncher.File">
-          <RegistryValue Type="string" Value="TheBoys Modpack File" />
-          <RegistryValue Type="string" Name="DefaultIcon" Value="[INSTALLFOLDER]TheBoysLauncher.exe,0" />
-        </RegistryKey>
-      <RegistryKey Root="HKCR" Key="TheBoysLauncher.File\shell\open\command">
-          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]TheBoysLauncher.exe&quot; &quot;%1&quot;" />
         
-        </RegistryKey>
         
         <!-- Registry entry for installation path -->
         <RegistryKey Root="HKCU" Key="Software\TheBoysLauncher">
