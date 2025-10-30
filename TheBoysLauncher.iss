@@ -29,6 +29,11 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 
+; Enable restart manager to handle files in use during uninstall
+CloseApplications=yes
+RestartApplications=no
+CloseApplicationsFilter=*.exe,*.dll,*.log
+
 ; Ensure we can overwrite existing files
 DirExistsWarning=no
 
@@ -71,9 +76,12 @@ Root: HKCU; Subkey: "SOFTWARE\{#MyAppName}"; ValueType: string; ValueName: "Inst
 
 
 [UninstallDelete]
+; Delete specific subdirectories first
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\instances"
 Type: filesandordirs; Name: "{app}\cache"
+; Delete the entire application directory and all its contents
+Type: filesandordirs; Name: "{app}"
 
 [Code]
 // Custom checkbox for launch after installation
@@ -93,4 +101,41 @@ begin
   if WizardForm.RunList.Items.Count > 0 then
     // Ensure the launch checkbox is unchecked by default
     WizardForm.RunList.Checked[0] := False;
+end;
+
+// Custom uninstall function to ensure complete cleanup
+function UninstallAppFolder: Boolean;
+var
+  ResultCode: Integer;
+begin
+  // Try to delete the application folder using cmd with force and quiet options
+  // This handles files that might be in use and ensures complete deletion
+  if Exec(ExpandConstant('{cmd}'), '/C rmdir /S /Q "' + ExpandConstant('{app}') + '"', '',
+          SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Result := True;
+  end
+  else
+  begin
+    // If the above fails, try with PowerShell as a fallback
+    if Exec(ExpandConstant('{powershell}'), '-Command "Remove-Item -Path \"' + ExpandConstant('{app}') + '\" -Recurse -Force -ErrorAction SilentlyContinue"', '',
+            SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := True;
+    end
+    else
+    begin
+      Result := False;
+    end;
+  end;
+end;
+
+// Enhanced uninstall step to ensure complete cleanup
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    // After the standard uninstall, try to remove any remaining files/folders
+    UninstallAppFolder();
+  end;
 end;
