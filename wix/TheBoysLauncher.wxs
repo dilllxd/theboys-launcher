@@ -159,6 +159,15 @@
                   ExeCommand=""
                   Return="asyncNoWait"
                   Impersonate="yes" />
+                  
+    <!-- Custom actions for checkbox shortcuts -->
+    <CustomAction Id="SetCreateDesktopShortcut"
+                  Property="CREATE_DESKTOP_SHORTCUT"
+                  Value="1" />
+                  
+    <CustomAction Id="SetCreateStartMenuShortcut"
+                  Property="CREATE_START_MENU_SHORTCUT"
+                  Value="1" />
 
     <InstallExecuteSequence>
       <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
