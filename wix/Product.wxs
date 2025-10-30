@@ -145,8 +145,8 @@
   <Property Id="CREATE_DESKTOP_SHORTCUT" Value="0" />
   <Property Id="CREATE_START_MENU_SHORTCUT" Value="0" />
 
-  <!-- Use custom UI with multiple checkboxes -->
-  <UIRef Id="WixUI_InstallDir_Custom" />
+  <!-- Use standard UI with customizations -->
+  <UIRef Id="WixUI_InstallDir" />
 
   <!-- License agreement -->
   <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)wix\LICENSE.rtf" />
@@ -175,6 +175,9 @@
                   Value="1" />
 
     <InstallExecuteSequence>
+      <!-- Set shortcut properties based on checkbox selections -->
+      <Custom Action="SetCreateDesktopShortcut" After="InstallFinalize">WIXUI_EXITDIALOGOPTIONALCHECKBOX_2 = 1 AND NOT Installed</Custom>
+      <Custom Action="SetCreateStartMenuShortcut" After="InstallFinalize">WIXUI_EXITDIALOGOPTIONALCHECKBOX_3 = 1 AND NOT Installed</Custom>
       <Custom Action="CleanUserData" After="InstallInitialize">REMOVE=&quot;ALL&quot;</Custom>
     </InstallExecuteSequence>
     <UIRef Id="WixUI_ErrorProgressText" />
