@@ -144,8 +144,8 @@ jobs:
 
       - name: Set Go environment variables
         run: |
-          echo "GOCACHE=~/.cache/go-build" >> $GITHUB_ENV
-          echo "GOMODCACHE=~/go/pkg/mod" >> $GITHUB_ENV
+          echo "GOCACHE=$HOME/.cache/go-build" >> $GITHUB_ENV
+          echo "GOMODCACHE=$HOME/go/pkg/mod" >> $GITHUB_ENV
           echo "CGO_CFLAGS=-O2" >> $GITHUB_ENV
 
       - name: Install Go dependencies
