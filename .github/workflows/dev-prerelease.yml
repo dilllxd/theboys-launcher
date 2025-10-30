@@ -175,7 +175,7 @@ jobs:
           # Build for specific architecture with optimizations
           export GOOS=darwin GOARCH=${{ matrix.arch }} CGO_ENABLED=1
           echo "Starting macOS build for ${{ matrix.arch }} at $(date)"
-          time go build -p $(nproc) -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          time go build -p 4 -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
           echo "Completed macOS build at $(date)"
 
       - name: Build binary (Windows)
@@ -184,7 +184,7 @@ jobs:
         run: |
           # Build for Windows with GUI flag and optimizations
           echo "Starting Windows build at $(date)"
-          time go build -p $(nproc) -ldflags="-s -w -H=windowsgui -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          time go build -p 4 -ldflags="-s -w -H=windowsgui -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
           echo "Completed Windows build at $(date)"
 
       - name: Build binary (Linux)
@@ -193,7 +193,7 @@ jobs:
         run: |
           # Build for Linux with optimizations
           echo "Starting Linux build at $(date)"
-          time go build -p $(nproc) -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
+          time go build -p 4 -ldflags="-s -w -X main.version=${{ needs.bump_version.outputs.full_version }}" -o ${{ matrix.binary_name }} .
           echo "Completed Linux build at $(date)"
 
       - name: Make binary executable (Unix)
