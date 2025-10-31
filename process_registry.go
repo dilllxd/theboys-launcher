@@ -189,6 +189,12 @@ func NewProcessRegistry(rootDir string) (*ProcessRegistry, error) {
 	registry := &ProcessRegistry{
 		records:      make(map[string]*PersistentProcessRecord),
 		registryPath: registryPath,
+		// The process status cache uses a 2-second TTL. This value is chosen as a balance between
+		// cache freshness (timely detection of process status changes) and minimizing system call
+		// overhead (frequent process status checks can be expensive). For most modpack/game
+		// processes, status changes (start/stop) are infrequent compared to this interval, so
+		// 2 seconds provides responsive updates without excessive polling. Adjust if needed
+		// based on observed performance or process lifecycle patterns.
 		statusCache:  NewProcessStatusCache(2 * time.Second), // 2-second TTL
 	}
 
