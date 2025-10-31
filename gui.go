@@ -67,6 +67,8 @@ type GUI struct {
 	logWatcherActive   bool
 	logStopChan        chan struct{}
 	logMutex           sync.RWMutex
+	logLastPosition    int64  // Track last read position for incremental reading
+	logFileHandle      *os.File // Keep file handle open for better performance
 	loadingOverlay     fyne.CanvasObject
 	loadingLabel       *widget.Label
 	memorySummaryLabel *widget.Label
@@ -1588,16 +1590,24 @@ func (g *GUI) stopLogFileWatcher() {
 	if g.logWatcherActive && g.logStopChan != nil {
 		close(g.logStopChan)
 		g.logWatcherActive = false
+		
+		// Close file handle if open
+		if g.logFileHandle != nil {
+			g.logFileHandle.Close()
+			g.logFileHandle = nil
+		}
+		
+		// Reset position tracking
+		g.logLastPosition = 0
 	}
 }
 
-// loadAndWatchLogFile loads existing log content and monitors for new content
+// loadAndWatchLogFile loads existing log content and monitors for new content using incremental reading
 func (g *GUI) loadAndWatchLogFile(logPath string) {
 	ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
 	defer ticker.Stop()
 
 	var initialLoadDone = false
-	var lastSize int64 = 0
 
 	for {
 		select {
@@ -1607,13 +1617,24 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 			// Check if file exists
 			info, err := os.Stat(logPath)
 			if err != nil {
+				// File doesn't exist or can't be accessed, reset position
+				g.logMutex.Lock()
+				if g.logFileHandle != nil {
+					g.logFileHandle.Close()
+					g.logFileHandle = nil
+				}
+				g.logLastPosition = 0
+				g.logMutex.Unlock()
 				continue
 			}
 
+			g.logMutex.Lock()
+			
 			if !initialLoadDone {
 				// Initial load - read entire file once
 				file, err := os.Open(logPath)
 				if err != nil {
+					g.logMutex.Unlock()
 					continue
 				}
 
@@ -1633,37 +1654,77 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 					})
 				}
 
-				lastSize = info.Size()
+				// Set initial position to end of file
+				g.logLastPosition = info.Size()
 				initialLoadDone = true
+				g.logMutex.Unlock()
 			} else {
-				// Monitoring mode - only read new content when file grows significantly
-				// Use a small threshold to avoid reading incomplete writes
-				if info.Size() > lastSize+10 { // Only read if file grew by at least 10 bytes
-					file, err := os.Open(logPath)
+				// Monitoring mode - only read new content incrementally
+				if info.Size() < g.logLastPosition {
+					// File was truncated or rotated, reset position
+					g.logLastPosition = 0
+					if g.logFileHandle != nil {
+						g.logFileHandle.Close()
+						g.logFileHandle = nil
+					}
+				}
+
+				// Only read if file has grown
+				if info.Size() > g.logLastPosition {
+					// Open file if not already open
+					if g.logFileHandle == nil {
+						file, err := os.Open(logPath)
+						if err != nil {
+							g.logMutex.Unlock()
+							continue
+						}
+						g.logFileHandle = file
+					}
+
+					// Seek to last read position
+					_, err := g.logFileHandle.Seek(g.logLastPosition, io.SeekStart)
 					if err != nil {
+						// Seek failed, close and reopen file
+						g.logFileHandle.Close()
+						g.logFileHandle = nil
+						g.logMutex.Unlock()
 						continue
 					}
 
-					// Read the entire file to avoid seek issues
-					content, err := io.ReadAll(file)
-					file.Close()
-
-					if err == nil && len(content) > 0 {
-						contentStr := string(content)
-
-						// Only update if content actually changed and is longer
-						fyne.Do(func() {
-							if g.consoleOutput != nil && len(contentStr) > len(g.consoleOutput.Text) {
-								g.consoleOutput.SetText(contentStr)
-								// Scroll to bottom
-								lines := strings.Split(contentStr, "\n")
-								g.consoleOutput.CursorRow = len(lines) - 1
-							}
-						})
+					// Read only the new content
+					newContent := make([]byte, info.Size()-g.logLastPosition)
+					bytesRead, err := io.ReadFull(g.logFileHandle, newContent)
+					if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+						// Read failed, close file to force reopen next time
+						g.logFileHandle.Close()
+						g.logFileHandle = nil
+						g.logMutex.Unlock()
+						continue
 					}
 
-					lastSize = info.Size()
+					// Update position if we read something
+					if bytesRead > 0 {
+						g.logLastPosition += int64(bytesRead)
+						
+						// Only update UI if there's actual new content
+						newContentStr := string(newContent[:bytesRead])
+						if strings.TrimSpace(newContentStr) != "" {
+							fyne.Do(func() {
+								if g.consoleOutput != nil {
+									// Append new content to existing text
+									currentText := g.consoleOutput.Text
+									updatedText := currentText + newContentStr
+									g.consoleOutput.SetText(updatedText)
+									// Scroll to bottom
+									lines := strings.Split(updatedText, "\n")
+									g.consoleOutput.CursorRow = len(lines) - 1
+								}
+							})
+						}
+					}
 				}
+				
+				g.logMutex.Unlock()
 			}
 		}
 	}
@@ -2017,10 +2078,12 @@ func (g *GUI) showSettings() {
 		if settings.AutoRAM {
 			memLabel.SetText(fmt.Sprintf("Auto RAM baseline: %d GB", DefaultAutoMemoryMB()/1024))
 			memSlider.Hide()
+			manualRAMInfoBtn.Hide()
 		} else {
 			memSlider.Show()
 			memSlider.SetValue(float64(clampMemoryMB(settings.MemoryMB) / 1024))
 			memLabel.SetText(fmt.Sprintf("Manual RAM: %d GB", settings.MemoryMB/1024))
+			manualRAMInfoBtn.Show()
 		}
 	}
 
@@ -2051,6 +2114,7 @@ func (g *GUI) showSettings() {
 		}
 	}
 
+	// Set initial visibility state
 	refreshUI()
 
 	// Create a title with styling

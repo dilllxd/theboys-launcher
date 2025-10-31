@@ -10,6 +10,81 @@ import (
 	"time"
 )
 
+// ProcessStatusCacheEntry represents a cached process status entry
+type ProcessStatusCacheEntry struct {
+	IsRunning   bool
+	CachedAt    time.Time
+	Error       error // nil if no error occurred
+}
+
+// ProcessStatusCache caches process status with TTL to reduce external command executions
+type ProcessStatusCache struct {
+	entries map[int]*ProcessStatusCacheEntry // key: PID
+	mutex   sync.RWMutex
+	ttl     time.Duration
+}
+
+// NewProcessStatusCache creates a new process status cache with the specified TTL
+func NewProcessStatusCache(ttl time.Duration) *ProcessStatusCache {
+	return &ProcessStatusCache{
+		entries: make(map[int]*ProcessStatusCacheEntry),
+		ttl:     ttl,
+	}
+}
+
+// Get retrieves a cached process status, or executes the check if not cached or expired
+func (cache *ProcessStatusCache) Get(pid int) (bool, error) {
+	cache.mutex.RLock()
+	entry, exists := cache.entries[pid]
+	cache.mutex.RUnlock()
+
+	// If entry exists and is not expired, return cached value
+	if exists && time.Since(entry.CachedAt) < cache.ttl {
+		return entry.IsRunning, entry.Error
+	}
+
+	// Cache miss or expired, check process status
+	isRunning, err := isProcessRunning(pid)
+
+	// Update cache
+	cache.mutex.Lock()
+	cache.entries[pid] = &ProcessStatusCacheEntry{
+		IsRunning: isRunning,
+		CachedAt:  time.Now(),
+		Error:     err,
+	}
+	cache.mutex.Unlock()
+
+	return isRunning, err
+}
+
+// Invalidate removes a specific PID from the cache
+func (cache *ProcessStatusCache) Invalidate(pid int) {
+	cache.mutex.Lock()
+	delete(cache.entries, pid)
+	cache.mutex.Unlock()
+}
+
+// Clear removes all entries from the cache
+func (cache *ProcessStatusCache) Clear() {
+	cache.mutex.Lock()
+	cache.entries = make(map[int]*ProcessStatusCacheEntry)
+	cache.mutex.Unlock()
+}
+
+// Cleanup removes expired entries from the cache
+func (cache *ProcessStatusCache) Cleanup() {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
+	now := time.Now()
+	for pid, entry := range cache.entries {
+		if now.Sub(entry.CachedAt) > cache.ttl {
+			delete(cache.entries, pid)
+		}
+	}
+}
+
 // ProcessStatus represents the current status of a tracked process
 type ProcessStatus int
 
@@ -104,6 +179,7 @@ type ProcessRegistry struct {
 	records      map[string]*PersistentProcessRecord
 	mutex        sync.RWMutex
 	registryPath string
+	statusCache  *ProcessStatusCache
 }
 
 // NewProcessRegistry creates a new process registry
@@ -113,6 +189,7 @@ func NewProcessRegistry(rootDir string) (*ProcessRegistry, error) {
 	registry := &ProcessRegistry{
 		records:      make(map[string]*PersistentProcessRecord),
 		registryPath: registryPath,
+		statusCache:  NewProcessStatusCache(2 * time.Second), // 2-second TTL
 	}
 
 	// Load existing records
@@ -250,9 +327,13 @@ func (pr *ProcessRegistry) RemoveRecord(id string) error {
 	pr.mutex.Lock()
 	defer pr.mutex.Unlock()
 
-	if _, exists := pr.records[id]; !exists {
+	record, exists := pr.records[id]
+	if !exists {
 		return fmt.Errorf("process record with ID %s not found", id)
 	}
+
+	// Invalidate cache entry for this PID
+	pr.statusCache.Invalidate(record.PID)
 
 	delete(pr.records, id)
 	return pr.Save()
@@ -339,9 +420,12 @@ func (pr *ProcessRegistry) ValidateProcesses() error {
 	var toRemove []string
 	now := time.Now()
 
+	// Cleanup expired cache entries periodically
+	pr.statusCache.Cleanup()
+
 	for id, record := range pr.records {
-		// Check if process is still running
-		isRunning, err := isProcessRunning(record.PID)
+		// Check if process is still running using the cache
+		isRunning, err := pr.statusCache.Get(record.PID)
 		if err != nil {
 			logf("Warning: Failed to check process %d: %v", record.PID, err)
 			// Assume process is not running if we can't check
@@ -431,6 +515,22 @@ func (pr *ProcessRegistry) UpdateProcessLastSeen(id string) error {
 	return pr.UpdateRecord(id, func(record *PersistentProcessRecord) {
 		record.LastSeen = time.Now()
 	})
+}
+
+// ClearProcessStatusCache clears the process status cache
+func (pr *ProcessRegistry) ClearProcessStatusCache() {
+	pr.statusCache.Clear()
+}
+
+// GetProcessStatusCacheStats returns statistics about the process status cache
+func (pr *ProcessRegistry) GetProcessStatusCacheStats() (entryCount int, ttl time.Duration) {
+	pr.statusCache.mutex.RLock()
+	defer pr.statusCache.mutex.RUnlock()
+	
+	entryCount = len(pr.statusCache.entries)
+	ttl = pr.statusCache.ttl
+	
+	return entryCount, ttl
 }
 
 // Global registry instance
