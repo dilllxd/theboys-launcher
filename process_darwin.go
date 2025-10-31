@@ -4,8 +4,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -147,4 +149,109 @@ func getProcessName(baseName string) string {
 		return baseName + ".exe"
 	}
 	return baseName
+}
+
+// isProcessRunning checks if a process with the given PID is still running on macOS
+func isProcessRunning(pid int) (bool, error) {
+	// Use ps to check if the process is still running
+	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid=")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to check process status: %w", err)
+	}
+
+	// ps returns the PID if the process exists, empty otherwise
+	return strings.TrimSpace(string(output)) == strconv.Itoa(pid), nil
+}
+
+// validateProcessIdentity validates that a process matches the expected executable and working directory on macOS
+func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir string) (bool, error) {
+	// Get process information using ps
+	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=", "-o", "cwd=")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to get process information: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 1 {
+		return false, fmt.Errorf("process not found")
+	}
+
+	// Parse ps output (format: command\ncwd)
+	parts := strings.Split(lines[0], "\n")
+	if len(parts) < 2 {
+		return false, fmt.Errorf("invalid process information format")
+	}
+
+	actualCommand := strings.TrimSpace(parts[0])
+	actualWorkingDir := strings.TrimSpace(parts[1])
+
+	// Normalize paths for comparison
+	expectedExecutable = strings.ToLower(expectedExecutable)
+	actualCommand = strings.ToLower(actualCommand)
+
+	// Check if executable names match (allowing for case differences)
+	if !strings.Contains(actualCommand, filepath.Base(expectedExecutable)) {
+		return false, nil
+	}
+
+	// Check working directory if provided
+	if expectedWorkingDir != "" {
+		expectedWorkingDir = strings.ToLower(expectedWorkingDir)
+		actualWorkingDir = strings.ToLower(actualWorkingDir)
+
+		// Normalize paths for comparison
+		if !strings.EqualFold(filepath.Clean(actualWorkingDir), filepath.Clean(expectedWorkingDir)) {
+			// Try to match by basename if full paths differ
+			if filepath.Base(actualWorkingDir) != filepath.Base(expectedWorkingDir) {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
+// getProcessDetails retrieves detailed information about a process on macOS
+func getProcessDetails(pid int) (executable, workingDir string, err error) {
+	// Get executable path using ps
+	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=")
+	output, psErr := cmd.Output()
+	if psErr != nil {
+		return "", "", fmt.Errorf("failed to get process executable: %w", psErr)
+	}
+
+	// Extract executable from command line
+	command := strings.TrimSpace(string(output))
+	parts := strings.Fields(command)
+	if len(parts) > 0 {
+		executable = parts[0]
+	}
+
+	// Get working directory using lsof
+	lsofCmd := exec.Command("lsof", "-p", strconv.Itoa(pid), "-a", "-d", "cwd", "-Fn")
+	lsofOutput, lsofErr := lsofCmd.Output()
+	if lsofErr != nil {
+		// Fallback: use executable directory
+		if executable != "" {
+			workingDir = filepath.Dir(executable)
+		}
+		logf("Warning: Could not get working directory for PID %d, using executable directory: %v", pid, lsofErr)
+	} else {
+		// Parse lsof output (format: n<cwd>)
+		lines := strings.Split(strings.TrimSpace(string(lsofOutput)), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "n") {
+				workingDir = strings.TrimPrefix(line, "n")
+				break
+			}
+		}
+
+		if workingDir == "" && executable != "" {
+			workingDir = filepath.Dir(executable)
+		}
+	}
+
+	return executable, workingDir, nil
 }

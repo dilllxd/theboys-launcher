@@ -64,6 +64,9 @@ type GUI struct {
 	runningModpackID string
 	runningMu        sync.RWMutex
 	processMu        sync.Mutex
+
+	// Process registry for reattachment
+	processRegistry *ProcessRegistry
 }
 
 // modernTheme tweaks the default Fyne look.
@@ -110,6 +113,11 @@ type ModpackState struct {
 	RunningPID      int
 	LastChecked     time.Time
 	Error           error
+	// Reattachment fields
+	Reattachable     bool
+	ProcessID        string
+	ProcessStatus    ProcessStatus
+	ProcessStartTime time.Time
 }
 
 func (s *ModpackState) PrimaryAction() PrimaryAction {
@@ -119,6 +127,9 @@ func (s *ModpackState) PrimaryAction() PrimaryAction {
 	if s.Running {
 		return ActionKill
 	}
+	if s.Reattachable && s.ProcessID != "" && s.ProcessStatus == ProcessStatusRunning {
+		return ActionKill // Kill action for reattached processes
+	}
 	if s.Busy {
 		switch s.CurrentAction {
 		case ActionInstall, ActionUpdate, ActionLaunch:
@@ -126,6 +137,9 @@ func (s *ModpackState) PrimaryAction() PrimaryAction {
 		default:
 			return ActionNone
 		}
+	}
+	if s.Reattachable && s.ProcessID != "" {
+		return ActionLaunch // Reattach action
 	}
 	if !s.Installed {
 		return ActionInstall
@@ -143,6 +157,9 @@ func (s *ModpackState) PrimaryLabel() string {
 	if s.Running {
 		return "Kill"
 	}
+	if s.Reattachable && s.ProcessID != "" && s.ProcessStatus == ProcessStatusRunning {
+		return "Kill"
+	}
 	if s.Busy {
 		switch s.CurrentAction {
 		case ActionInstall:
@@ -154,6 +171,9 @@ func (s *ModpackState) PrimaryLabel() string {
 		default:
 			return "Working..."
 		}
+	}
+	if s.Reattachable && s.ProcessID != "" {
+		return "Reattach"
 	}
 	if !s.Installed {
 		return "Install"
@@ -195,6 +215,12 @@ func (s *ModpackState) StatusSummary() string {
 			return fmt.Sprintf("Running (PID %d)", s.RunningPID)
 		}
 		return "Running"
+	}
+	if s.Reattachable && s.ProcessID != "" {
+		if s.ProcessStatus == ProcessStatusRunning {
+			return fmt.Sprintf("Running in background (PID %d)", s.RunningPID)
+		}
+		return fmt.Sprintf("Available for reattachment (%s)", s.ProcessStatus)
 	}
 	if s.Busy {
 		switch s.CurrentAction {
@@ -248,14 +274,21 @@ func NewGUI(modpacks []Modpack, root string) *GUI {
 	w.CenterOnScreen()
 	w.SetFixedSize(false)
 
+	// Initialize process registry
+	processRegistry, err := GetGlobalProcessRegistry(root)
+	if err != nil {
+		logf("Warning: Failed to initialize process registry: %v", err)
+	}
+
 	gui := &GUI{
-		app:           a,
-		window:        w,
-		modpacks:      modpacks,
-		filtered:      append([]Modpack(nil), modpacks...),
-		root:          root,
-		modpackStates: make(map[string]*ModpackState),
-		cardBindings:  make(map[string][]*modpackCardBinding),
+		app:             a,
+		window:          w,
+		modpacks:        modpacks,
+		filtered:        append([]Modpack(nil), modpacks...),
+		root:            root,
+		modpackStates:   make(map[string]*ModpackState),
+		cardBindings:    make(map[string][]*modpackCardBinding),
+		processRegistry: processRegistry,
 	}
 
 	return gui
@@ -266,6 +299,11 @@ func (g *GUI) Show() {
 	g.buildUI()
 	g.startUpdateCheck()
 
+	// Validate existing processes on startup
+	if g.processRegistry != nil {
+		g.validateExistingProcesses()
+	}
+
 	// Set up window close callback to clean up resources
 	g.window.SetCloseIntercept(func() {
 		g.cleanup()
@@ -275,9 +313,47 @@ func (g *GUI) Show() {
 	g.window.ShowAndRun()
 }
 
+// validateExistingProcesses validates existing processes in the registry and updates modpack states
+func (g *GUI) validateExistingProcesses() {
+	if g.processRegistry == nil {
+		return
+	}
+
+	logf("Validating existing processes...")
+
+	// Validate all processes in the registry
+	if err := g.processRegistry.ValidateProcesses(); err != nil {
+		logf("Warning: Failed to validate processes: %v", err)
+	}
+
+	// Get all running processes
+	runningProcesses := g.processRegistry.GetRunningProcesses()
+
+	// Update modpack states with reattachment information
+	for _, process := range runningProcesses {
+		g.setModpackState(process.ModpackID, func(state *ModpackState) {
+			state.Reattachable = true
+			state.ProcessID = process.ID
+			state.ProcessStatus = process.Status
+			state.ProcessStartTime = process.StartTime
+			state.Running = true
+			state.RunningPID = process.PID
+		})
+	}
+
+	logf("Found %d running processes available for reattachment", len(runningProcesses))
+}
+
 // cleanup stops background tasks and releases resources
 func (g *GUI) cleanup() {
 	g.stopLogFileWatcher()
+
+	// Clean up expired process records
+	if g.processRegistry != nil {
+		if err := g.processRegistry.CleanupExpiredRecords(24 * time.Hour); err != nil {
+			logf("Warning: Failed to cleanup expired process records: %v", err)
+		}
+	}
 }
 
 func (g *GUI) launchWithCallback(prismProcess **os.Process, root, exePath string) {
@@ -774,6 +850,26 @@ func (g *GUI) refreshModpackState(mod Modpack) {
 		remoteVersion, err = fetchRemotePackVersion(mod.PackURL)
 	}
 
+	// Check for reattachment opportunities if process registry is available
+	var reattachable bool
+	var processID string
+	var processStatus ProcessStatus
+	var processStartTime time.Time
+
+	if g.processRegistry != nil {
+		records := g.processRegistry.GetRecordsByModpackID(mod.ID)
+		for _, record := range records {
+			if record.Status == ProcessStatusRunning {
+				// Found a running process for this modpack
+				reattachable = true
+				processID = record.ID
+				processStatus = record.Status
+				processStartTime = record.StartTime
+				break
+			}
+		}
+	}
+
 	errCopy := err
 	g.setModpackState(mod.ID, func(state *ModpackState) {
 		state.Installed = installed
@@ -796,6 +892,12 @@ func (g *GUI) refreshModpackState(mod Modpack) {
 			state.Running = false
 			state.RunningPID = 0
 		}
+
+		// Update reattachment information
+		state.Reattachable = reattachable
+		state.ProcessID = processID
+		state.ProcessStatus = processStatus
+		state.ProcessStartTime = processStartTime
 	})
 }
 
@@ -828,7 +930,12 @@ func (g *GUI) handlePrimaryAction(mod Modpack) {
 	case ActionUpdate:
 		g.runModpackOperation(mod, ActionUpdate)
 	case ActionLaunch:
-		g.runModpackOperation(mod, ActionLaunch)
+		// Check if this is a reattachment action
+		if state.Reattachable && state.ProcessID != "" {
+			g.reattachToProcess(mod, state.ProcessID)
+		} else {
+			g.runModpackOperation(mod, ActionLaunch)
+		}
 	case ActionKill:
 		g.killRunningInstance(mod)
 	default:
@@ -1062,18 +1169,34 @@ func (g *GUI) getPrismProcess() *os.Process {
 }
 
 func (g *GUI) killRunningInstance(mod Modpack) {
-	if g.getRunningModpackID() != mod.ID {
-		g.updateStatus("No running process to kill for this modpack")
+	state := g.getModpackState(mod.ID)
+	if state == nil {
+		g.updateStatus("No modpack state available")
 		return
 	}
 
-	proc := g.getPrismProcess()
-	if proc == nil {
-		g.updateStatus("No running process detected")
-		return
+	var pid int
+	var processID string
+
+	// Check if this is a reattached process
+	if state.Reattachable && state.ProcessID != "" {
+		pid = state.RunningPID
+		processID = state.ProcessID
+	} else {
+		// Regular process
+		if g.getRunningModpackID() != mod.ID {
+			g.updateStatus("No running process to kill for this modpack")
+			return
+		}
+
+		proc := g.getPrismProcess()
+		if proc == nil {
+			g.updateStatus("No running process detected")
+			return
+		}
+		pid = proc.Pid
 	}
 
-	pid := proc.Pid
 	logf("%s", infoLine(fmt.Sprintf("Attempting to kill %s (PID %d)", mod.DisplayName, pid)))
 
 	if err := killProcessByPID(pid); err != nil {
@@ -1084,17 +1207,90 @@ func (g *GUI) killRunningInstance(mod Modpack) {
 
 	g.updateStatus(fmt.Sprintf("Kill signal sent to %s", mod.DisplayName))
 	logf("%s", successLine(fmt.Sprintf("Kill signal sent to %s (PID %d)", mod.DisplayName, pid)))
+
+	// Update state
 	g.setRunningModpackID("")
 	g.setModpackState(mod.ID, func(state *ModpackState) {
 		state.Running = false
 		state.Busy = false
 		state.RunningPID = 0
+		state.Reattachable = false
+		state.ProcessID = ""
+		state.ProcessStatus = ProcessStatusStopped
 	})
+
+	// Remove from registry if it was a reattached process
+	if processID != "" && g.processRegistry != nil {
+		if err := g.processRegistry.RemoveRecord(processID); err != nil {
+			logf("Warning: Failed to remove process record: %v", err)
+		}
+	}
+
+	// Clear regular process reference
 	g.processMu.Lock()
 	if g.prismProcess != nil {
 		*g.prismProcess = nil
 	}
 	g.processMu.Unlock()
+}
+
+// reattachToProcess reattaches to an existing running process
+func (g *GUI) reattachToProcess(mod Modpack, processID string) {
+	if g.processRegistry == nil {
+		g.updateStatus("Process registry not available")
+		return
+	}
+
+	// Get the process record
+	record, err := g.processRegistry.GetRecord(processID)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to get process record %s: %v", processID, err)))
+		g.updateStatus("Process not found in registry")
+		return
+	}
+
+	// Validate that the process is still running and matches expected details
+	isValid, err := validateProcessIdentity(record.PID, record.Executable, record.WorkingDir)
+	if err != nil {
+		logf("%s", warnLine(fmt.Sprintf("Failed to validate process identity: %v", err)))
+		g.updateStatus("Failed to validate process")
+		return
+	}
+
+	if !isValid {
+		logf("%s", warnLine(fmt.Sprintf("Process %d no longer matches expected identity", record.PID)))
+		// Remove invalid record
+		if err := g.processRegistry.RemoveRecord(processID); err != nil {
+			logf("Warning: Failed to remove invalid process record: %v", err)
+		}
+		// Update modpack state
+		g.setModpackState(mod.ID, func(state *ModpackState) {
+			state.Reattachable = false
+			state.ProcessID = ""
+			state.ProcessStatus = ProcessStatusOrphaned
+		})
+		g.updateStatus("Process no longer available for reattachment")
+		return
+	}
+
+	// Successfully reattached
+	logf("%s", successLine(fmt.Sprintf("Reattached to %s (PID %d)", mod.DisplayName, record.PID)))
+	g.updateStatus(fmt.Sprintf("Reattached to %s", mod.DisplayName))
+
+	// Update modpack state
+	g.setRunningModpackID(mod.ID)
+	g.setModpackState(mod.ID, func(state *ModpackState) {
+		state.Running = true
+		state.RunningPID = record.PID
+		state.Reattachable = true
+		state.ProcessID = processID
+		state.ProcessStatus = ProcessStatusRunning
+	})
+
+	// Update last seen time
+	if err := g.processRegistry.UpdateProcessLastSeen(processID); err != nil {
+		logf("Warning: Failed to update process last seen time: %v", err)
+	}
 }
 
 func (g *GUI) deleteModpack(mod Modpack) {
@@ -1476,18 +1672,17 @@ func (g *GUI) uploadLog() {
 		}
 
 		// Log the raw response for debugging
-		logf("Upload response status: %s", resp.Status)
-		logf("Upload response content-type: %s", resp.Header.Get("Content-Type"))
+		// logf("Upload response status: %s", resp.Status)
+		// logf("Upload response content-type: %s", resp.Header.Get("Content-Type"))
 		bodyStr := string(body)
-		logf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
+		// logf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
 
 		// Log that we're parsing HTML instead of JSON
-		logf("Parsing HTML response to extract log file URL")
+		// logf("Parsing HTML response to extract log file URL")
 
 		// Check if the upload was successful (status code 200-299)
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			// Parse the HTML response to extract the file URL
-			bodyStr := string(body)
 			var logURL string
 
 			// Try to extract the filename from the HTML response using regex
@@ -1501,14 +1696,14 @@ func (g *GUI) uploadLog() {
 				filename := matches[1]
 				// Construct the full URL
 				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s", filename)
-				logf("Successfully extracted filename from HTML: %s", filename)
+				// logf("Successfully extracted filename from HTML: %s", filename)
 			} else {
 				// If regex fails, fall back to using our random ID
-				logf("Failed to extract filename from HTML, falling back to random ID: %s", randomID)
+				// logf("Failed to extract filename from HTML, falling back to random ID: %s", randomID)
 				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s.log", randomID)
 			}
 
-			logf("Final log URL: %s", logURL)
+			// logf("Final log URL: %s", logURL)
 
 			fyne.Do(func() {
 				// Extract filename from the URL for display
@@ -1582,8 +1777,16 @@ func (g *GUI) uploadLog() {
 					buttonContainer,
 				)
 
-				// Show the custom dialog
-				dialog.ShowCustom("Upload Successful", "", dialogContent, g.window)
+				// Create the custom dialog with only our defined buttons
+				customDialog := dialog.NewCustom("Upload Successful", "", dialogContent, g.window)
+
+				// Set the OK button to close the dialog
+				okButton.OnTapped = func() {
+					customDialog.Hide()
+				}
+
+				// Show the dialog
+				customDialog.Show()
 
 				// Auto-copy to clipboard (existing functionality)
 				g.window.Clipboard().SetContent(logURL)
