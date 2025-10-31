@@ -129,12 +129,11 @@ func TestProcessStatusCacheTTL(t *testing.T) {
 	// Wait for cache to expire
 	time.Sleep(150 * time.Millisecond)
 
-	// Test cache expiration
-	isRunning3, err := cache.Get(12345)
+	// Test cache expiration - verify that Get still works after TTL
+	_, err = cache.Get(12345)
 	if err != nil {
 		t.Errorf("Expected no error on cache refresh, got: %v", err)
 	}
-	// The value might be different now since we called the actual function again
 
 	// Test invalidation
 	cache.Invalidate(12345)

@@ -92,7 +92,7 @@ func GetDirectPrismExecutablePath(baseDir string) string {
 		// Try both naming conventions: with and without space
 		withSpace := filepath.Join(baseDir, "Prism Launcher.app", "Contents", "MacOS", "prismlauncher")
 		withoutSpace := filepath.Join(baseDir, "PrismLauncher.app", "Contents", "MacOS", "prismlauncher")
-		
+
 		// Prefer the one that exists
 		if exists(withSpace) {
 			return withSpace

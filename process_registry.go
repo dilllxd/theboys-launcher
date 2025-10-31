@@ -12,9 +12,9 @@ import (
 
 // ProcessStatusCacheEntry represents a cached process status entry
 type ProcessStatusCacheEntry struct {
-	IsRunning   bool
-	CachedAt    time.Time
-	Error       error // nil if no error occurred
+	IsRunning bool
+	CachedAt  time.Time
+	Error     error // nil if no error occurred
 }
 
 // ProcessStatusCache caches process status with TTL to reduce external command executions
@@ -526,10 +526,10 @@ func (pr *ProcessRegistry) ClearProcessStatusCache() {
 func (pr *ProcessRegistry) GetProcessStatusCacheStats() (entryCount int, ttl time.Duration) {
 	pr.statusCache.mutex.RLock()
 	defer pr.statusCache.mutex.RUnlock()
-	
+
 	entryCount = len(pr.statusCache.entries)
 	ttl = pr.statusCache.ttl
-	
+
 	return entryCount, ttl
 }
 

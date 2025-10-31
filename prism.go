@@ -26,7 +26,7 @@ func ensurePrism(dir string) (bool, error) {
 	if runtime.GOOS == "darwin" {
 		// macOS: download universal ZIP to Applications folder
 		applicationsDir := "/Applications"
-		
+
 		// Check both naming conventions for existing installation
 		prismAppPathWithoutSpace := filepath.Join(applicationsDir, "PrismLauncher.app")
 		prismAppPathWithSpace := filepath.Join(applicationsDir, "Prism Launcher.app")
@@ -351,8 +351,8 @@ func fixMacOSExecutablePermissions(macOSDir string) error {
 		if isExecutable || isKnownExecutable {
 			// Set executable permissions (755)
 			newMode := info.Mode() | 0111 // Add execute bit for owner
-			newMode = newMode | 0110    // Add execute bit for group
-			newMode = newMode | 0001    // Add execute bit for others
+			newMode = newMode | 0110      // Add execute bit for group
+			newMode = newMode | 0001      // Add execute bit for others
 
 			if newMode != info.Mode() {
 				if err := os.Chmod(path, newMode); err != nil {

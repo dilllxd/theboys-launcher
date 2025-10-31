@@ -32,13 +32,13 @@ func createInfoButton(title, content string, window fyne.Window) fyne.CanvasObje
 	btn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
 		dialog.ShowInformation(title, content, window)
 	})
-	
+
 	// Set button importance to make it less prominent but still clickable
 	btn.Importance = widget.LowImportance
-	
+
 	// Create a container with fixed size to ensure consistent button appearance
 	infoContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(32, 32)), btn)
-	
+
 	return infoContainer
 }
 
@@ -67,7 +67,7 @@ type GUI struct {
 	logWatcherActive   bool
 	logStopChan        chan struct{}
 	logMutex           sync.RWMutex
-	logLastPosition    int64  // Track last read position for incremental reading
+	logLastPosition    int64    // Track last read position for incremental reading
 	logFileHandle      *os.File // Keep file handle open for better performance
 	loadingOverlay     fyne.CanvasObject
 	loadingLabel       *widget.Label
@@ -1590,13 +1590,13 @@ func (g *GUI) stopLogFileWatcher() {
 	if g.logWatcherActive && g.logStopChan != nil {
 		close(g.logStopChan)
 		g.logWatcherActive = false
-		
+
 		// Close file handle if open
 		if g.logFileHandle != nil {
 			g.logFileHandle.Close()
 			g.logFileHandle = nil
 		}
-		
+
 		// Reset position tracking
 		g.logLastPosition = 0
 	}
@@ -1629,7 +1629,7 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 			}
 
 			g.logMutex.Lock()
-			
+
 			if !initialLoadDone {
 				// Initial load - read entire file once
 				file, err := os.Open(logPath)
@@ -1705,7 +1705,7 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 					// Update position if we read something
 					if bytesRead > 0 {
 						g.logLastPosition += int64(bytesRead)
-						
+
 						// Only update UI if there's actual new content
 						newContentStr := string(newContent[:bytesRead])
 						if strings.TrimSpace(newContentStr) != "" {
@@ -1723,7 +1723,7 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 						}
 					}
 				}
-				
+
 				g.logMutex.Unlock()
 			}
 		}
@@ -2119,7 +2119,7 @@ func (g *GUI) showSettings() {
 
 	// Create a title with styling
 	titleLabel := widget.NewLabelWithStyle("Launcher Settings", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	
+
 	// Create Memory Settings section with card
 	memoryCard := widget.NewCard("Memory Settings", "", container.NewVBox(
 		container.NewPadded(
@@ -2138,7 +2138,7 @@ func (g *GUI) showSettings() {
 		),
 		container.NewPadded(memSlider),
 	))
-	
+
 	// Create Launcher Settings section with card
 	launcherCard := widget.NewCard("Launcher Configuration", "", container.NewVBox(
 		container.NewPadded(
@@ -2156,7 +2156,7 @@ func (g *GUI) showSettings() {
 			),
 		),
 	))
-	
+
 	// Create Status section with card
 	statusCard := widget.NewCard("Status Information", "", container.NewVBox(
 		container.NewPadded(
@@ -2167,12 +2167,12 @@ func (g *GUI) showSettings() {
 			),
 		),
 	))
-	
+
 	// Create buttons section
 	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
 		// This will be set after the pop is created
 	})
-	
+
 	saveApplyBtn := widget.NewButtonWithIcon("Save & Apply", theme.DocumentSaveIcon(), func() {
 		// This will be set after the pop is created
 
@@ -2306,24 +2306,24 @@ func (g *GUI) showSettings() {
 			})
 		}()
 	})
-	
+
 	buttonContainer := container.NewHBox(
 		layout.NewSpacer(),
 		cancelBtn,
 		saveApplyBtn,
 	)
-	
+
 	// Main dialog content with improved layout
 	dialogContent := container.NewVBox(
 		// Title with padding
 		container.NewPadded(titleLabel),
 		widget.NewSeparator(),
-		
+
 		// Settings cards with spacing
 		container.NewPadded(memoryCard),
 		container.NewPadded(launcherCard),
 		container.NewPadded(statusCard),
-		
+
 		// Button section with separator
 		widget.NewSeparator(),
 		container.NewPadded(buttonContainer),
@@ -2336,12 +2336,12 @@ func (g *GUI) showSettings() {
 		),
 		g.window.Canvas(),
 	)
-	
+
 	// Set the button callbacks now that we have the pop reference
 	cancelBtn.OnTapped = func() {
 		pop.Hide()
 	}
-	
+
 	// Update the save button callback to close the dialog
 	saveApplyCallback := saveApplyBtn.OnTapped
 	saveApplyBtn.OnTapped = func() {
@@ -2350,7 +2350,7 @@ func (g *GUI) showSettings() {
 		// Call the original callback
 		saveApplyCallback()
 	}
-	
+
 	// Set a reasonable minimum size for the dialog
 	pop.Resize(fyne.NewSize(600, 500))
 	pop.Show()

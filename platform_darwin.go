@@ -83,7 +83,6 @@ func getArchitecture() string {
 	}
 }
 
-
 // Check if path is an app bundle
 func isAppBundle(path string) bool {
 	return filepath.Ext(path) == ".app"

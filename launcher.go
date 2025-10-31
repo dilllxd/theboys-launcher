@@ -1252,7 +1252,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		// Try both naming conventions in /Applications
 		applicationsPrismWithSpace := filepath.Join("/Applications", "Prism Launcher.app", "Contents", "MacOS", "prismlauncher")
 		applicationsPrismWithoutSpace := filepath.Join("/Applications", "PrismLauncher.app", "Contents", "MacOS", "prismlauncher")
-		
+
 		if exists(applicationsPrismWithSpace) {
 			prismExe = applicationsPrismWithSpace
 			logf("Using Prism Launcher from /Applications folder (with space)")
