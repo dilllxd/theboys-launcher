@@ -1895,6 +1895,10 @@ func (g *GUI) showSettings() {
 	devCheck := widget.NewCheck("Enable dev builds (pre-release)", nil)
 	devCheck.SetChecked(settings.DevBuildsEnabled)
 
+	// Debug logging checkbox
+	debugCheck := widget.NewCheck("Enable debug logging", nil)
+	debugCheck.SetChecked(settings.DebugEnabled)
+
 	// Current channel status label
 	channelLabel := widget.NewLabel("")
 	if settings.DevBuildsEnabled {
@@ -1947,6 +1951,7 @@ func (g *GUI) showSettings() {
 		widget.NewLabel("Launcher Settings"),
 		autoCheck,
 		devCheck,
+		debugCheck,
 		container.NewHBox(channelLabel, layout.NewSpacer()),
 		memLabel,
 		memSlider,
@@ -2073,7 +2078,13 @@ func (g *GUI) showSettings() {
 				logf("%s", successLine(fmt.Sprintf("Successfully updated to %s channel", map[bool]string{true: "dev", false: "stable"}[targetDevMode])))
 			}
 
-			// Save RAM settings
+			// Apply debug logging change
+			if debugCheck.Checked != settings.DebugEnabled {
+				settings.DebugEnabled = debugCheck.Checked
+				logf("%s", infoLine(fmt.Sprintf("GUI: User %s debug logging", map[bool]string{true: "enabled", false: "disabled"}[debugCheck.Checked])))
+			}
+
+			// Save all settings
 			if err := saveSettings(g.root); err != nil {
 				logf("%s", warnLine(fmt.Sprintf("Failed to save settings: %v", err)))
 				fyne.Do(func() {

@@ -47,6 +47,8 @@ type LauncherSettings struct {
 	AutoRAM  bool `json:"autoRam"`  // Whether to auto-manage RAM per modpack
 	// If true, the launcher will check and install prerelease/dev builds from releases
 	DevBuildsEnabled bool `json:"devBuildsEnabled,omitempty"`
+	// If true, enables debug logging for troubleshooting
+	DebugEnabled bool `json:"debugEnabled,omitempty"`
 }
 
 var defaultModpackID string
@@ -74,6 +76,7 @@ func loadSettings(root string) error {
 		MemoryMB:         clampMemoryMB(DefaultAutoMemoryMB()),
 		AutoRAM:          true,
 		DevBuildsEnabled: isDevBuild(),
+		DebugEnabled:     false, // Debug disabled by default for better user experience
 	}
 
 	// Try to load existing settings
@@ -82,6 +85,7 @@ func loadSettings(root string) error {
 			MemoryMB         int   `json:"memoryMB"`
 			AutoRAM          *bool `json:"autoRam"`
 			DevBuildsEnabled *bool `json:"devBuildsEnabled"`
+			DebugEnabled     *bool `json:"debugEnabled,omitempty"`
 		}
 		var stored storedSettings
 		if err := json.Unmarshal(data, &stored); err == nil {
@@ -98,6 +102,11 @@ func loadSettings(root string) error {
 				settings.DevBuildsEnabled = false
 			} else {
 				settings.DevBuildsEnabled = *stored.DevBuildsEnabled
+			}
+			if stored.DebugEnabled == nil {
+				settings.DebugEnabled = defaultSettings.DebugEnabled
+			} else {
+				settings.DebugEnabled = *stored.DebugEnabled
 			}
 			if !settings.AutoRAM {
 				settings.MemoryMB = clampMemoryMB(settings.MemoryMB)
@@ -126,8 +135,8 @@ func loadSettings(root string) error {
 // saveSettings saves current settings to settings.json
 func saveSettings(root string) error {
 	settingsPath := filepath.Join(root, "settings.json")
-	logf("%s", infoLine(fmt.Sprintf("Saving settings: DevBuildsEnabled=%t, AutoRAM=%t, MemoryMB=%d",
-		settings.DevBuildsEnabled, settings.AutoRAM, settings.MemoryMB)))
+	logf("%s", infoLine(fmt.Sprintf("Saving settings: DevBuildsEnabled=%t, AutoRAM=%t, MemoryMB=%d, DebugEnabled=%t",
+		settings.DevBuildsEnabled, settings.AutoRAM, settings.MemoryMB, settings.DebugEnabled)))
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
