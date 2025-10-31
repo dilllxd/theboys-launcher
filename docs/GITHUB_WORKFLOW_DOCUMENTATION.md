@@ -814,7 +814,7 @@ Manual testing procedures are documented for:
 ### Development Environment
 
 #### Go Toolchain
-- **Version**: Go 1.25.0+ (specified in [`go.mod`](../go.mod))
+- **Version**: Go 1.23+ (specified in [`go.mod`](../go.mod))
 - **Modules**: Go modules for dependency management
 - **CGO**: Required for Fyne GUI framework
 

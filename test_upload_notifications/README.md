@@ -15,7 +15,7 @@ This test verifies that the threading issue with the dialog display in the `uplo
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.23 or later
 - Fyne dependencies (automatically downloaded)
 
 ### Steps
@@ -100,7 +100,7 @@ The test replicates the key threading fix from the main application:
 
 ### If the test doesn't run:
 
-1. **Check Go version**: Ensure you have Go 1.21 or later:
+1. **Check Go version**: Ensure you have Go 1.23 or later:
    ```bash
    go version
    ```

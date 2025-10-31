@@ -5,7 +5,7 @@ This guide provides comprehensive instructions for building TheBoysLauncher on a
 ## 🛠️ Prerequisites
 
 ### General Requirements
-- **Go 1.22+** - [Download Go](https://golang.org/dl/)
+- **Go 1.23+** - [Download Go](https://golang.org/dl/)
 - **Git** - For cloning the repository
 - **Make** - For using the Makefile (recommended)
 
