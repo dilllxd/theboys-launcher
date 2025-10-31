@@ -1361,13 +1361,6 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 func (g *GUI) uploadLog() {
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
-	// Read log file content
-	content, err := os.ReadFile(logPath)
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("Failed to read log file: %v", err), g.window)
-		return
-	}
-
 	// Show upload progress dialog
 	progressDialog := dialog.NewCustomWithoutButtons("Uploading Log...",
 		widget.NewProgressBarInfinite(), g.window)
@@ -1377,15 +1370,42 @@ func (g *GUI) uploadLog() {
 	go func() {
 		defer progressDialog.Hide()
 
-		// Create multipart form with required fields
+		// Create multipart form with file upload (simpler approach)
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
-		// Add form fields (matching working Chrome request)
+		// Open the log file for reading
+		file, err := os.Open(logPath)
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to open log file for upload: %v", err), g.window)
+			})
+			return
+		}
+		defer file.Close()
+
+		// Create form part for the file upload
+		part, err := writer.CreateFormFile("file", "latest.log")
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
+			})
+			return
+		}
+
+		// Copy file content to the form part
+		_, err = io.Copy(part, file)
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to copy file content: %v", err), g.window)
+			})
+			return
+		}
+
+		// Add other form fields
 		writer.WriteField("expiration", "24hour")
 		writer.WriteField("syntax_highlight", "none")
 		writer.WriteField("privacy", "public")
-		writer.WriteField("content", string(content))
 
 		writer.Close()
 
