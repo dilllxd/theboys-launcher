@@ -274,10 +274,26 @@ func NewGUI(modpacks []Modpack, root string) *GUI {
 	w.CenterOnScreen()
 	w.SetFixedSize(false)
 
-	// Initialize process registry
-	processRegistry, err := GetGlobalProcessRegistry(root)
-	if err != nil {
-		logf("Warning: Failed to initialize process registry: %v", err)
+	// Initialize process registry asynchronously to avoid blocking GUI
+	var processRegistry *ProcessRegistry
+	var initErr error
+
+	// Use a channel to signal completion
+	initDone := make(chan struct{})
+	go func() {
+		processRegistry, initErr = GetGlobalProcessRegistry(root)
+		close(initDone)
+	}()
+
+	// Wait for initialization with timeout to avoid blocking GUI forever
+	select {
+	case <-initDone:
+		if initErr != nil {
+			logf("Warning: Failed to initialize process registry: %v", initErr)
+		}
+	case <-time.After(5 * time.Second):
+		logf("Warning: Process registry initialization timed out, continuing without it")
+		processRegistry = nil
 	}
 
 	gui := &GUI{
@@ -299,9 +315,11 @@ func (g *GUI) Show() {
 	g.buildUI()
 	g.startUpdateCheck()
 
-	// Validate existing processes on startup
+	// Validate existing processes asynchronously to avoid blocking GUI
 	if g.processRegistry != nil {
-		g.validateExistingProcesses()
+		go func() {
+			g.validateExistingProcesses()
+		}()
 	}
 
 	// Set up window close callback to clean up resources
@@ -318,8 +336,6 @@ func (g *GUI) validateExistingProcesses() {
 	if g.processRegistry == nil {
 		return
 	}
-
-	logf("Validating existing processes...")
 
 	// Validate all processes in the registry
 	if err := g.processRegistry.ValidateProcesses(); err != nil {
@@ -340,20 +356,18 @@ func (g *GUI) validateExistingProcesses() {
 			state.RunningPID = process.PID
 		})
 	}
-
-	logf("Found %d running processes available for reattachment", len(runningProcesses))
 }
 
 // cleanup stops background tasks and releases resources
 func (g *GUI) cleanup() {
 	g.stopLogFileWatcher()
 
-	// Clean up expired process records
-	if g.processRegistry != nil {
-		if err := g.processRegistry.CleanupExpiredRecords(24 * time.Hour); err != nil {
-			logf("Warning: Failed to cleanup expired process records: %v", err)
-		}
-	}
+	// TEMPORARILY DISABLED: Clean up expired process records
+	// if g.processRegistry != nil {
+	// 	if err := g.processRegistry.CleanupExpiredRecords(24 * time.Hour); err != nil {
+	// 		logf("Warning: Failed to cleanup expired process records: %v", err)
+	// 	}
+	// }
 }
 
 func (g *GUI) launchWithCallback(prismProcess **os.Process, root, exePath string) {
@@ -850,25 +864,25 @@ func (g *GUI) refreshModpackState(mod Modpack) {
 		remoteVersion, err = fetchRemotePackVersion(mod.PackURL)
 	}
 
-	// Check for reattachment opportunities if process registry is available
-	var reattachable bool
-	var processID string
-	var processStatus ProcessStatus
-	var processStartTime time.Time
+	// TEMPORARILY DISABLED: Check for reattachment opportunities if process registry is available
+	var reattachable bool = false
+	var processID string = ""
+	var processStatus ProcessStatus = ProcessStatusStopped
+	var processStartTime time.Time = time.Time{}
 
-	if g.processRegistry != nil {
-		records := g.processRegistry.GetRecordsByModpackID(mod.ID)
-		for _, record := range records {
-			if record.Status == ProcessStatusRunning {
-				// Found a running process for this modpack
-				reattachable = true
-				processID = record.ID
-				processStatus = record.Status
-				processStartTime = record.StartTime
-				break
-			}
-		}
-	}
+	// if g.processRegistry != nil {
+	// 	records := g.processRegistry.GetRecordsByModpackID(mod.ID)
+	// 	for _, record := range records {
+	// 		if record.Status == ProcessStatusRunning {
+	// 			// Found a running process for this modpack
+	// 			reattachable = true
+	// 			processID = record.ID
+	// 			processStatus = record.Status
+	// 			processStartTime = record.StartTime
+	// 			break
+	// 		}
+	// 	}
+	// }
 
 	errCopy := err
 	g.setModpackState(mod.ID, func(state *ModpackState) {
@@ -1568,13 +1582,22 @@ func (g *GUI) uploadLog() {
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
 	// Show upload progress dialog
-	progressDialog := dialog.NewCustomWithoutButtons("Uploading Log...",
+	progressDialog := dialog.NewCustom("Uploading Log...", "Cancel",
 		widget.NewProgressBarInfinite(), g.window)
-	progressDialog.Show()
+
+	// Show the dialog with error handling
+	if progressDialog != nil {
+		progressDialog.Show()
+	} else {
+		// Fallback to simple information dialog if custom dialog creation fails
+		dialog.ShowInformation("Uploading Log", "Uploading log file to i.dylan.lol...", g.window)
+	}
 
 	// Upload in background goroutine
 	go func() {
-		defer progressDialog.Hide()
+		if progressDialog != nil {
+			defer progressDialog.Hide()
+		}
 
 		// Generate a random 8-character ID for the filename
 		randomID, err := generateRandomID()
@@ -1778,15 +1801,20 @@ func (g *GUI) uploadLog() {
 				)
 
 				// Create the custom dialog with only our defined buttons
-				customDialog := dialog.NewCustom("Upload Successful", "", dialogContent, g.window)
+				customDialog := dialog.NewCustom("Upload Successful", "OK", dialogContent, g.window)
 
 				// Set the OK button to close the dialog
 				okButton.OnTapped = func() {
 					customDialog.Hide()
 				}
 
-				// Show the dialog
-				customDialog.Show()
+				// Show the dialog with error handling
+				if customDialog != nil {
+					customDialog.Show()
+				} else {
+					// Fallback to simple information dialog if custom dialog creation fails
+					dialog.ShowInformation("Upload Successful", "The log has been uploaded successfully and the URL has been copied to your clipboard.", g.window)
+				}
 
 				// Auto-copy to clipboard (existing functionality)
 				g.window.Clipboard().SetContent(logURL)
