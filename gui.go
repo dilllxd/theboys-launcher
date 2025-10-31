@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
@@ -430,7 +430,7 @@ func (g *GUI) buildConsoleView() fyne.CanvasObject {
 	copyBtn := widget.NewButtonWithIcon("Copy All", theme.ContentCopyIcon(), func() {
 		g.window.Clipboard().SetContent(g.consoleOutput.Text)
 	})
-	uploadBtn := widget.NewButtonWithIcon("Upload to logs.dylan.lol", theme.UploadIcon(), func() {
+	uploadBtn := widget.NewButtonWithIcon("Upload to i.dylan.lol", theme.UploadIcon(), func() {
 		g.uploadLog()
 	})
 
@@ -1357,7 +1357,17 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 	}
 }
 
-// uploadLog uploads the latest.log content to logs.dylan.lol
+// generateRandomID generates a random 8-character hexadecimal string
+func generateRandomID() (string, error) {
+	bytes := make([]byte, 4) // 4 bytes = 8 hex characters
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%02x%02x%02x%02x", bytes[0], bytes[1], bytes[2], bytes[3]), nil
+}
+
+// uploadLog uploads the latest.log content to i.dylan.lol/logs/
 func (g *GUI) uploadLog() {
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
@@ -1370,9 +1380,28 @@ func (g *GUI) uploadLog() {
 	go func() {
 		defer progressDialog.Hide()
 
-		// Create multipart form with file upload (simpler approach)
+		// Generate a random 8-character ID for the filename
+		randomID, err := generateRandomID()
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to generate random ID: %v", err), g.window)
+			})
+			return
+		}
+		filename := fmt.Sprintf("%s.log", randomID)
+
+		// Create multipart form with file upload using CreateFormFile to match curl -F format
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
+
+		// Add the required "act" field with value "bput" as required by the endpoint
+		err = writer.WriteField("act", "bput")
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to add act field: %v", err), g.window)
+			})
+			return
+		}
 
 		// Open the log file for reading
 		file, err := os.Open(logPath)
@@ -1384,8 +1413,8 @@ func (g *GUI) uploadLog() {
 		}
 		defer file.Close()
 
-		// Create form part for the file upload
-		part, err := writer.CreateFormFile("file", "latest.log")
+		// Create form file part using CreateFormFile to match curl -F "file=@filename;type=application/octet-stream"
+		part, err := writer.CreateFormFile("file", filename)
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
@@ -1402,15 +1431,10 @@ func (g *GUI) uploadLog() {
 			return
 		}
 
-		// Add other form fields
-		writer.WriteField("expiration", "24hour")
-		writer.WriteField("syntax_highlight", "none")
-		writer.WriteField("privacy", "public")
-
 		writer.Close()
 
 		// Create a new HTTP request with the form data
-		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", &requestBody)
+		req, err := http.NewRequest("POST", "https://i.dylan.lol/logs/", &requestBody)
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
@@ -1442,7 +1466,7 @@ func (g *GUI) uploadLog() {
 		}
 		defer resp.Body.Close()
 
-		// Read the full response body for debugging
+		// Read the full response body
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fyne.Do(func() {
@@ -1454,75 +1478,74 @@ func (g *GUI) uploadLog() {
 		// Log the raw response for debugging
 		logf("Upload response status: %s", resp.Status)
 		logf("Upload response content-type: %s", resp.Header.Get("Content-Type"))
-		logf("Upload response body (first 200 chars): %s", string(body)[:min(200, len(body))])
+		bodyStr := string(body)
+		logf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
 
-		// Check if we got HTML (MicroBin) or JSON
-		contentType := resp.Header.Get("Content-Type")
-		if strings.Contains(strings.ToLower(contentType), "text/html") || (len(body) > 0 && body[0] == '<') {
-			// Parse HTML response to extract the file ID
-			fileID := g.extractFileIDFromHTML(string(body))
-			if fileID != "" {
-				// Construct the direct URL using /p/ path for direct access
-				directURL := fmt.Sprintf("https://logs.dylan.lol/p/%s", fileID)
+		// Log that we're parsing HTML instead of JSON
+		logf("Parsing HTML response to extract log file URL")
 
-				fyne.Do(func() {
+		// Check if the upload was successful (status code 200-299)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			// Parse the HTML response to extract the file URL
+			bodyStr := string(body)
+			var logURL string
+
+			// Try to extract the filename from the HTML response using regex
+			// Pattern to match href="/logs/filename.log"
+			logPattern := `href="/logs/([^"]+\.log)"`
+			re := regexp.MustCompile(logPattern)
+			matches := re.FindStringSubmatch(bodyStr)
+
+			if len(matches) > 1 {
+				// Extract the filename from the match
+				filename := matches[1]
+				// Construct the full URL
+				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s", filename)
+				logf("Successfully extracted filename from HTML: %s", filename)
+			} else {
+				// If regex fails, fall back to using our random ID
+				logf("Failed to extract filename from HTML, falling back to random ID: %s", randomID)
+				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s.log", randomID)
+			}
+
+			logf("Final log URL: %s", logURL)
+
+			fyne.Do(func() {
+				// Extract filename from the URL for display
+				filename := randomID + ".log"
+				if matches := regexp.MustCompile(`https://i\.dylan\.lol/logs/([^\.]+\.log)`).FindStringSubmatch(logURL); len(matches) > 1 {
+					filename = matches[1]
+				}
+
+				// Parse URL for hyperlink
+				parsedURL, err := url.Parse(logURL)
+				if err != nil {
+					// If URL parsing fails, just show the text
+					successContent := container.NewVBox(
+						widget.NewLabel("Log uploaded successfully!"),
+						widget.NewLabel(fmt.Sprintf("Uploaded as: %s", filename)),
+						widget.NewLabel(fmt.Sprintf("URL: %s", logURL)),
+					)
+					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
+				} else {
 					// Success dialog with copy functionality
 					successContent := container.NewVBox(
 						widget.NewLabel("Log uploaded successfully!"),
-						widget.NewHyperlink("View Log", &url.URL{Scheme: "https", Host: "logs.dylan.lol", Path: "/p/" + fileID}),
+						widget.NewLabel(fmt.Sprintf("Uploaded as: %s", filename)),
+						widget.NewHyperlink("View Log", parsedURL),
 					)
-
 					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
-
-					// Auto-copy to clipboard
-					g.window.Clipboard().SetContent(directURL)
-				})
-				return
-			}
-
-			// If we couldn't extract the file ID, show error
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Upload succeeded but couldn't extract file URL"), g.window)
-			})
-			return
-		}
-
-		// Try to parse as JSON (fallback)
-		var result struct {
-			OK  bool   `json:"ok"`
-			URL string `json:"url"`
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to parse upload response: %v", err), g.window)
-			})
-			return
-		}
-
-		fyne.Do(func() {
-			if result.OK {
-				// Parse URL for hyperlink
-				logURL, err := url.Parse(result.URL)
-				if err != nil {
-					dialog.ShowError(fmt.Errorf("Failed to parse log URL: %v", err), g.window)
-					return
 				}
 
-				// Success dialog with copy functionality
-				successContent := container.NewVBox(
-					widget.NewLabel("Log uploaded successfully!"),
-					widget.NewHyperlink("View Log", logURL),
-				)
-
-				dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
-
 				// Auto-copy to clipboard
-				g.window.Clipboard().SetContent(result.URL)
-			} else {
-				dialog.ShowError(fmt.Errorf("Upload failed"), g.window)
-			}
-		})
+				g.window.Clipboard().SetContent(logURL)
+			})
+		} else {
+			// Upload failed
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Upload failed with status: %s\nResponse: %s", resp.Status, string(body)[:min(200, len(body))]), g.window)
+			})
+		}
 	}()
 }
 
