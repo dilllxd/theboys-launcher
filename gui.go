@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1378,41 +1375,15 @@ func (g *GUI) uploadLog() {
 	go func() {
 		defer progressDialog.Hide()
 
-		// Create a buffer to hold the multipart form data
-		var requestBody bytes.Buffer
-		writer := multipart.NewWriter(&requestBody)
+		// Create form data with the required fields
+		formData := url.Values{}
+		formData.Set("expiration", "never")
+		formData.Set("syntax_highlight", "none")
+		formData.Set("privacy", "public")
+		formData.Set("content", string(content))
 
-		// Create a form file field with the log content and explicit content type
-		h := make(textproto.MIMEHeader)
-		h.Set("Content-Disposition", `form-data; name="file"; filename="latest.log"`)
-		h.Set("Content-Type", "text/plain")
-
-		part, err := writer.CreatePart(h)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
-			})
-			return
-		}
-
-		// Write the log content to the form file
-		if _, err := part.Write(content); err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to write log content: %v", err), g.window)
-			})
-			return
-		}
-
-		// Close the multipart writer to finalize the form data
-		if err := writer.Close(); err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to finalize form data: %v", err), g.window)
-			})
-			return
-		}
-
-		// Create a new HTTP request with the multipart form data
-		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", &requestBody)
+		// Create a new HTTP request with the form data
+		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", strings.NewReader(formData.Encode()))
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
@@ -1420,8 +1391,8 @@ func (g *GUI) uploadLog() {
 			return
 		}
 
-		// Set the content type header with the boundary
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+		// Set the content type header for form data
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
 
 		// Send the request with TLS 1.2 and timeout
