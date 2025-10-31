@@ -43,7 +43,7 @@ func killProcessByPID(pid int) error {
 	}
 
 	// Also kill the specific process directly
-	logf("DEBUG: Sending SIGKILL to process PID %d", pid)
+	debugf("Sending SIGKILL to process PID %d", pid)
 	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
 	killOutput, killErr := killCmd.CombinedOutput()
 	if killErr != nil {
