@@ -72,15 +72,22 @@ func TestAssetNameDetection(t *testing.T) {
 	}
 
 	// Test macOS asset name
-	expectedMacAsset := "TheBoysLauncher-mac-universal"
-	if IsDarwin() && actualWindowsAsset != expectedWindowsAsset {
-		t.Errorf("Expected macOS asset name %s, got %s", expectedMacAsset, actualWindowsAsset)
+	var expectedMacAsset string
+	if runtime.GOARCH == "arm64" {
+		expectedMacAsset = "TheBoysLauncher-mac-arm64"
+	} else {
+		expectedMacAsset = "TheBoysLauncher-mac-amd64"
+	}
+	actualMacAsset := GetLauncherAssetName()
+	if IsDarwin() && actualMacAsset != expectedMacAsset {
+		t.Errorf("Expected macOS asset name %s, got %s", expectedMacAsset, actualMacAsset)
 	}
 
 	// Test Linux asset name
 	expectedLinuxAsset := "TheBoysLauncher-linux"
-	if IsLinux() && actualWindowsAsset != expectedWindowsAsset {
-		t.Errorf("Expected Linux asset name %s, got %s", expectedLinuxAsset, actualWindowsAsset)
+	actualLinuxAsset := GetLauncherAssetName()
+	if IsLinux() && actualLinuxAsset != expectedLinuxAsset {
+		t.Errorf("Expected Linux asset name %s, got %s", expectedLinuxAsset, actualLinuxAsset)
 	}
 }
 

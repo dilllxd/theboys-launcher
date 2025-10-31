@@ -26,7 +26,11 @@ func TestGetLauncherAssetName(t *testing.T) {
 	case "windows":
 		expected = "TheBoysLauncher.exe"
 	case "darwin":
-		expected = "TheBoysLauncher-mac-universal"
+		if runtime.GOARCH == "arm64" {
+			expected = "TheBoysLauncher-mac-arm64"
+		} else {
+			expected = "TheBoysLauncher-mac-amd64"
+		}
 	case "linux":
 		expected = "TheBoysLauncher-linux"
 	default:
