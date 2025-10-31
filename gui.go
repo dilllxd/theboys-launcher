@@ -37,7 +37,7 @@ func createInfoButton(title, content string, window fyne.Window) fyne.CanvasObje
 	btn.Importance = widget.LowImportance
 	
 	// Create a container with fixed size to ensure consistent button appearance
-	infoContainer := container.New(layout.NewFixedGridLayout(fyne.NewSize(32, 32)), btn)
+	infoContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(32, 32)), btn)
 	
 	return infoContainer
 }
@@ -2170,12 +2170,11 @@ func (g *GUI) showSettings() {
 	
 	// Create buttons section
 	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
-		pop.Hide()
+		// This will be set after the pop is created
 	})
 	
 	saveApplyBtn := widget.NewButtonWithIcon("Save & Apply", theme.DocumentSaveIcon(), func() {
-		// Close the settings dialog immediately
-		pop.Hide()
+		// This will be set after the pop is created
 
 		// Show loading in main UI instead of dialog
 		g.showLoading(true, "Applying settings...")
@@ -2337,6 +2336,20 @@ func (g *GUI) showSettings() {
 		),
 		g.window.Canvas(),
 	)
+	
+	// Set the button callbacks now that we have the pop reference
+	cancelBtn.OnTapped = func() {
+		pop.Hide()
+	}
+	
+	// Update the save button callback to close the dialog
+	saveApplyCallback := saveApplyBtn.OnTapped
+	saveApplyBtn.OnTapped = func() {
+		// Close the settings dialog immediately
+		pop.Hide()
+		// Call the original callback
+		saveApplyCallback()
+	}
 	
 	// Set a reasonable minimum size for the dialog
 	pop.Resize(fyne.NewSize(600, 500))
