@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"image/color"
 	"io"
@@ -1417,10 +1418,89 @@ func (g *GUI) refreshModpacks() {
 	g.showLoading(true, "Refreshing modpacks...")
 
 	go func() {
-		time.Sleep(2 * time.Second)
-		g.showLoading(false, "")
-		g.updateStatus("Modpack list refreshed")
+		// Actually reload the modpacks from remote
+		newModpacks, err := fetchRemoteModpacks(remoteModpacksURL, 30*time.Second)
+		if err != nil {
+			fyne.Do(func() {
+				g.showLoading(false, "")
+				g.updateStatus(fmt.Sprintf("Failed to refresh modpacks: %v", err))
+				dialog.ShowError(fmt.Errorf("Failed to refresh modpack list: %v", err), g.window)
+			})
+			return
+		}
+
+		normalized := normalizeModpacks(newModpacks)
+		if len(normalized) == 0 {
+			fyne.Do(func() {
+				g.showLoading(false, "")
+				g.updateStatus("No valid modpacks found in remote catalog")
+				dialog.ShowError(errors.New("No valid modpacks found in remote catalog"), g.window)
+			})
+			return
+		}
+
+		// Update GUI's modpack list
+		fyne.Do(func() {
+			g.modpacks = normalized
+			g.filtered = append([]Modpack(nil), normalized...)
+			g.updateStatus(fmt.Sprintf("Loaded %d modpack(s) from remote catalog", len(normalized)))
+
+			// Update header subtitle to reflect new modpack count
+			if g.tabs != nil && len(g.tabs.Items) > 0 {
+				// Rebuild header to update modpack count
+				header := g.buildHeader()
+				sidebar := g.buildSidebar()
+				content := g.buildContent()
+				status := g.buildStatusBar()
+
+				body := container.NewBorder(
+					header,
+					status,
+					sidebar,
+					nil,
+					content,
+				)
+
+				root := container.NewStack(body, g.loadingOverlay)
+				g.window.SetContent(root)
+			}
+		})
+
+		// Check for launcher updates
+		if g.exePath != "" {
+			fyne.Do(func() {
+				g.updateStatus("Checking for launcher updates...")
+			})
+
+			err := selfUpdate(g.root, g.exePath, func(msg string) {
+				logf("%s", infoLine(msg))
+				fyne.Do(func() {
+					g.updateStatus(msg)
+				})
+			})
+
+			if err != nil {
+				logf("%s", warnLine(fmt.Sprintf("Update check failed: %v", err)))
+				fyne.Do(func() {
+					g.updateStatus("Modpacks refreshed, update check failed")
+				})
+			} else {
+				fyne.Do(func() {
+					g.updateStatus("Modpacks refreshed, launcher up to date")
+				})
+			}
+		} else {
+			fyne.Do(func() {
+				g.updateStatus("Modpack list refreshed successfully")
+			})
+		}
+
+		// Refresh all modpack states with new data
 		g.refreshAllModpackStates()
+
+		fyne.Do(func() {
+			g.showLoading(false, "")
+		})
 	}()
 }
 
@@ -1907,6 +1987,27 @@ func (g *GUI) showSettings() {
 		channelLabel.SetText("Channel: Stable")
 	}
 
+	// Info buttons for each setting
+	autoRAMInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation("Auto RAM", "Automatically calculates optimal memory allocation based on your system's total RAM.\n\n• Uses 25% of available system RAM by default\n• Ensures smooth performance while leaving memory for other applications\n• Recommended for most users\n• Can be overridden with manual RAM setting if needed", g.window)
+	})
+
+	manualRAMInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation("Manual RAM", "Set a fixed amount of RAM for Minecraft to use.\n\n• Use this if you experience performance issues with Auto RAM\n• Recommended values:\n  - 4-6 GB for small modpacks\n  - 6-8 GB for medium modpacks\n  - 8-12 GB for large modpacks\n  - 12-16 GB for heavyweight modpacks\n• Ensure you have enough free system RAM available", g.window)
+	})
+
+	devBuildsInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation("Dev Builds", "Enable pre-release development builds of the launcher.\n\n• Dev builds include the latest features and improvements\n• May contain bugs or unfinished features\n• Updated more frequently than stable releases\n• Recommended for testing or advanced users\n• Stable builds are recommended for most users", g.window)
+	})
+
+	debugLoggingInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation("Debug Logging", "Enable detailed debug logging for troubleshooting.\n\n• Provides detailed information about launcher operations\n• Useful for diagnosing issues with modpack installation/launch\n• Logs are saved to the logs directory\n• Can be accessed via the Console tab\n• May impact performance slightly when enabled", g.window)
+	})
+
+	channelInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation("Release Channel", "Shows which release channel you're currently using.\n\n• Stable: Official releases with tested features\n• Dev: Pre-release builds with latest features\n• Channel can be changed using the dev builds checkbox\n• Switching channels will update the launcher automatically", g.window)
+	})
+
 	refreshUI := func() {
 		if settings.AutoRAM {
 			memLabel.SetText(fmt.Sprintf("Auto RAM baseline: %d GB", DefaultAutoMemoryMB()/1024))
@@ -1949,11 +2050,11 @@ func (g *GUI) showSettings() {
 
 	dialogContent := container.NewVBox(
 		widget.NewLabel("Launcher Settings"),
-		autoCheck,
-		devCheck,
-		debugCheck,
-		container.NewHBox(channelLabel, layout.NewSpacer()),
-		memLabel,
+		container.NewHBox(autoCheck, autoRAMInfoBtn),
+		container.NewHBox(devCheck, devBuildsInfoBtn),
+		container.NewHBox(debugCheck, debugLoggingInfoBtn),
+		container.NewHBox(channelLabel, channelInfoBtn, layout.NewSpacer()),
+		container.NewHBox(memLabel, manualRAMInfoBtn),
 		memSlider,
 	)
 
