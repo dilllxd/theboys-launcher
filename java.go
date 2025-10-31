@@ -14,18 +14,18 @@ import (
 
 // getJavaVersionForMinecraft fetches compatible Java versions from PrismLauncher meta-launcher GitHub
 func getJavaVersionForMinecraft(mcVersion string) string {
-	logf("DEBUG: Determining Java version for Minecraft %s", mcVersion)
+	debugf("Determining Java version for Minecraft %s", mcVersion)
 	// Clean version string for GitHub path
 	cleanVersion := strings.TrimSpace(mcVersion)
 	if cleanVersion == "" {
-		logf("DEBUG: Empty Minecraft version provided, using default Java 17")
+		debugf("Empty Minecraft version provided, using default Java 17")
 		return "17" // default fallback
 	}
 
-	logf("DEBUG: Cleaned Minecraft version: %s", cleanVersion)
+	debugf("Cleaned Minecraft version: %s", cleanVersion)
 	// Construct GitHub URL for PrismLauncher meta-launcher data
 	url := fmt.Sprintf("https://raw.githubusercontent.com/PrismLauncher/meta-launcher/refs/heads/master/net.minecraft/%s.json", cleanVersion)
-	logf("DEBUG: Fetching Java compatibility data from: %s", url)
+	debugf("Fetching Java compatibility data from: %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -60,7 +60,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 
 	// If we have compatible Java versions, select the best one
 	if len(data.CompatibleJavaMajors) > 0 {
-		logf("DEBUG: Found compatible Java versions for Minecraft %s: %v", cleanVersion, data.CompatibleJavaMajors)
+		debugf("Found compatible Java versions for Minecraft %s: %v", cleanVersion, data.CompatibleJavaMajors)
 		// Choose the newest compatible Java version (prefer higher versions)
 		bestJava := data.CompatibleJavaMajors[0]
 		for _, javaVersion := range data.CompatibleJavaMajors {
@@ -70,7 +70,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 		}
 
 		logf("%s", successLine(fmt.Sprintf("Found Java %d compatible with Minecraft %s from PrismLauncher meta", bestJava, cleanVersion)))
-		logf("DEBUG: Selected Java version %d as the best compatible version", bestJava)
+		debugf("Selected Java version %d as the best compatible version", bestJava)
 		return strconv.Itoa(bestJava)
 	}
 
@@ -179,12 +179,12 @@ func fetchJREURL(javaVersion string) (string, error) {
 	imageType := "jre"
 	if javaVersion == "16" {
 		imageType = "jdk"
-		logf("DEBUG: Using JDK image type for Java 16")
+		debugf("Using JDK image type for Java 16")
 	}
 
 	// 1) Primary: Adoptium API (v3) - most reliable method
 	osName, arch := getPlatformJavaParams()
-	logf("DEBUG: Platform parameters: OS=%s, arch=%s, image_type=%s", osName, arch, imageType)
+	debugf("Platform parameters: OS=%s, arch=%s, image_type=%s", osName, arch, imageType)
 	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=%s&image_type=%s&os=%s", javaVersion, arch, imageType, osName)
 	debugf("Adoptium API URL: %s", adoptium)
 

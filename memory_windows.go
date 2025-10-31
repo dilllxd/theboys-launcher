@@ -68,9 +68,9 @@ func validateMemoryResult(totalMB int) int {
 	debugf("Validating memory result: %d MB", totalMB)
 	// Validate the result seems reasonable
 	if totalMB < 1024 || totalMB > 1024*1024 { // Less than 1GB or more than 1TB
-		logf("DEBUG: Memory result %d MB seems unreasonable, using 16GB fallback", totalMB)
+		debugf("Memory result %d MB seems unreasonable, using 16GB fallback", totalMB)
 		return 16384 // Use 16GB default if result seems invalid
 	}
-	logf("DEBUG: Memory result %d MB is valid", totalMB)
+	debugf("Memory result %d MB is valid", totalMB)
 	return totalMB
 }

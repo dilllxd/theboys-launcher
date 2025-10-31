@@ -1724,7 +1724,7 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	}
 
 	// Log the raw response for debugging
-	logf("DEBUG: Upload response status: %s", resp.Status)
+	debugf("Upload response status: %s", resp.Status)
 	bodyStr := string(body)
 	debugf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
 
