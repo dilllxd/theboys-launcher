@@ -1001,6 +1001,12 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	}
 	logf("%s", successLine(fmt.Sprintf("Detected: Minecraft %s with %s %s", packInfo.Minecraft, packInfo.ModLoader, packInfo.LoaderVersion)))
 
+	// Initialize process registry
+	processRegistry, err := GetGlobalProcessRegistry(root)
+	if err != nil {
+		logf("Warning: Failed to initialize process registry: %v", err)
+	}
+
 	// 1) Ensure prerequisites — organize directories cleanly
 	prismDir := filepath.Join(root, "prism")
 	utilDir := filepath.Join(root, "util")
@@ -1339,9 +1345,13 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 
 	// Try multiple launch approaches with fallbacks
 	var launchErr error
+	var launchedProcess *os.Process
 
 	// Approach 1: Direct launch with enhanced error handling
 	launchErr = launchPrismDirect(prismExe, prismDir, jreDir, modpack.InstanceName, packName, prismProcess)
+	if launchErr == nil && *prismProcess != nil {
+		launchedProcess = *prismProcess
+	}
 
 	if launchErr != nil {
 		logf("%s", warnLine(fmt.Sprintf("Direct launch failed: %v", launchErr)))
@@ -1354,7 +1364,8 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 				logf("%s", warnLine(fmt.Sprintf("Wrapper script launch failed: %v", launchErr)))
 			} else {
 				logf("%s", successLine("Prism launched successfully via wrapper script"))
-				return
+				// Note: We can't easily get the process from wrapper script launch
+				// so we'll skip registry persistence for this approach
 			}
 		}
 
@@ -1366,9 +1377,77 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 			logf("%s", warnLine("All launch attempts failed"))
 		} else {
 			logf("%s", successLine("Prism launched successfully via GUI fallback"))
+			if *prismProcess != nil {
+				launchedProcess = *prismProcess
+			}
 		}
 	} else {
 		logf("%s", successLine("Prism launched successfully via direct launch"))
+	}
+
+	// Persist process information to registry if we have a valid process
+	if launchedProcess != nil && processRegistry != nil {
+		// Get process details
+		executable, workingDir, err := getProcessDetails(launchedProcess.Pid)
+		if err != nil {
+			logf("Warning: Failed to get process details: %v", err)
+			// Use fallback information
+			executable = prismExe
+			workingDir = prismDir
+		}
+
+		// Create process record
+		processID := fmt.Sprintf("%s_%d", modpack.ID, launchedProcess.Pid)
+		record := &PersistentProcessRecord{
+			ID:               processID,
+			ModpackID:        modpack.ID,
+			ModpackName:      modpack.DisplayName,
+			PID:              launchedProcess.Pid,
+			Executable:       executable,
+			WorkingDir:       workingDir,
+			StartTime:        time.Now(),
+			LastSeen:         time.Now(),
+			Status:           ProcessStatusStarting,
+			JavaVersion:      requiredJavaVersion,
+			MinecraftVersion: packInfo.Minecraft,
+			InstanceName:     modpack.InstanceName,
+			LauncherPath:     prismExe,
+		}
+
+		// Add to registry
+		if err := processRegistry.AddRecord(record); err != nil {
+			logf("Warning: Failed to add process record to registry: %v", err)
+		} else {
+			logf("Added process %s to registry for reattachment", processID)
+		}
+
+		// Update process registry with running status after successful launch
+		// This is done in a separate goroutine to avoid blocking the main launcher logic
+		go func() {
+			// Give the process a moment to fully initialize
+			time.Sleep(2 * time.Second)
+
+			// Check if the process is still running
+			if isRunning, err := isProcessRunning(launchedProcess.Pid); err == nil && isRunning {
+				// Update the record status to running
+				if err := processRegistry.UpdateProcessStatus(processID, ProcessStatusRunning); err != nil {
+					logf("Warning: Failed to update process status to running: %v", err)
+				} else {
+					logf("Updated process %s status to running", processID)
+				}
+			} else {
+				// Process already exited or error checking, update status accordingly
+				if err := processRegistry.UpdateProcessStatus(processID, ProcessStatusStopped); err != nil {
+					logf("Warning: Failed to update process status to stopped: %v", err)
+				} else {
+					if err != nil {
+						logf("Updated process %s status to stopped (error checking: %v)", processID, err)
+					} else {
+						logf("Updated process %s status to stopped (already exited)", processID)
+					}
+				}
+			}
+		}()
 	}
 
 	logf("%s", successLine(fmt.Sprintf("Prism Launcher closed for %s", packName)))
