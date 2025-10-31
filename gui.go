@@ -274,6 +274,22 @@ func NewGUI(modpacks []Modpack, root string) *GUI {
 	w.CenterOnScreen()
 	w.SetFixedSize(false)
 
+	// DEBUG: Log icon information
+	logf("DEBUG: Window created - checking for icon file")
+	iconPath := "icon.ico"
+	if _, err := os.Stat(iconPath); err != nil {
+		logf("DEBUG: Icon file %s not found: %v", iconPath, err)
+	} else {
+		logf("DEBUG: Icon file %s exists, attempting to set window icon", iconPath)
+		// Try to set the window icon
+		if iconResource, err := fyne.LoadResourceFromPath(iconPath); err != nil {
+			logf("DEBUG: Failed to load icon resource: %v", err)
+		} else {
+			w.SetIcon(iconResource)
+			logf("DEBUG: Window icon set successfully")
+		}
+	}
+
 	// Initialize process registry asynchronously to avoid blocking GUI
 	var processRegistry *ProcessRegistry
 	var initErr error
