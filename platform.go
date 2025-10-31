@@ -34,8 +34,13 @@ func GetLauncherAssetName() string {
 	if runtime.GOOS == "windows" {
 		return "TheBoysLauncher.exe"
 	} else if runtime.GOOS == "darwin" {
-		// macOS uses the universal binary name
-		return "TheBoysLauncher-mac-universal"
+		// macOS uses architecture-specific binaries
+		if runtime.GOARCH == "arm64" {
+			return "TheBoysLauncher-mac-arm64"
+		} else {
+			// Default to amd64 for Intel Macs
+			return "TheBoysLauncher-mac-amd64"
+		}
 	} else if runtime.GOOS == "linux" {
 		// Linux uses the platform-specific binary name
 		return "TheBoysLauncher-linux"
