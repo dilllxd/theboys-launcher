@@ -58,7 +58,7 @@ var settings LauncherSettings
 var interactive = false
 
 // Populated at build time via -X main.version=vX.Y.Z
-var version = "3.2.93-dev.0b44751"
+var version = "dev"
 
 // getUserAgent returns a user agent string with the launcher version and component name
 func getUserAgent(component string) string {
