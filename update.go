@@ -16,11 +16,11 @@ import (
 // -------------------- Self-update (no downgrades) --------------------
 
 func selfUpdate(root, exePath string, report func(string)) error {
-	logf("DEBUG: Starting self-update process")
+	debugf("Starting self-update process")
 	_ = root
 
 	notify := func(msg string) {
-		logf("DEBUG: Update notification: %s", msg)
+		debugf("Update notification: %s", msg)
 		if report != nil {
 			report(msg)
 		}
@@ -30,36 +30,36 @@ func selfUpdate(root, exePath string, report func(string)) error {
 
 	// Prefer prerelease/dev builds if the user has enabled them
 	preferDev := settings.DevBuildsEnabled
-	logf("DEBUG: Update preference - Dev builds enabled: %t", preferDev)
+	debugf("Update preference - Dev builds enabled: %t", preferDev)
 	tag, assetURL, err := FetchLatestAssetPreferPrerelease(UPDATE_OWNER, UPDATE_REPO, LauncherAssetName, preferDev)
 	if err != nil || tag == "" || assetURL == "" {
 		if err == nil {
 			err = errors.New("update metadata missing")
 		}
-		logf("DEBUG: Update check failed: %v", err)
+		debugf("Update check failed: %v", err)
 		notify(fmt.Sprintf("Update check failed: %v", err))
 		return err
 	}
 
-	logf("DEBUG: Update check successful - Remote tag: %s, Asset URL: %s", tag, assetURL)
+	debugf("Update check successful - Remote tag: %s, Asset URL: %s", tag, assetURL)
 	localTag := normalizeTag(version)
 	remoteTag := normalizeTag(tag)
-	logf("DEBUG: Version comparison - Local: %s, Remote: %s", localTag, remoteTag)
+	debugf("Version comparison - Local: %s, Remote: %s", localTag, remoteTag)
 
 	switch compareSemver(localTag, remoteTag) {
 	case 0:
 		msg := fmt.Sprintf("%s is up to date (%s)", launcherShortName, version)
-		logf("DEBUG: Launcher is up to date")
+		debugf("Launcher is up to date")
 		notify(msg)
 		return nil
 	case 1:
 		msg := fmt.Sprintf("Local launcher (%s) is newer than latest release (%s). Skipping update.", version, tag)
-		logf("DEBUG: Local version is newer than remote")
+		debugf("Local version is newer than remote")
 		notify(msg)
 		return nil
 	case -1:
 		// remote > local -> proceed with update
-		logf("DEBUG: Remote version is newer, proceeding with update")
+		debugf("Remote version is newer, proceeding with update")
 	}
 
 	logf("New %s available: %s (current %s).", launcherShortName, tag, version)
@@ -67,22 +67,22 @@ func selfUpdate(root, exePath string, report func(string)) error {
 	logf("%s", stepLine("Downloading update..."))
 
 	tmpNew := exePath + ".new"
-	logf("DEBUG: Downloading update to temporary file: %s", tmpNew)
+	debugf("Downloading update to temporary file: %s", tmpNew)
 	if err := downloadTo(assetURL, tmpNew, 0755); err != nil {
-		logf("DEBUG: Update download failed: %v", err)
+		debugf("Update download failed: %v", err)
 		notify(fmt.Sprintf("Update download failed: %v", err))
 		return err
 	}
-	logf("DEBUG: Update downloaded successfully to %s", tmpNew)
+	debugf("Update downloaded successfully to %s", tmpNew)
 
 	// Remove quarantine attribute on macOS (no-op on Windows)
-	logf("DEBUG: Removing quarantine attribute from downloaded file")
+	debugf("Removing quarantine attribute from downloaded file")
 	if err := removeQuarantineAttribute(tmpNew); err != nil {
-		logf("DEBUG: Failed to remove quarantine attribute: %v", err)
+		debugf("Failed to remove quarantine attribute: %v", err)
 		notify(fmt.Sprintf("Warning: Failed to remove quarantine attribute: %v", err))
 		// Don't fail the update, just warn the user
 	} else {
-		logf("DEBUG: Quarantine attribute removed successfully")
+		debugf("Quarantine attribute removed successfully")
 	}
 
 	notify("Update downloaded successfully")
@@ -93,18 +93,18 @@ func selfUpdate(root, exePath string, report func(string)) error {
 	logf("")
 	logf("Restarting in 10 seconds...")
 
-	logf("DEBUG: Starting 10-second countdown before restart")
+	debugf("Starting 10-second countdown before restart")
 	time.Sleep(10 * time.Second)
 	notify("Restarting to apply update...")
 
-	logf("DEBUG: Initiating launcher replacement and restart")
+	debugf("Initiating launcher replacement and restart")
 	if err := replaceAndRestart(exePath, tmpNew); err != nil {
-		logf("DEBUG: Failed to restart launcher: %v", err)
+		debugf("Failed to restart launcher: %v", err)
 		notify(fmt.Sprintf("Failed to restart launcher: %v", err))
 		return fmt.Errorf("failed to replace launcher: %w", err)
 	}
 
-	logf("DEBUG: Self-update process completed successfully")
+	debugf("Self-update process completed successfully")
 	os.Exit(0)
 	return nil
 }

@@ -27,21 +27,21 @@ type MEMORYSTATUSEX struct {
 
 // getSystemMemoryInfo returns detailed memory information for Windows
 func getSystemMemoryInfo() (*MEMORYSTATUSEX, error) {
-	logf("DEBUG: Retrieving Windows system memory information")
+	debugf("Retrieving Windows system memory information")
 	var memInfo MEMORYSTATUSEX
 	memInfo.dwLength = uint32(unsafe.Sizeof(memInfo))
 
 	kernel32 := windows.NewLazyDLL("kernel32.dll")
 	proc := kernel32.NewProc("GlobalMemoryStatusEx")
 
-	logf("DEBUG: Calling GlobalMemoryStatusEx API")
+	debugf("Calling GlobalMemoryStatusEx API")
 	ret, _, err := proc.Call(uintptr(unsafe.Pointer(&memInfo)))
 	if ret == 0 {
-		logf("DEBUG: GlobalMemoryStatusEx failed: %v", err)
+		debugf("GlobalMemoryStatusEx failed: %v", err)
 		return nil, err
 	}
 
-	logf("DEBUG: Memory info retrieved - Total: %d MB, Available: %d MB, Load: %d%%",
+	debugf("Memory info retrieved - Total: %d MB, Available: %d MB, Load: %d%%",
 		memInfo.ullTotalPhys/(1024*1024),
 		memInfo.ullAvailPhys/(1024*1024),
 		memInfo.dwMemoryLoad)
@@ -50,22 +50,22 @@ func getSystemMemoryInfo() (*MEMORYSTATUSEX, error) {
 
 // getAvailableMemoryMB returns available memory in MB for Windows
 func getAvailableMemoryMB() int {
-	logf("DEBUG: Getting available memory for Windows")
+	debugf("Getting available memory for Windows")
 	memInfo, err := getSystemMemoryInfo()
 	if err != nil {
-		logf("DEBUG: Failed to get system memory info, using fallback 4GB: %v", err)
+		debugf("Failed to get system memory info, using fallback 4GB: %v", err)
 		// Fallback to 4GB if API call fails
 		return 4096
 	}
 
 	availableMB := int(memInfo.ullAvailPhys / (1024 * 1024))
-	logf("DEBUG: Available memory detected: %d MB", availableMB)
+	debugf("Available memory detected: %d MB", availableMB)
 	return availableMB
 }
 
 // validateMemoryResult ensures the memory value is reasonable
 func validateMemoryResult(totalMB int) int {
-	logf("DEBUG: Validating memory result: %d MB", totalMB)
+	debugf("Validating memory result: %d MB", totalMB)
 	// Validate the result seems reasonable
 	if totalMB < 1024 || totalMB > 1024*1024 { // Less than 1GB or more than 1TB
 		logf("DEBUG: Memory result %d MB seems unreasonable, using 16GB fallback", totalMB)
