@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -426,8 +428,8 @@ func (g *GUI) buildConsoleView() fyne.CanvasObject {
 	copyBtn := widget.NewButtonWithIcon("Copy All", theme.ContentCopyIcon(), func() {
 		g.window.Clipboard().SetContent(g.consoleOutput.Text)
 	})
-	uploadBtn := widget.NewButtonWithIcon("Upload to mclo.gs", theme.UploadIcon(), func() {
-		g.uploadLogToMclogs()
+	uploadBtn := widget.NewButtonWithIcon("Upload to logs.dylan.lol", theme.UploadIcon(), func() {
+		g.uploadLog()
 	})
 
 	toolbar := container.NewHBox(clearBtn, copyBtn, uploadBtn, layout.NewSpacer())
@@ -1353,8 +1355,8 @@ func (g *GUI) loadAndWatchLogFile(logPath string) {
 	}
 }
 
-// uploadLogToMclogs uploads the latest.log content to mclo.gs
-func (g *GUI) uploadLogToMclogs() {
+// uploadLog uploads the latest.log content to logs.dylan.lol
+func (g *GUI) uploadLog() {
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
 	// Read log file content
@@ -1373,9 +1375,50 @@ func (g *GUI) uploadLogToMclogs() {
 	go func() {
 		defer progressDialog.Hide()
 
-		// Upload to mclo.gs API
-		resp, err := http.PostForm("https://api.mclo.gs/1/log",
-			url.Values{"content": {string(content)}})
+		// Create a buffer to hold the multipart form data
+		var requestBody bytes.Buffer
+		writer := multipart.NewWriter(&requestBody)
+
+		// Create a form file field with the log content
+		part, err := writer.CreateFormFile("file", "latest.log")
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
+			})
+			return
+		}
+
+		// Write the log content to the form file
+		if _, err := part.Write(content); err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to write log content: %v", err), g.window)
+			})
+			return
+		}
+
+		// Close the multipart writer to finalize the form data
+		if err := writer.Close(); err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to finalize form data: %v", err), g.window)
+			})
+			return
+		}
+
+		// Create a new HTTP request with the multipart form data
+		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", &requestBody)
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
+			})
+			return
+		}
+
+		// Set the content type header with the boundary
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		// Send the request
+		client := &http.Client{}
+		resp, err := client.Do(req)
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to upload log: %v", err), g.window)
@@ -1386,11 +1429,8 @@ func (g *GUI) uploadLogToMclogs() {
 
 		// Parse response
 		var result struct {
-			Success bool   `json:"success"`
-			ID      string `json:"id"`
-			URL     string `json:"url"`
-			Raw     string `json:"raw"`
-			Error   string `json:"error"`
+			OK  bool   `json:"ok"`
+			URL string `json:"url"`
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -1401,7 +1441,7 @@ func (g *GUI) uploadLogToMclogs() {
 		}
 
 		fyne.Do(func() {
-			if result.Success {
+			if result.OK {
 				// Parse URL for hyperlink
 				logURL, err := url.Parse(result.URL)
 				if err != nil {
@@ -1413,7 +1453,6 @@ func (g *GUI) uploadLogToMclogs() {
 				successContent := container.NewVBox(
 					widget.NewLabel("Log uploaded successfully!"),
 					widget.NewHyperlink("View Log", logURL),
-					widget.NewLabel("ID: "+result.ID),
 				)
 
 				dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
@@ -1421,7 +1460,7 @@ func (g *GUI) uploadLogToMclogs() {
 				// Auto-copy to clipboard
 				g.window.Clipboard().SetContent(result.URL)
 			} else {
-				dialog.ShowError(fmt.Errorf("Upload failed: %s", result.Error), g.window)
+				dialog.ShowError(fmt.Errorf("Upload failed"), g.window)
 			}
 		})
 	}()
