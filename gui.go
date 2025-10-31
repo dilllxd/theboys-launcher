@@ -27,6 +27,21 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// createInfoButton creates a styled info button with improved appearance
+func createInfoButton(title, content string, window fyne.Window) fyne.CanvasObject {
+	btn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
+		dialog.ShowInformation(title, content, window)
+	})
+	
+	// Set button importance to make it less prominent but still clickable
+	btn.Importance = widget.LowImportance
+	
+	// Create a container with fixed size to ensure consistent button appearance
+	infoContainer := container.New(layout.NewFixedGridLayout(fyne.NewSize(32, 32)), btn)
+	
+	return infoContainer
+}
+
 // GUI drives the launcher UI experience.
 type GUI struct {
 	app            fyne.App
@@ -528,7 +543,7 @@ func (g *GUI) buildConsoleView() fyne.CanvasObject {
 	copyBtn := widget.NewButtonWithIcon("Copy All", theme.ContentCopyIcon(), func() {
 		g.window.Clipboard().SetContent(g.consoleOutput.Text)
 	})
-	uploadBtn := widget.NewButtonWithIcon("Upload to i.dylan.lol", theme.UploadIcon(), func() {
+	uploadBtn := widget.NewButtonWithIcon("Upload logs", theme.UploadIcon(), func() {
 		g.uploadLog()
 	})
 
@@ -1988,25 +2003,15 @@ func (g *GUI) showSettings() {
 	}
 
 	// Info buttons for each setting
-	autoRAMInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		dialog.ShowInformation("Auto RAM", "Automatically calculates optimal memory allocation based on your system's total RAM.\n\n• Uses 25% of available system RAM by default\n• Ensures smooth performance while leaving memory for other applications\n• Recommended for most users\n• Can be overridden with manual RAM setting if needed", g.window)
-	})
+	autoRAMInfoBtn := createInfoButton("Auto RAM", "Automatically calculates optimal memory allocation based on your system's total RAM.\n\n• Uses 25% of available system RAM by default\n• Ensures smooth performance while leaving memory for other applications\n• Recommended for most users\n• Can be overridden with manual RAM setting if needed", g.window)
 
-	manualRAMInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		dialog.ShowInformation("Manual RAM", "Set a fixed amount of RAM for Minecraft to use.\n\n• Use this if you experience performance issues with Auto RAM\n• Recommended values:\n  - 4-6 GB for small modpacks\n  - 6-8 GB for medium modpacks\n  - 8-12 GB for large modpacks\n  - 12-16 GB for heavyweight modpacks\n• Ensure you have enough free system RAM available", g.window)
-	})
+	manualRAMInfoBtn := createInfoButton("Manual RAM", "Set a fixed amount of RAM for Minecraft to use.\n\n• Use this if you experience performance issues with Auto RAM\n• Recommended values:\n  - 4-6 GB for small modpacks\n  - 6-8 GB for medium modpacks\n  - 8-12 GB for large modpacks\n  - 12-16 GB for heavyweight modpacks\n• Ensure you have enough free system RAM available", g.window)
 
-	devBuildsInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		dialog.ShowInformation("Dev Builds", "Enable pre-release development builds of the launcher.\n\n• Dev builds include the latest features and improvements\n• May contain bugs or unfinished features\n• Updated more frequently than stable releases\n• Recommended for testing or advanced users\n• Stable builds are recommended for most users", g.window)
-	})
+	devBuildsInfoBtn := createInfoButton("Dev Builds", "Enable pre-release development builds of the launcher.\n\n• Dev builds include the latest features and improvements\n• May contain bugs or unfinished features\n• Updated more frequently than stable releases\n• Recommended for testing or advanced users\n• Stable builds are recommended for most users", g.window)
 
-	debugLoggingInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		dialog.ShowInformation("Debug Logging", "Enable detailed debug logging for troubleshooting.\n\n• Provides detailed information about launcher operations\n• Useful for diagnosing issues with modpack installation/launch\n• Logs are saved to the logs directory\n• Can be accessed via the Console tab\n• May impact performance slightly when enabled", g.window)
-	})
+	debugLoggingInfoBtn := createInfoButton("Debug Logging", "Enable detailed debug logging for troubleshooting.\n\n• Provides detailed information about launcher operations\n• Useful for diagnosing issues with modpack installation/launch\n• Logs are saved to the logs directory\n• Can be accessed via the Console tab\n• May impact performance slightly when enabled", g.window)
 
-	channelInfoBtn := widget.NewButtonWithIcon("", theme.InfoIcon(), func() {
-		dialog.ShowInformation("Release Channel", "Shows which release channel you're currently using.\n\n• Stable: Official releases with tested features\n• Dev: Pre-release builds with latest features\n• Channel can be changed using the dev builds checkbox\n• Switching channels will update the launcher automatically", g.window)
-	})
+	channelInfoBtn := createInfoButton("Release Channel", "Shows which release channel you're currently using.\n\n• Stable: Official releases with tested features\n• Dev: Pre-release builds with latest features\n• Channel can be changed using the dev builds checkbox\n• Switching channels will update the launcher automatically", g.window)
 
 	refreshUI := func() {
 		if settings.AutoRAM {
@@ -2048,25 +2053,62 @@ func (g *GUI) showSettings() {
 
 	refreshUI()
 
-	dialogContent := container.NewVBox(
-		widget.NewLabel("Launcher Settings"),
-		container.NewHBox(autoCheck, autoRAMInfoBtn),
-		container.NewHBox(devCheck, devBuildsInfoBtn),
-		container.NewHBox(debugCheck, debugLoggingInfoBtn),
-		container.NewHBox(channelLabel, channelInfoBtn, layout.NewSpacer()),
-		container.NewHBox(memLabel, manualRAMInfoBtn),
-		memSlider,
-	)
-
-	pop := widget.NewModalPopUp(container.NewBorder(
-		nil,
-		nil,
-		nil,
-		nil,
-		dialogContent,
-	), g.window.Canvas())
-
-	// Save & Apply button that handles all changes
+	// Create a title with styling
+	titleLabel := widget.NewLabelWithStyle("Launcher Settings", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	
+	// Create Memory Settings section with card
+	memoryCard := widget.NewCard("Memory Settings", "", container.NewVBox(
+		container.NewPadded(
+			container.NewHBox(
+				autoCheck,
+				layout.NewSpacer(),
+				autoRAMInfoBtn,
+			),
+		),
+		container.NewPadded(
+			container.NewHBox(
+				memLabel,
+				layout.NewSpacer(),
+				manualRAMInfoBtn,
+			),
+		),
+		container.NewPadded(memSlider),
+	))
+	
+	// Create Launcher Settings section with card
+	launcherCard := widget.NewCard("Launcher Configuration", "", container.NewVBox(
+		container.NewPadded(
+			container.NewHBox(
+				devCheck,
+				layout.NewSpacer(),
+				devBuildsInfoBtn,
+			),
+		),
+		container.NewPadded(
+			container.NewHBox(
+				debugCheck,
+				layout.NewSpacer(),
+				debugLoggingInfoBtn,
+			),
+		),
+	))
+	
+	// Create Status section with card
+	statusCard := widget.NewCard("Status Information", "", container.NewVBox(
+		container.NewPadded(
+			container.NewHBox(
+				channelLabel,
+				layout.NewSpacer(),
+				channelInfoBtn,
+			),
+		),
+	))
+	
+	// Create buttons section
+	cancelBtn := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), func() {
+		pop.Hide()
+	})
+	
 	saveApplyBtn := widget.NewButtonWithIcon("Save & Apply", theme.DocumentSaveIcon(), func() {
 		// Close the settings dialog immediately
 		pop.Hide()
@@ -2201,8 +2243,39 @@ func (g *GUI) showSettings() {
 			})
 		}()
 	})
+	
+	buttonContainer := container.NewHBox(
+		layout.NewSpacer(),
+		cancelBtn,
+		saveApplyBtn,
+	)
+	
+	// Main dialog content with improved layout
+	dialogContent := container.NewVBox(
+		// Title with padding
+		container.NewPadded(titleLabel),
+		widget.NewSeparator(),
+		
+		// Settings cards with spacing
+		container.NewPadded(memoryCard),
+		container.NewPadded(launcherCard),
+		container.NewPadded(statusCard),
+		
+		// Button section with separator
+		widget.NewSeparator(),
+		container.NewPadded(buttonContainer),
+	)
 
-	dialogContent.Add(container.NewHBox(layout.NewSpacer(), saveApplyBtn))
+	// Create modal popup with better sizing
+	pop := widget.NewModalPopUp(
+		container.NewScroll(
+			container.NewPadded(dialogContent),
+		),
+		g.window.Canvas(),
+	)
+	
+	// Set a reasonable minimum size for the dialog
+	pop.Resize(fyne.NewSize(600, 500))
 	pop.Show()
 }
 
