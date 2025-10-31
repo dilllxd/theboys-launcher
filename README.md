@@ -3,7 +3,7 @@
 A cross-platform Minecraft bootstrapper and modpack manager that automatically downloads, configures, and launches Prism Launcher with modpacks.
 
 ![Platform Support](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
-![Go Version](https://img.shields.io/badge/Go-1.22+-blue)
+![Go Version](https://img.shields.io/badge/Go-1.23+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## 🚀 Features
@@ -38,7 +38,7 @@ A cross-platform Minecraft bootstrapper and modpack manager that automatically d
 ## 🛠️ Building from Source
 
 ### Prerequisites
-- **Go 1.22+** - [Install Go](https://golang.org/dl/)
+- **Go 1.23+** - [Install Go](https://golang.org/dl/)
 - **For macOS**: Xcode Command Line Tools (`xcode-select --install`)
 - **For Windows**: PowerShell 5.1+ (included with Windows 10+), Inno Setup (for creating installers)
 

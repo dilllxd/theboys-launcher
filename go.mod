@@ -1,6 +1,8 @@
 module theboyslauncher
 
-go 1.25.0
+go 1.24.0
+
+toolchain go1.24.9
 
 require (
 	fyne.io/fyne/v2 v2.7.0

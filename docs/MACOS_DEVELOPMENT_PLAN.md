@@ -591,7 +591,7 @@ iconutil -c icns resources/darwin/TheBoysLauncher.iconset
 ## Building from Source
 
 ### Prerequisites
-- Go 1.21+
+- Go 1.23+
 - For macOS: Xcode Command Line Tools
 - For Windows: PowerShell 5.1+
 
@@ -618,7 +618,7 @@ make build-macos-universal
 ## Technical Requirements
 
 ### Development Environment
-- **Go 1.21+**: Latest stable Go release
+- **Go 1.23+**: Latest stable Go release
 - **Xcode Command Line Tools**: For macOS compilation
 - **Create DMG tool**: For DMG creation (`brew install create-dmg`)
 - **Optional**: macOS development machine (Intel and Apple Silicon for testing)
