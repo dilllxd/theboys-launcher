@@ -2,15 +2,18 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -1379,8 +1382,12 @@ func (g *GUI) uploadLog() {
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
-		// Create a form file field with the log content
-		part, err := writer.CreateFormFile("file", "latest.log")
+		// Create a form file field with the log content and explicit content type
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", `form-data; name="file"; filename="latest.log"`)
+		h.Set("Content-Type", "text/plain")
+
+		part, err := writer.CreatePart(h)
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
@@ -1415,9 +1422,19 @@ func (g *GUI) uploadLog() {
 
 		// Set the content type header with the boundary
 		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
 
-		// Send the request
-		client := &http.Client{}
+		// Send the request with TLS 1.2 and timeout
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					MinVersion: tls.VersionTLS12,
+					MaxVersion: tls.VersionTLS12,
+				},
+			},
+		}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			fyne.Do(func() {
@@ -1427,13 +1444,58 @@ func (g *GUI) uploadLog() {
 		}
 		defer resp.Body.Close()
 
-		// Parse response
+		// Read the full response body for debugging
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Failed to read response body: %v", err), g.window)
+			})
+			return
+		}
+
+		// Log the raw response for debugging
+		logf("Upload response status: %s", resp.Status)
+		logf("Upload response content-type: %s", resp.Header.Get("Content-Type"))
+		logf("Upload response body (first 200 chars): %s", string(body)[:min(200, len(body))])
+
+		// Check if we got HTML (MicroBin) or JSON
+		contentType := resp.Header.Get("Content-Type")
+		if strings.Contains(strings.ToLower(contentType), "text/html") || (len(body) > 0 && body[0] == '<') {
+			// Parse HTML response to extract the file ID
+			fileID := g.extractFileIDFromHTML(string(body))
+			if fileID != "" {
+				// Construct the direct URL
+				directURL := fmt.Sprintf("https://logs.dylan.lol/%s", fileID)
+
+				fyne.Do(func() {
+					// Success dialog with copy functionality
+					successContent := container.NewVBox(
+						widget.NewLabel("Log uploaded successfully!"),
+						widget.NewHyperlink("View Log", &url.URL{Scheme: "https", Host: "logs.dylan.lol", Path: "/file/" + fileID}),
+					)
+
+					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
+
+					// Auto-copy to clipboard
+					g.window.Clipboard().SetContent(directURL)
+				})
+				return
+			}
+
+			// If we couldn't extract the file ID, show error
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("Upload succeeded but couldn't extract file URL"), g.window)
+			})
+			return
+		}
+
+		// Try to parse as JSON (fallback)
 		var result struct {
 			OK  bool   `json:"ok"`
 			URL string `json:"url"`
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		if err := json.Unmarshal(body, &result); err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to parse upload response: %v", err), g.window)
 			})
@@ -1464,6 +1526,38 @@ func (g *GUI) uploadLog() {
 			}
 		})
 	}()
+}
+
+// extractFileIDFromHTML extracts the file ID from MicroBin's HTML response
+func (g *GUI) extractFileIDFromHTML(html string) string {
+	// Look for the pattern in the HTML that contains the file ID
+	// The file ID appears in URLs like /upload/mouse-tiger-fly or /file/mouse-tiger-fly
+
+	// First try to find the upload URL pattern
+	uploadPattern := `href="/upload/([^"]+)"`
+	re := regexp.MustCompile(uploadPattern)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// If that fails, try the file URL pattern
+	filePattern := `href="/file/([^"]+)"`
+	re = regexp.MustCompile(filePattern)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// If that fails, try the copy URL button pattern
+	copyPattern := `const url = \(.*logs\.dylan\.lol.*\)/([^"]+)`
+	re = regexp.MustCompile(copyPattern)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	return ""
 }
 
 func (g *GUI) showSettings() {
