@@ -1,7 +1,7 @@
 TheBoysLauncher — Copilot instructions
 
 Quick orientation
-- This is a cross-platform Go (1.22+) GUI application that bootstraps Prism Launcher, manages Java runtimes, and synchronizes modpacks (packwiz).
+- This is a cross-platform Go (1.23+) GUI application that bootstraps Prism Launcher, manages Java runtimes, and synchronizes modpacks (packwiz).
 - Entry points: `main.go` (app startup), `launcher.go` / `runLauncherLogic` (core orchestration), `gui.go` (Fyne GUI wiring).
 
 Architecture & important flows (high-level)
