@@ -18,14 +18,28 @@ import (
 
 // killProcessByName kills all processes with the given name on Windows
 func killProcessByName(processName string) error {
+	logf("DEBUG: Attempting to kill processes by name: %s", processName)
 	cmd := exec.Command("taskkill", "/F", "/IM", processName)
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logf("DEBUG: taskkill failed for %s: %v, output: %s", processName, err, string(output))
+		return err
+	}
+	logf("DEBUG: Successfully killed processes named %s, output: %s", processName, string(output))
+	return nil
 }
 
 // killProcessByPID kills a process and its children by PID on Windows
 func killProcessByPID(pid int) error {
+	logf("DEBUG: Attempting to kill process tree for PID %d", pid)
 	cmd := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logf("DEBUG: taskkill failed for PID %d: %v, output: %s", pid, err, string(output))
+		return err
+	}
+	logf("DEBUG: Successfully killed process tree for PID %d, output: %s", pid, string(output))
+	return nil
 }
 
 // killPrismProcesses kills all Prism Launcher processes on Windows
@@ -75,15 +89,19 @@ func getProcessName(baseName string) string {
 
 // isProcessRunning checks if a process with the given PID is still running on Windows
 func isProcessRunning(pid int) (bool, error) {
+	logf("DEBUG: Checking if process PID %d is running", pid)
 	// Use tasklist to check if the process is still running
 	cmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
 	output, err := cmd.Output()
 	if err != nil {
+		logf("DEBUG: Failed to check process status for PID %d: %v", pid, err)
 		return false, fmt.Errorf("failed to check process status: %w", err)
 	}
 
-	// tasklist returns empty output if process doesn't exist
-	return len(strings.TrimSpace(string(output))) > 0, nil
+	outputStr := string(output)
+	isRunning := len(strings.TrimSpace(outputStr)) > 0
+	logf("DEBUG: Process PID %d running status: %t (output: %s)", pid, isRunning, outputStr)
+	return isRunning, nil
 }
 
 // validateProcessIdentity validates that a process matches the expected executable and working directory on Windows
