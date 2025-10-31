@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -1375,15 +1377,20 @@ func (g *GUI) uploadLog() {
 	go func() {
 		defer progressDialog.Hide()
 
-		// Create form data with the required fields
-		formData := url.Values{}
-		formData.Set("expiration", "never")
-		formData.Set("syntax_highlight", "none")
-		formData.Set("privacy", "public")
-		formData.Set("content", string(content))
+		// Create multipart form with required fields
+		var requestBody bytes.Buffer
+		writer := multipart.NewWriter(&requestBody)
+
+		// Add form fields (matching working Chrome request)
+		writer.WriteField("expiration", "24hour")
+		writer.WriteField("syntax_highlight", "none")
+		writer.WriteField("privacy", "public")
+		writer.WriteField("content", string(content))
+
+		writer.Close()
 
 		// Create a new HTTP request with the form data
-		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", strings.NewReader(formData.Encode()))
+		req, err := http.NewRequest("POST", "https://logs.dylan.lol/upload", &requestBody)
 		if err != nil {
 			fyne.Do(func() {
 				dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
@@ -1392,7 +1399,7 @@ func (g *GUI) uploadLog() {
 		}
 
 		// Set the content type header for form data
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
 
 		// Send the request with TLS 1.2 and timeout
