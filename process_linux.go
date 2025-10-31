@@ -18,28 +18,28 @@ import (
 
 // killProcessByName kills all processes with the given name on Linux
 func killProcessByName(processName string) error {
-	logf("DEBUG: Attempting to kill processes by name pattern: %s", processName)
+	debugf("Attempting to kill processes by name pattern: %s", processName)
 	// Use pkill to kill processes by name
 	cmd := exec.Command("pkill", "-f", processName)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logf("DEBUG: pkill failed for pattern %s: %v, output: %s", processName, err, string(output))
+		debugf("pkill failed for pattern %s: %v, output: %s", processName, err, string(output))
 		return err
 	}
-	logf("DEBUG: Successfully killed processes matching pattern %s, output: %s", processName, string(output))
+	debugf("Successfully killed processes matching pattern %s, output: %s", processName, string(output))
 	return nil
 }
 
 // killProcessByPID kills a process and its children by PID on Linux
 func killProcessByPID(pid int) error {
-	logf("DEBUG: Attempting to kill process tree for PID %d", pid)
+	debugf("Attempting to kill process tree for PID %d", pid)
 	// First try to kill the process tree using pkill with parent PID
 	cmd := exec.Command("pkill", "-P", strconv.Itoa(pid))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logf("DEBUG: pkill -P failed for PID %d: %v, output: %s", pid, err, string(output))
+		debugf("pkill -P failed for PID %d: %v, output: %s", pid, err, string(output))
 	} else {
-		logf("DEBUG: Successfully killed children of PID %d, output: %s", pid, string(output))
+		debugf("Successfully killed children of PID %d, output: %s", pid, string(output))
 	}
 
 	// Also kill the specific process directly
@@ -47,18 +47,18 @@ func killProcessByPID(pid int) error {
 	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
 	killOutput, killErr := killCmd.CombinedOutput()
 	if killErr != nil {
-		logf("DEBUG: kill -9 failed for PID %d: %v, output: %s", pid, killErr, string(killOutput))
+		debugf("kill -9 failed for PID %d: %v, output: %s", pid, killErr, string(killOutput))
 		// If kill fails, try to use pkill on the PID
-		logf("DEBUG: Attempting fallback pkill for PID %d", pid)
+		debugf("Attempting fallback pkill for PID %d", pid)
 		pkillCmd := exec.Command("pkill", strconv.Itoa(pid))
 		pkillOutput, pkillErr := pkillCmd.CombinedOutput()
 		if pkillErr != nil {
-			logf("DEBUG: Fallback pkill also failed for PID %d: %v, output: %s", pid, pkillErr, string(pkillOutput))
+			debugf("Fallback pkill also failed for PID %d: %v, output: %s", pid, pkillErr, string(pkillOutput))
 			return pkillErr
 		}
-		logf("DEBUG: Fallback pkill succeeded for PID %d, output: %s", pid, string(pkillOutput))
+		debugf("Fallback pkill succeeded for PID %d, output: %s", pid, string(pkillOutput))
 	} else {
-		logf("DEBUG: Successfully killed PID %d with SIGKILL, output: %s", pid, string(killOutput))
+		debugf("Successfully killed PID %d with SIGKILL, output: %s", pid, string(killOutput))
 	}
 
 	return err
@@ -178,18 +178,18 @@ func getProcessName(baseName string) string {
 
 // isProcessRunning checks if a process with the given PID is still running on Linux
 func isProcessRunning(pid int) (bool, error) {
-	logf("DEBUG: Checking if process PID %d is running on Linux", pid)
+	debugf("Checking if process PID %d is running on Linux", pid)
 	// Use ps to check if the process is still running
 	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid=")
 	output, err := cmd.Output()
 	if err != nil {
-		logf("DEBUG: Failed to check process status for PID %d: %v", pid, err)
+		debugf("Failed to check process status for PID %d: %v", pid, err)
 		return false, fmt.Errorf("failed to check process status: %w", err)
 	}
 
 	outputStr := strings.TrimSpace(string(output))
 	isRunning := outputStr == strconv.Itoa(pid)
-	logf("DEBUG: Process PID %d running status: %t (ps output: %s)", pid, isRunning, outputStr)
+	debugf("Process PID %d running status: %t (ps output: %s)", pid, isRunning, outputStr)
 	return isRunning, nil
 }
 

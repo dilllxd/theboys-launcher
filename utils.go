@@ -128,6 +128,14 @@ func logf(format string, args ...interface{}) {
 	}
 }
 
+// debugf only logs when debug mode is enabled
+func debugf(format string, args ...interface{}) {
+	// Only log if debug is enabled
+	if settings.DebugEnabled {
+		logf("DEBUG: "+format, args...)
+	}
+}
+
 // -------------------- Log Setup --------------------
 
 func setupLogging(root string) func() {

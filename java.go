@@ -42,7 +42,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 	}
 	defer resp.Body.Close()
 
-	logf("DEBUG: Java compatibility API response: HTTP %d for Minecraft %s", resp.StatusCode, cleanVersion)
+	debugf("Java compatibility API response: HTTP %d for Minecraft %s", resp.StatusCode, cleanVersion)
 	if resp.StatusCode != 200 {
 		logf("%s", warnLine(fmt.Sprintf("Java compatibility data not found for Minecraft %s (HTTP %d)", cleanVersion, resp.StatusCode)))
 		return "17" // default fallback
@@ -174,7 +174,7 @@ func getPlatformJavaParams() (osName, arch string) {
 // Prefer Adoptium API (stable), fall back to GitHub release asset.
 // We want: OS=windows, arch=x64, image_type=jre (or jdk for Java 16), vm=hotspot, latest for specified version.
 func fetchJREURL(javaVersion string) (string, error) {
-	logf("DEBUG: Fetching JRE URL for Java version %s", javaVersion)
+	debugf("Fetching JRE URL for Java version %s", javaVersion)
 	// Java 16 only has JDK builds available, not JRE
 	imageType := "jre"
 	if javaVersion == "16" {
@@ -186,7 +186,7 @@ func fetchJREURL(javaVersion string) (string, error) {
 	osName, arch := getPlatformJavaParams()
 	logf("DEBUG: Platform parameters: OS=%s, arch=%s, image_type=%s", osName, arch, imageType)
 	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=%s&image_type=%s&os=%s", javaVersion, arch, imageType, osName)
-	logf("DEBUG: Adoptium API URL: %s", adoptium)
+	debugf("Adoptium API URL: %s", adoptium)
 
 	req, _ := http.NewRequest("GET", adoptium, nil)
 	req.Header.Set("User-Agent", getUserAgent("Adoptium"))
@@ -194,7 +194,7 @@ func fetchJREURL(javaVersion string) (string, error) {
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
 	if err == nil && resp.StatusCode == 200 {
-		logf("DEBUG: Adoptium API response: HTTP %d", resp.StatusCode)
+		debugf("Adoptium API response: HTTP %d", resp.StatusCode)
 		defer resp.Body.Close()
 		var payload []struct {
 			Binary struct {
@@ -205,20 +205,20 @@ func fetchJREURL(javaVersion string) (string, error) {
 			} `json:"binary"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil {
-			logf("DEBUG: Found %d Java packages from Adoptium API", len(payload))
+			debugf("Found %d Java packages from Adoptium API", len(payload))
 			for _, v := range payload {
-				logf("DEBUG: Java package: %s", v.Binary.Package.Name)
+				debugf("Java package: %s", v.Binary.Package.Name)
 				// Prefer zip files (packages) over installers
 				if v.Binary.Package.Link != "" && strings.HasSuffix(strings.ToLower(v.Binary.Package.Link), ".zip") {
-					logf("DEBUG: Selected Java package: %s", v.Binary.Package.Name)
+					debugf("Selected Java package: %s", v.Binary.Package.Name)
 					return v.Binary.Package.Link, nil
 				}
 			}
 		} else {
-			logf("DEBUG: Failed to decode Adoptium API response: %v", err)
+			debugf("Failed to decode Adoptium API response: %v", err)
 		}
 	} else if resp != nil {
-		logf("DEBUG: Adoptium API failed: HTTP %d, error: %v", resp.StatusCode, err)
+		debugf("Adoptium API failed: HTTP %d, error: %v", resp.StatusCode, err)
 		resp.Body.Close()
 	}
 

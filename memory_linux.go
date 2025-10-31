@@ -21,17 +21,17 @@ type LinuxMemoryInfo struct {
 
 // getSystemMemoryInfo returns detailed memory information for Linux
 func getSystemMemoryInfo() (*LinuxMemoryInfo, error) {
-	logf("DEBUG: Reading Linux memory information from /proc/meminfo")
+	debugf("Reading Linux memory information from /proc/meminfo")
 	// Read memory information from /proc/meminfo
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		logf("DEBUG: Failed to read /proc/meminfo: %v", err)
+		debugf("Failed to read /proc/meminfo: %v", err)
 		return nil, err
 	}
 
 	var totalMemory, availableMemory uint64
 	lines := strings.Split(string(data), "\n")
-	logf("DEBUG: Parsing %d lines from /proc/meminfo", len(lines))
+	debugf("Parsing %d lines from /proc/meminfo", len(lines))
 
 	for _, line := range lines {
 		fields := strings.Fields(line)
@@ -41,7 +41,7 @@ func getSystemMemoryInfo() (*LinuxMemoryInfo, error) {
 
 		value, err := strconv.ParseUint(fields[1], 10, 64)
 		if err != nil {
-			logf("DEBUG: Failed to parse memory value from line: %s", line)
+			debugf("Failed to parse memory value from line: %s", line)
 			continue
 		}
 
@@ -51,10 +51,10 @@ func getSystemMemoryInfo() (*LinuxMemoryInfo, error) {
 		switch fields[0] {
 		case "MemTotal:":
 			totalMemory = valueBytes
-			logf("DEBUG: Found total memory: %d KB (%d MB)", value, valueBytes/(1024*1024))
+			debugf("Found total memory: %d KB (%d MB)", value, valueBytes/(1024*1024))
 		case "MemAvailable:":
 			availableMemory = valueBytes
-			logf("DEBUG: Found available memory: %d KB (%d MB)", value, valueBytes/(1024*1024))
+			debugf("Found available memory: %d KB (%d MB)", value, valueBytes/(1024*1024))
 		}
 	}
 
@@ -63,7 +63,7 @@ func getSystemMemoryInfo() (*LinuxMemoryInfo, error) {
 	if totalMemory > 0 {
 		usedMemory := totalMemory - availableMemory
 		memoryLoad = uint32((usedMemory * 100) / totalMemory)
-		logf("DEBUG: Memory load calculated: %d%% (used: %d MB, available: %d MB)",
+		debugf("Memory load calculated: %d%% (used: %d MB, available: %d MB)",
 			memoryLoad, usedMemory/(1024*1024), availableMemory/(1024*1024))
 	}
 
@@ -76,16 +76,16 @@ func getSystemMemoryInfo() (*LinuxMemoryInfo, error) {
 
 // getAvailableMemoryMB returns available memory in MB for Linux
 func getAvailableMemoryMB() int {
-	logf("DEBUG: Getting available memory for Linux")
+	debugf("Getting available memory for Linux")
 	memInfo, err := getSystemMemoryInfo()
 	if err != nil {
-		logf("DEBUG: Failed to get system memory info, using fallback 4GB: %v", err)
+		debugf("Failed to get system memory info, using fallback 4GB: %v", err)
 		// Fallback to 4GB if we can't read meminfo
 		return 4096
 	}
 
 	availableMB := int(memInfo.AvailableMemory / (1024 * 1024))
-	logf("DEBUG: Available memory detected on Linux: %d MB", availableMB)
+	debugf("Available memory detected on Linux: %d MB", availableMB)
 	return availableMB
 }
 

@@ -1587,37 +1587,37 @@ func generateRandomID() (string, error) {
 // uploadLog uploads the latest.log content to i.dylan.lol/logs/
 func (g *GUI) uploadLog() {
 	// Log when the upload function is called
-	logf("DEBUG: uploadLog function called")
+	debugf("uploadLog function called")
 
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
 	// Show upload progress dialog in the main thread
 	fyne.Do(func() {
-		logf("DEBUG: Creating and showing progress dialog")
+		debugf("Creating and showing progress dialog")
 		progressDialog := dialog.NewCustom("Uploading Log...", "Cancel",
 			widget.NewProgressBarInfinite(), g.window)
 
 		// Show the dialog with error handling
 		if progressDialog == nil {
 			// Fallback to simple information dialog if custom dialog creation fails
-			logf("DEBUG: Progress dialog creation failed, using fallback")
+			debugf("Progress dialog creation failed, using fallback")
 			dialog.ShowInformation("Uploading Log", "Uploading log file to i.dylan.lol...", g.window)
 			return
 		}
 
 		progressDialog.Show()
-		logf("DEBUG: Progress dialog shown successfully")
+		debugf("Progress dialog shown successfully")
 
 		// Start the upload in a separate goroutine
 		go func() {
-			logf("DEBUG: Starting upload goroutine")
+			debugf("Starting upload goroutine")
 
 			// Perform the upload and get the result
 			logURL, err := g.performLogUpload(logPath)
 
 			// Hide the progress dialog first
 			fyne.Do(func() {
-				logf("DEBUG: Hiding progress dialog")
+				debugf("Hiding progress dialog")
 				if progressDialog != nil {
 					progressDialog.Hide()
 				}
@@ -1629,10 +1629,10 @@ func (g *GUI) uploadLog() {
 			// Show the result dialog
 			fyne.Do(func() {
 				if err != nil {
-					logf("DEBUG: Showing error dialog: %v", err)
+					debugf("Showing error dialog: %v", err)
 					dialog.ShowError(fmt.Errorf("Upload failed: %v", err), g.window)
 				} else {
-					logf("DEBUG: Showing success dialog")
+					debugf("Showing success dialog")
 					g.showSuccessDialog(logURL)
 				}
 			})
@@ -1645,11 +1645,11 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	// Generate a random 8-character ID for the filename
 	randomID, err := generateRandomID()
 	if err != nil {
-		logf("DEBUG: Failed to generate random ID: %v", err)
+		debugf("Failed to generate random ID: %v", err)
 		return "", fmt.Errorf("failed to generate random ID: %v", err)
 	}
 	filename := fmt.Sprintf("%s.log", randomID)
-	logf("DEBUG: Generated filename: %s", filename)
+	debugf("Generated filename: %s", filename)
 
 	// Create multipart form with file upload using CreateFormFile to match curl -F format
 	var requestBody bytes.Buffer
@@ -1658,14 +1658,14 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	// Add the required "act" field with value "bput" as required by the endpoint
 	err = writer.WriteField("act", "bput")
 	if err != nil {
-		logf("DEBUG: Failed to add act field: %v", err)
+		debugf("Failed to add act field: %v", err)
 		return "", fmt.Errorf("failed to add act field: %v", err)
 	}
 
 	// Open the log file for reading
 	file, err := os.Open(logPath)
 	if err != nil {
-		logf("DEBUG: Failed to open log file: %v", err)
+		debugf("Failed to open log file: %v", err)
 		return "", fmt.Errorf("failed to open log file for upload: %v", err)
 	}
 	defer file.Close()
@@ -1673,14 +1673,14 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	// Create form file part using CreateFormFile to match curl -F "file=@filename;type=application/octet-stream"
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		logf("DEBUG: Failed to create form file: %v", err)
+		debugf("Failed to create form file: %v", err)
 		return "", fmt.Errorf("failed to create form file: %v", err)
 	}
 
 	// Copy file content to the form part
 	_, err = io.Copy(part, file)
 	if err != nil {
-		logf("DEBUG: Failed to copy file content: %v", err)
+		debugf("Failed to copy file content: %v", err)
 		return "", fmt.Errorf("failed to copy file content: %v", err)
 	}
 
@@ -1689,7 +1689,7 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	// Create a new HTTP request with the form data
 	req, err := http.NewRequest("POST", "https://i.dylan.lol/logs/", &requestBody)
 	if err != nil {
-		logf("DEBUG: Failed to create request: %v", err)
+		debugf("Failed to create request: %v", err)
 		return "", fmt.Errorf("failed to create request: %v", err)
 	}
 
@@ -1708,10 +1708,10 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 		},
 	}
 
-	logf("DEBUG: Sending HTTP request to upload log")
+	debugf("Sending HTTP request to upload log")
 	resp, err := client.Do(req)
 	if err != nil {
-		logf("DEBUG: Failed to upload log: %v", err)
+		debugf("Failed to upload log: %v", err)
 		return "", fmt.Errorf("failed to upload log: %v", err)
 	}
 	defer resp.Body.Close()
@@ -1719,22 +1719,22 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 	// Read the full response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logf("DEBUG: Failed to read response body: %v", err)
+		debugf("Failed to read response body: %v", err)
 		return "", fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	// Log the raw response for debugging
 	logf("DEBUG: Upload response status: %s", resp.Status)
 	bodyStr := string(body)
-	logf("DEBUG: Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
+	debugf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
 
 	// Check if the upload was successful (status code 200-299)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		logf("DEBUG: Upload failed with status: %s", resp.Status)
+		debugf("Upload failed with status: %s", resp.Status)
 		return "", fmt.Errorf("upload failed with status: %s\nResponse: %s", resp.Status, string(body)[:min(200, len(body))])
 	}
 
-	logf("DEBUG: Upload successful, parsing response")
+	debugf("Upload successful, parsing response")
 
 	// Try to extract the filename from the HTML response using regex
 	// Pattern to match href="/logs/filename.log"
@@ -1748,14 +1748,14 @@ func (g *GUI) performLogUpload(logPath string) (string, error) {
 		extractedFilename := matches[1]
 		// Construct the full URL
 		logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s", extractedFilename)
-		logf("DEBUG: Successfully extracted filename from HTML: %s", extractedFilename)
+		debugf("Successfully extracted filename from HTML: %s", extractedFilename)
 	} else {
 		// If regex fails, fall back to using our random ID
-		logf("DEBUG: Failed to extract filename from HTML, falling back to random ID: %s", randomID)
+		debugf("Failed to extract filename from HTML, falling back to random ID: %s", randomID)
 		logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s.log", randomID)
 	}
 
-	logf("DEBUG: Final log URL: %s", logURL)
+	debugf("Final log URL: %s", logURL)
 	return logURL, nil
 }
 
@@ -1807,7 +1807,7 @@ func (g *GUI) showSuccessDialog(logURL string) {
 
 	if customDialog == nil {
 		// Fallback to simple information dialog if custom dialog creation fails
-		logf("DEBUG: Success dialog creation failed, using fallback")
+		debugf("Success dialog creation failed, using fallback")
 		dialog.ShowInformation("Upload Successful", "The log has been uploaded successfully and the URL has been copied to your clipboard.", g.window)
 		g.window.Clipboard().SetContent(logURL)
 		return

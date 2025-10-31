@@ -52,7 +52,16 @@ jobs:
 
           SHORT_SHA=$(git rev-parse --short "${GITHUB_SHA}")
 
-          PATCH=$((PATCH + 1))
+          # Better semantic versioning logic
+          if [ $PATCH -ge 90 ]; then
+            # When patch reaches 90+, increment minor and reset patch to 0
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            # Normal patch increment
+            PATCH=$((PATCH + 1))
+          fi
+          
           VERSION="$MAJOR.$MINOR.$PATCH"
           PRERELEASE="dev.${SHORT_SHA}"
           FULL_VERSION="${VERSION}-${PRERELEASE}"
