@@ -87,7 +87,7 @@ func GetDirectPrismExecutablePath(baseDir string) string {
 		return filepath.Join(baseDir, "PrismLauncher.exe")
 	} else if runtime.GOOS == "darwin" {
 		// macOS: executable is inside the app bundle (note the space in the name)
-		return filepath.Join(baseDir, "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
+		return filepath.Join(baseDir, "Prism Launcher.app", "Contents", "MacOS", "prismlauncher")
 	} else {
 		// Linux: executable is directly in the directory
 		return filepath.Join(baseDir, "PrismLauncher")

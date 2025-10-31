@@ -1305,7 +1305,7 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 
 	// On macOS, check if Prism exists in the local directory, otherwise use /Applications
 	if runtime.GOOS == "darwin" && !exists(prismExe) {
-		applicationsPrism := filepath.Join("/Applications", "Prism Launcher.app", "Contents", "MacOS", "PrismLauncher")
+		applicationsPrism := filepath.Join("/Applications", "Prism Launcher.app", "Contents", "MacOS", "prismlauncher")
 		if exists(applicationsPrism) {
 			prismExe = applicationsPrism
 			logf("Using Prism Launcher from /Applications folder")
