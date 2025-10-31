@@ -56,7 +56,6 @@ func GetPrismExecutablePath(prismDir string) string {
 	// First check for direct executable (flat structure)
 	directPath := GetDirectPrismExecutablePath(prismDir)
 	if exists(directPath) {
-		logf("DEBUG: Found Prism executable at direct path: %s", directPath)
 		return directPath
 	}
 
@@ -68,7 +67,6 @@ func GetPrismExecutablePath(prismDir string) string {
 				if file.IsDir() && strings.Contains(file.Name(), "PrismLauncher") {
 					nestedPath := GetDirectPrismExecutablePath(filepath.Join(prismDir, file.Name()))
 					if exists(nestedPath) {
-						logf("DEBUG: Found Prism executable in versioned subdirectory: %s", nestedPath)
 						return nestedPath
 					}
 				}
@@ -77,7 +75,6 @@ func GetPrismExecutablePath(prismDir string) string {
 	}
 
 	// Fallback to direct path
-	logf("DEBUG: Using fallback path for Prism executable: %s", directPath)
 	return directPath
 }
 
@@ -105,7 +102,6 @@ func getPrismBaseDir(prismDir string) string {
 		baseDir = filepath.Dir(filepath.Dir(baseDir)) // Go up two levels: MacOS -> Contents -> Prism Launcher.app
 	}
 
-	logf("DEBUG: Prism base directory detected as: %s", baseDir)
 	return baseDir
 }
 

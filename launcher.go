@@ -32,7 +32,6 @@ func buildQtEnvironment(prismDir, jreDir string) []string {
 		qtPluginPath := filepath.Join(actualPrismDir, "plugins")
 		if exists(qtPluginPath) {
 			qtEnv = append(qtEnv, "QT_PLUGIN_PATH="+qtPluginPath)
-			logf("DEBUG: Setting QT_PLUGIN_PATH=%s", qtPluginPath)
 		}
 
 		// Set library path to bundled libraries directory
@@ -45,7 +44,6 @@ func buildQtEnvironment(prismDir, jreDir string) []string {
 			} else {
 				qtEnv = append(qtEnv, "LD_LIBRARY_PATH="+qtLibPath)
 			}
-			logf("DEBUG: Setting LD_LIBRARY_PATH=%s", qtLibPath)
 		}
 
 		// Additional Qt environment variables for better compatibility
@@ -59,7 +57,6 @@ func buildQtEnvironment(prismDir, jreDir string) []string {
 		qtEnv = append(qtEnv, "QT_QPA_VERBOSE=1")           // QPA platform debugging
 		qtEnv = append(qtEnv, "QT_XCB_DEBUG=1")             // XCB backend debugging
 
-		logf("DEBUG: Enabled Qt debug variables for troubleshooting")
 	}
 
 	return qtEnv
@@ -74,8 +71,6 @@ func logQtEnvironment(prismDir string) {
 	// Use the actual base directory where Prism executable is located
 	actualPrismDir := getPrismBaseDir(prismDir)
 
-	logf("=== Qt Environment Debug ===")
-	logf("Original Prism Directory: %s", prismDir)
 	logf("Actual Prism Base Directory: %s", actualPrismDir)
 
 	// Check directory structure
@@ -110,7 +105,6 @@ func logQtEnvironment(prismDir string) {
 		logf("Plugin %s: %v", plugin, exists(pluginPath))
 	}
 
-	logf("=== End Qt Environment Debug ===")
 }
 
 // fixQtPluginRPATH fixes RPATH settings in Qt plugins on Linux systems
@@ -133,9 +127,6 @@ func fixQtPluginRPATH(prismDir string) error {
 	actualPrismDir := getPrismBaseDir(prismDir)
 	pluginsDir := filepath.Join(actualPrismDir, "plugins")
 	libDir := filepath.Join(actualPrismDir, "lib")
-
-	logf("DEBUG: Using plugins directory: %s", pluginsDir)
-	logf("DEBUG: Using lib directory: %s", libDir)
 
 	if !exists(pluginsDir) {
 		logf("%s", warnLine("Plugins directory not found, skipping RPATH fixing"))
@@ -509,7 +500,6 @@ func calculateRelativePath(pluginPath, libDir string) string {
 	relPath, err := filepath.Rel(pluginDir, libDir)
 	if err != nil {
 		// Fallback to $ORIGIN/../../lib if calculation fails
-		logf("DEBUG: Failed to calculate relative path, using fallback: %v", err)
 		return "$ORIGIN/../../lib"
 	}
 
@@ -798,8 +788,6 @@ func launchPrismWithWrapper(prismDir, jreDir, instanceName string) error {
 	cmd.Stdout = multiWriter
 	cmd.Stderr = multiErrWriter
 
-	logf("DEBUG: Starting wrapper launch with command: %s", cmd.String())
-
 	// Start the process
 	if err := cmd.Start(); err != nil {
 		// Analyze the error output
@@ -841,15 +829,6 @@ func launchPrismDirect(prismExe, prismDir, jreDir, instanceName, packName string
 	qtEnv := buildQtEnvironment(prismDir, jreDir)
 	launch.Env = append(os.Environ(), qtEnv...)
 
-	// Log environment variables for debugging
-	if runtime.GOOS == "linux" {
-		for _, env := range launch.Env {
-			if strings.Contains(env, "QT_") || strings.Contains(env, "LD_LIBRARY_PATH") {
-				logf("DEBUG: Environment variable: %s", env)
-			}
-		}
-	}
-
 	// Capture both stdout and stderr for better error reporting
 	var stdoutBuf, stderrBuf bytes.Buffer
 	multiWriter := io.MultiWriter(out, &stdoutBuf)
@@ -858,19 +837,11 @@ func launchPrismDirect(prismExe, prismDir, jreDir, instanceName, packName string
 	launch.Stdout = multiWriter
 	launch.Stderr = multiErrWriter
 
-	logf("DEBUG: Starting Prism launch with command: %s", launch.String())
-
 	// Start the process and wait for it to complete (keeps console open)
 	if err := launch.Start(); err != nil {
 		logf("%s", warnLine(fmt.Sprintf("Failed to launch %s: %v", packName, err)))
 
 		// Log captured output for debugging
-		if stdoutBuf.Len() > 0 {
-			logf("DEBUG: Captured stdout before failure:\n%s", stdoutBuf.String())
-		}
-		if stderrBuf.Len() > 0 {
-			logf("DEBUG: Captured stderr before failure:\n%s", stderrBuf.String())
-		}
 
 		// Analyze the error output
 		stderrStr := stderrBuf.String()
@@ -889,12 +860,6 @@ func launchPrismDirect(prismExe, prismDir, jreDir, instanceName, packName string
 	err := launch.Wait()
 
 	// Log completion output for debugging
-	if stdoutBuf.Len() > 0 {
-		logf("DEBUG: Process stdout:\n%s", stdoutBuf.String())
-	}
-	if stderrBuf.Len() > 0 {
-		logf("DEBUG: Process stderr:\n%s", stderrBuf.String())
-	}
 
 	// Check if the process exited with an error
 	if err != nil {
@@ -933,12 +898,6 @@ func launchPrismGUIFallback(prismExe, prismDir, jreDir, packName string, prismPr
 		logf("%s", warnLine(fmt.Sprintf("Failed to open Prism Launcher UI: %v", err)))
 
 		// Log captured fallback output for debugging
-		if fallbackStdout.Len() > 0 {
-			logf("DEBUG: Captured fallback stdout:\n%s", fallbackStdout.String())
-		}
-		if fallbackStderr.Len() > 0 {
-			logf("DEBUG: Captured fallback stderr:\n%s", fallbackStderr.String())
-		}
 
 		// Analyze the error output
 		stderrStr := fallbackStderr.String()
@@ -956,12 +915,6 @@ func launchPrismGUIFallback(prismExe, prismDir, jreDir, packName string, prismPr
 	err := launchFallback.Wait()
 
 	// Log fallback completion output for debugging
-	if fallbackStdout.Len() > 0 {
-		logf("DEBUG: Fallback process stdout:\n%s", fallbackStdout.String())
-	}
-	if fallbackStderr.Len() > 0 {
-		logf("DEBUG: Fallback process stderr:\n%s", fallbackStderr.String())
-	}
 
 	// Analyze output even if process completed successfully
 	if err != nil || fallbackStderr.Len() > 0 {
@@ -1194,28 +1147,19 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 
 	// Ensure packwiz-installer.jar is available
 	mainJarPath := filepath.Join(utilDir, "packwiz-installer.jar")
-	logf("DEBUG: Checking for packwiz-installer.jar at: %s", mainJarPath)
 	if !exists(mainJarPath) {
 		logf("%s", stepLine("Downloading packwiz-installer.jar"))
-		logf("DEBUG: Starting download of packwiz-installer.jar...")
 		if err := downloadPackwizInstaller(mainJarPath); err != nil {
-			logf("DEBUG: downloadPackwizInstaller failed: %v", err)
 			fail(fmt.Errorf("failed to download packwiz-installer.jar: %w", err))
 		}
 		logf("%s", successLine("packwiz-installer.jar downloaded"))
-		logf("DEBUG: packwiz-installer.jar download completed")
-	} else {
-		logf("DEBUG: packwiz-installer.jar already exists")
 	}
 
 	var cmd *exec.Cmd
 	if exists(bootstrapExe) {
 		cmd = exec.Command(bootstrapExe, "--bootstrap-no-update", "--bootstrap-main-jar", mainJarPath, "-g", packURL) // run from minecraft directory
-		logf("DEBUG: Using packwiz bootstrap EXE: %s", bootstrapExe)
 	} else if exists(bootstrapJar) {
 		cmd = exec.Command(javaBin, "-jar", bootstrapJar, "--bootstrap-no-update", "--bootstrap-main-jar", mainJarPath, "-g", packURL)
-		logf("DEBUG: Using packwiz bootstrap JAR: %s", bootstrapJar)
-		logf("DEBUG: Java binary: %s", javaBin)
 	} else {
 		fail(errors.New("packwiz bootstrap not found after download"))
 	}
@@ -1225,10 +1169,6 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 		"PATH="+BuildPathEnv(filepath.Join(jreDir, "bin")),
 	)
 
-	logf("DEBUG: Packwiz command: %s", cmd.String())
-	logf("DEBUG: Packwiz working directory: %s", cmd.Dir)
-	logf("DEBUG: Packwiz environment: JAVA_HOME=%s", jreDir)
-
 	// Set platform-specific process attributes
 	setPackwizProcessAttributes(cmd)
 
@@ -1236,10 +1176,8 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 	mw := io.MultiWriter(out, &buf)
 	cmd.Stdout, cmd.Stderr = mw, mw
 
-	logf("DEBUG: Starting packwiz execution...")
 	progressTicker.Stop() // Stop progress ticker before running packwiz
 	err = cmd.Run()
-	logf("DEBUG: Packwiz execution completed with error: %v", err)
 	if err != nil {
 		// Parse packwiz output for manual-download instructions
 		items := parsePackwizManuals(buf.String())
@@ -1319,9 +1257,6 @@ func runLauncherLogic(root, exePath string, modpack Modpack, prismProcess **os.P
 			logf("Warning: Prism Launcher not found at %s or %s", prismExe, applicationsPrism)
 		}
 	}
-
-	logf("DEBUG: Using Prism executable: %s", prismExe)
-	logf("DEBUG: Working directory: %s", prismDir)
 
 	// Log Qt environment setup for debugging
 	logQtEnvironment(prismDir)

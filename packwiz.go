@@ -284,7 +284,6 @@ func getLocalPackVersion(mp Modpack, instDir string) (string, error) {
 
 	// Check if our version file exists
 	if !exists(versionFilePath) {
-		logf("Debug: %s version file not found at %s", modpackLabel(mp), versionFilePath)
 		return "", nil // No version file exists
 	}
 
@@ -294,7 +293,6 @@ func getLocalPackVersion(mp Modpack, instDir string) (string, error) {
 	}
 
 	version := strings.TrimSpace(string(body))
-	logf("Debug: Found local %s version %s at %s", modpackLabel(mp), version, versionFilePath)
 	return version, nil
 }
 
@@ -306,7 +304,6 @@ func saveLocalVersion(mp Modpack, instDir, version string) error {
 		return fmt.Errorf("failed to save local version: %w", err)
 	}
 
-	logf("Debug: Saved local %s version %s to %s", modpackLabel(mp), version, versionFilePath)
 	return nil
 }
 

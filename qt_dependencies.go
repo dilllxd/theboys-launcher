@@ -30,7 +30,9 @@ type PackageManagerInfo struct {
 
 // getPackageManager detects the available package manager on the system
 func getPackageManager() *PackageManagerInfo {
+	logf("DEBUG: Detecting package manager on Linux")
 	if runtime.GOOS != "linux" {
+		logf("DEBUG: Not on Linux, skipping package manager detection")
 		return nil
 	}
 
@@ -79,17 +81,25 @@ func getPackageManager() *PackageManagerInfo {
 	}
 
 	for _, pm := range packageManagers {
+		logf("DEBUG: Checking for package manager: %s", pm.Name)
 		if _, err := exec.LookPath(pm.Name); err == nil {
+			logf("DEBUG: Found %s in PATH, verifying functionality", pm.Name)
 			// Verify the package manager is actually working
 			cmd := exec.Command("sh", "-c", pm.CheckCmd)
-			if err := cmd.Run(); err == nil {
-				logf("Detected package manager: %s", pm.Name)
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				logf("DEBUG: Successfully verified package manager: %s", pm.Name)
+				logf("DEBUG: %s version output: %s", pm.Name, string(output))
 				return &pm
+			} else {
+				logf("DEBUG: Package manager %s found but verification failed: %v, output: %s", pm.Name, err, string(output))
 			}
+		} else {
+			logf("DEBUG: Package manager %s not found in PATH", pm.Name)
 		}
 	}
 
-	logf("No supported package manager found")
+	logf("DEBUG: No supported package manager found on this system")
 	return nil
 }
 
@@ -140,7 +150,9 @@ func getQtPackages(packageManager string) []string {
 
 // checkQtLibraries checks if required Qt libraries are installed
 func checkQtLibraries() *QtDependencyInfo {
+	logf("DEBUG: Checking Qt library dependencies")
 	if runtime.GOOS != "linux" {
+		logf("DEBUG: Not on Linux, Qt libraries check skipped")
 		return &QtDependencyInfo{Installed: true}
 	}
 
@@ -160,8 +172,12 @@ func checkQtLibraries() *QtDependencyInfo {
 
 	// Check each library using ldconfig
 	for _, lib := range criticalLibs {
+		logf("DEBUG: Checking for library: %s", lib)
 		if !isLibraryInstalled(lib) {
+			logf("DEBUG: Missing library: %s", lib)
 			missingLibs = append(missingLibs, lib)
+		} else {
+			logf("DEBUG: Found library: %s", lib)
 		}
 	}
 
@@ -171,6 +187,7 @@ func checkQtLibraries() *QtDependencyInfo {
 
 	if pm != nil {
 		packages = getQtPackages(pm.Name)
+		logf("DEBUG: Qt packages to install for %s: %v", pm.Name, packages)
 	}
 
 	result := &QtDependencyInfo{
@@ -195,22 +212,32 @@ func checkQtLibraries() *QtDependencyInfo {
 
 // isLibraryInstalled checks if a library is available on the system
 func isLibraryInstalled(libraryName string) bool {
+	logf("DEBUG: Checking if library %s is installed", libraryName)
 	// Use ldconfig -p to check for the library
 	cmd := exec.Command("ldconfig", "-p")
 	output, err := cmd.Output()
 	if err != nil {
+		logf("DEBUG: ldconfig -p failed: %v, falling back to path checking", err)
 		// Fallback to checking common library paths
 		return checkLibraryPaths(libraryName)
 	}
 
+	logf("DEBUG: Parsing ldconfig output for library %s", libraryName)
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	found := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.Contains(line, libraryName) {
-			return true
+			logf("DEBUG: Found library %s in ldconfig output: %s", libraryName, line)
+			found = true
 		}
 	}
 
+	if found {
+		return true
+	}
+
+	logf("DEBUG: Library %s not found in ldconfig output, checking paths", libraryName)
 	// Fallback to checking common library paths
 	return checkLibraryPaths(libraryName)
 }

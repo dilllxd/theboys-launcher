@@ -18,23 +18,47 @@ import (
 
 // killProcessByName kills all processes with the given name on macOS
 func killProcessByName(processName string) error {
+	logf("DEBUG: Attempting to kill processes by name pattern on macOS: %s", processName)
 	// Use pkill to kill processes by name
 	cmd := exec.Command("pkill", "-f", processName)
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logf("DEBUG: pkill failed for pattern %s on macOS: %v, output: %s", processName, err, string(output))
+		return err
+	}
+	logf("DEBUG: Successfully killed processes matching pattern %s on macOS, output: %s", processName, string(output))
+	return nil
 }
 
 // killProcessByPID kills a process and its children by PID on macOS
 func killProcessByPID(pid int) error {
+	logf("DEBUG: Attempting to kill process tree for PID %d on macOS", pid)
 	// First try to kill the process tree using pkill with parent PID
 	cmd := exec.Command("pkill", "-P", strconv.Itoa(pid))
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logf("DEBUG: pkill -P failed for PID %d on macOS: %v, output: %s", pid, err, string(output))
+	} else {
+		logf("DEBUG: Successfully killed children of PID %d on macOS, output: %s", pid, string(output))
+	}
 
 	// Also kill the specific process directly
+	logf("DEBUG: Sending SIGKILL to process PID %d on macOS", pid)
 	killCmd := exec.Command("kill", "-9", strconv.Itoa(pid))
-	if killErr := killCmd.Run(); killErr != nil {
+	killOutput, killErr := killCmd.CombinedOutput()
+	if killErr != nil {
+		logf("DEBUG: kill -9 failed for PID %d on macOS: %v, output: %s", pid, killErr, string(killOutput))
 		// If kill fails, try to use pkill on the PID
+		logf("DEBUG: Attempting fallback pkill for PID %d on macOS", pid)
 		pkillCmd := exec.Command("pkill", strconv.Itoa(pid))
-		return pkillCmd.Run()
+		pkillOutput, pkillErr := pkillCmd.CombinedOutput()
+		if pkillErr != nil {
+			logf("DEBUG: Fallback pkill also failed for PID %d on macOS: %v, output: %s", pid, pkillErr, string(pkillOutput))
+			return pkillErr
+		}
+		logf("DEBUG: Fallback pkill succeeded for PID %d on macOS, output: %s", pid, string(pkillOutput))
+	} else {
+		logf("DEBUG: Successfully killed PID %d with SIGKILL on macOS, output: %s", pid, string(killOutput))
 	}
 
 	return err
@@ -153,15 +177,19 @@ func getProcessName(baseName string) string {
 
 // isProcessRunning checks if a process with the given PID is still running on macOS
 func isProcessRunning(pid int) (bool, error) {
+	logf("DEBUG: Checking if process PID %d is running on macOS", pid)
 	// Use ps to check if the process is still running
 	cmd := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid=")
 	output, err := cmd.Output()
 	if err != nil {
+		logf("DEBUG: Failed to check process status for PID %d on macOS: %v", pid, err)
 		return false, fmt.Errorf("failed to check process status: %w", err)
 	}
 
-	// ps returns the PID if the process exists, empty otherwise
-	return strings.TrimSpace(string(output)) == strconv.Itoa(pid), nil
+	outputStr := strings.TrimSpace(string(output))
+	isRunning := outputStr == strconv.Itoa(pid)
+	logf("DEBUG: Process PID %d running status on macOS: %t (ps output: %s)", pid, isRunning, outputStr)
+	return isRunning, nil
 }
 
 // validateProcessIdentity validates that a process matches the expected executable and working directory on macOS

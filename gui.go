@@ -274,19 +274,11 @@ func NewGUI(modpacks []Modpack, root string) *GUI {
 	w.CenterOnScreen()
 	w.SetFixedSize(false)
 
-	// DEBUG: Log icon information
-	logf("DEBUG: Window created - checking for icon file")
 	iconPath := "icon.ico"
-	if _, err := os.Stat(iconPath); err != nil {
-		logf("DEBUG: Icon file %s not found: %v", iconPath, err)
-	} else {
-		logf("DEBUG: Icon file %s exists, attempting to set window icon", iconPath)
+	if _, err := os.Stat(iconPath); err == nil {
 		// Try to set the window icon
-		if iconResource, err := fyne.LoadResourceFromPath(iconPath); err != nil {
-			logf("DEBUG: Failed to load icon resource: %v", err)
-		} else {
+		if iconResource, err := fyne.LoadResourceFromPath(iconPath); err == nil {
 			w.SetIcon(iconResource)
-			logf("DEBUG: Window icon set successfully")
 		}
 	}
 
@@ -1595,253 +1587,304 @@ func generateRandomID() (string, error) {
 
 // uploadLog uploads the latest.log content to i.dylan.lol/logs/
 func (g *GUI) uploadLog() {
+	// Log when the upload function is called
+	logf("DEBUG: uploadLog function called")
+
 	logPath := filepath.Join(g.root, "logs", "latest.log")
 
-	// Show upload progress dialog
-	progressDialog := dialog.NewCustom("Uploading Log...", "Cancel",
-		widget.NewProgressBarInfinite(), g.window)
+	// Use a WaitGroup to ensure proper synchronization
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-	// Show the dialog with error handling
-	if progressDialog != nil {
-		progressDialog.Show()
-	} else {
-		// Fallback to simple information dialog if custom dialog creation fails
-		dialog.ShowInformation("Uploading Log", "Uploading log file to i.dylan.lol...", g.window)
-	}
+	// Create a channel to signal when the upload is complete
+	uploadComplete := make(chan bool, 1)
 
-	// Upload in background goroutine
-	go func() {
+	// Show upload progress dialog in the main thread
+	fyne.Do(func() {
+		logf("DEBUG: Creating and showing progress dialog")
+		progressDialog := dialog.NewCustom("Uploading Log...", "Cancel",
+			widget.NewProgressBarInfinite(), g.window)
+
+		// Show the dialog with error handling
 		if progressDialog != nil {
-			defer progressDialog.Hide()
+			progressDialog.Show()
+			logf("DEBUG: Progress dialog shown successfully")
+		} else {
+			// Fallback to simple information dialog if custom dialog creation fails
+			logf("DEBUG: Progress dialog creation failed, using fallback")
+			dialog.ShowInformation("Uploading Log", "Uploading log file to i.dylan.lol...", g.window)
 		}
 
-		// Generate a random 8-character ID for the filename
-		randomID, err := generateRandomID()
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to generate random ID: %v", err), g.window)
-			})
-			return
-		}
-		filename := fmt.Sprintf("%s.log", randomID)
+		// Start the upload in a separate goroutine
+		go func() {
+			defer wg.Done()
+			defer func() {
+				// Hide the progress dialog when done
+				fyne.Do(func() {
+					if progressDialog != nil {
+						logf("DEBUG: Hiding progress dialog")
+						progressDialog.Hide()
+					}
+				})
+			}()
 
-		// Create multipart form with file upload using CreateFormFile to match curl -F format
-		var requestBody bytes.Buffer
-		writer := multipart.NewWriter(&requestBody)
+			logf("DEBUG: Starting upload goroutine")
 
-		// Add the required "act" field with value "bput" as required by the endpoint
-		err = writer.WriteField("act", "bput")
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to add act field: %v", err), g.window)
-			})
-			return
-		}
+			// Generate a random 8-character ID for the filename
+			randomID, err := generateRandomID()
+			if err != nil {
+				logf("DEBUG: Failed to generate random ID: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to generate random ID: %v", err), g.window)
+				})
+				return
+			}
+			filename := fmt.Sprintf("%s.log", randomID)
+			logf("DEBUG: Generated filename: %s", filename)
 
-		// Open the log file for reading
-		file, err := os.Open(logPath)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to open log file for upload: %v", err), g.window)
-			})
-			return
-		}
-		defer file.Close()
+			// Create multipart form with file upload using CreateFormFile to match curl -F format
+			var requestBody bytes.Buffer
+			writer := multipart.NewWriter(&requestBody)
 
-		// Create form file part using CreateFormFile to match curl -F "file=@filename;type=application/octet-stream"
-		part, err := writer.CreateFormFile("file", filename)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
-			})
-			return
-		}
-
-		// Copy file content to the form part
-		_, err = io.Copy(part, file)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to copy file content: %v", err), g.window)
-			})
-			return
-		}
-
-		writer.Close()
-
-		// Create a new HTTP request with the form data
-		req, err := http.NewRequest("POST", "https://i.dylan.lol/logs/", &requestBody)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
-			})
-			return
-		}
-
-		// Set the content type header for form data
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
-
-		// Send the request with TLS 1.2 and timeout
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					MinVersion: tls.VersionTLS12,
-					MaxVersion: tls.VersionTLS12,
-				},
-			},
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to upload log: %v", err), g.window)
-			})
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read the full response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Failed to read response body: %v", err), g.window)
-			})
-			return
-		}
-
-		// Log the raw response for debugging
-		// logf("Upload response status: %s", resp.Status)
-		// logf("Upload response content-type: %s", resp.Header.Get("Content-Type"))
-		bodyStr := string(body)
-		// logf("Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
-
-		// Log that we're parsing HTML instead of JSON
-		// logf("Parsing HTML response to extract log file URL")
-
-		// Check if the upload was successful (status code 200-299)
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			// Parse the HTML response to extract the file URL
-			var logURL string
-
-			// Try to extract the filename from the HTML response using regex
-			// Pattern to match href="/logs/filename.log"
-			logPattern := `href="/logs/([^"]+\.log)"`
-			re := regexp.MustCompile(logPattern)
-			matches := re.FindStringSubmatch(bodyStr)
-
-			if len(matches) > 1 {
-				// Extract the filename from the match
-				filename := matches[1]
-				// Construct the full URL
-				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s", filename)
-				// logf("Successfully extracted filename from HTML: %s", filename)
-			} else {
-				// If regex fails, fall back to using our random ID
-				// logf("Failed to extract filename from HTML, falling back to random ID: %s", randomID)
-				logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s.log", randomID)
+			// Add the required "act" field with value "bput" as required by the endpoint
+			err = writer.WriteField("act", "bput")
+			if err != nil {
+				logf("DEBUG: Failed to add act field: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to add act field: %v", err), g.window)
+				})
+				return
 			}
 
-			// logf("Final log URL: %s", logURL)
-
-			fyne.Do(func() {
-				// Extract filename from the URL for display
-				filename := randomID + ".log"
-				if matches := regexp.MustCompile(`https://i\.dylan\.lol/logs/([^\.]+\.log)`).FindStringSubmatch(logURL); len(matches) > 1 {
-					filename = matches[1]
-				}
-
-				// Create a more informative and visually appealing success dialog
-				successTitle := widget.NewLabelWithStyle("✓ Log Successfully Uploaded!", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-				successTitle.Importance = widget.HighImportance
-
-				// Main message with clipboard information
-				messageLabel := widget.NewLabel("The log has been uploaded and the URL has been copied to your clipboard.")
-				messageLabel.Wrapping = fyne.TextWrapWord
-
-				// File information
-				fileInfoLabel := widget.NewLabelWithStyle(fmt.Sprintf("File: %s", filename), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
-
-				// Parse URL for hyperlink
-				parsedURL, err := url.Parse(logURL)
-				var successContent fyne.CanvasObject
-
-				if err != nil {
-					// If URL parsing fails, just show the text
-					urlLabel := widget.NewLabelWithStyle(fmt.Sprintf("URL: %s", logURL), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
-					urlLabel.Wrapping = fyne.TextWrapWord
-
-					successContent = container.NewVBox(
-						successTitle,
-						widget.NewSeparator(),
-						messageLabel,
-						widget.NewSeparator(),
-						fileInfoLabel,
-						urlLabel,
-					)
-				} else {
-					// Create a clickable link to the uploaded log
-					linkLabel := widget.NewLabelWithStyle("Click the link below to view your uploaded log:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-					hyperlink := widget.NewHyperlink("View Uploaded Log", parsedURL)
-
-					successContent = container.NewVBox(
-						successTitle,
-						widget.NewSeparator(),
-						messageLabel,
-						widget.NewSeparator(),
-						fileInfoLabel,
-						linkLabel,
-						hyperlink,
-					)
-				}
-
-				// Create buttons for the dialog
-				okButton := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
-				copyButton := widget.NewButtonWithIcon("Copy URL Again", theme.ContentCopyIcon(), func() {
-					g.window.Clipboard().SetContent(logURL)
-					g.updateStatus("URL copied to clipboard")
+			// Open the log file for reading
+			file, err := os.Open(logPath)
+			if err != nil {
+				logf("DEBUG: Failed to open log file: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to open log file for upload: %v", err), g.window)
 				})
+				return
+			}
+			defer file.Close()
 
-				// Button container
-				buttonContainer := container.NewHBox(
-					layout.NewSpacer(),
-					copyButton,
-					okButton,
-				)
+			// Create form file part using CreateFormFile to match curl -F "file=@filename;type=application/octet-stream"
+			part, err := writer.CreateFormFile("file", filename)
+			if err != nil {
+				logf("DEBUG: Failed to create form file: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to create form file: %v", err), g.window)
+				})
+				return
+			}
 
-				// Complete dialog with buttons
-				dialogContent := container.NewVBox(
-					successContent,
-					widget.NewSeparator(),
-					buttonContainer,
-				)
+			// Copy file content to the form part
+			_, err = io.Copy(part, file)
+			if err != nil {
+				logf("DEBUG: Failed to copy file content: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to copy file content: %v", err), g.window)
+				})
+				return
+			}
 
-				// Create the custom dialog with only our defined buttons
-				customDialog := dialog.NewCustom("Upload Successful", "OK", dialogContent, g.window)
+			writer.Close()
 
-				// Set the OK button to close the dialog
-				okButton.OnTapped = func() {
-					customDialog.Hide()
-				}
+			// Create a new HTTP request with the form data
+			req, err := http.NewRequest("POST", "https://i.dylan.lol/logs/", &requestBody)
+			if err != nil {
+				logf("DEBUG: Failed to create request: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to create request: %v", err), g.window)
+				})
+				return
+			}
 
-				// Show the dialog with error handling
-				if customDialog != nil {
-					customDialog.Show()
+			// Set the content type header for form data
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("User-Agent", "TheBoysLauncher/1.0")
+
+			// Send the request with TLS 1.2 and timeout
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						MinVersion: tls.VersionTLS12,
+						MaxVersion: tls.VersionTLS12,
+					},
+				},
+			}
+
+			logf("DEBUG: Sending HTTP request to upload log")
+			resp, err := client.Do(req)
+			if err != nil {
+				logf("DEBUG: Failed to upload log: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to upload log: %v", err), g.window)
+				})
+				return
+			}
+			defer resp.Body.Close()
+
+			// Read the full response body
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				logf("DEBUG: Failed to read response body: %v", err)
+				uploadComplete <- false
+				fyne.Do(func() {
+					dialog.ShowError(fmt.Errorf("Failed to read response body: %v", err), g.window)
+				})
+				return
+			}
+
+			// Log the raw response for debugging
+			logf("DEBUG: Upload response status: %s", resp.Status)
+			bodyStr := string(body)
+			logf("DEBUG: Upload response body (first 200 chars): %s", bodyStr[:min(200, len(bodyStr))])
+
+			// Check if the upload was successful (status code 200-299)
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				logf("DEBUG: Upload successful, parsing response")
+				// Parse the HTML response to extract the file URL
+				var logURL string
+
+				// Try to extract the filename from the HTML response using regex
+				// Pattern to match href="/logs/filename.log"
+				logPattern := `href="/logs/([^"]+\.log)"`
+				re := regexp.MustCompile(logPattern)
+				matches := re.FindStringSubmatch(bodyStr)
+
+				if len(matches) > 1 {
+					// Extract the filename from the match
+					filename := matches[1]
+					// Construct the full URL
+					logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s", filename)
+					logf("DEBUG: Successfully extracted filename from HTML: %s", filename)
 				} else {
-					// Fallback to simple information dialog if custom dialog creation fails
-					dialog.ShowInformation("Upload Successful", "The log has been uploaded successfully and the URL has been copied to your clipboard.", g.window)
+					// If regex fails, fall back to using our random ID
+					logf("DEBUG: Failed to extract filename from HTML, falling back to random ID: %s", randomID)
+					logURL = fmt.Sprintf("https://i.dylan.lol/logs/%s.log", randomID)
 				}
 
-				// Auto-copy to clipboard (existing functionality)
-				g.window.Clipboard().SetContent(logURL)
-			})
-		} else {
-			// Upload failed
-			fyne.Do(func() {
-				dialog.ShowError(fmt.Errorf("Upload failed with status: %s\nResponse: %s", resp.Status, string(body)[:min(200, len(body))]), g.window)
-			})
-		}
-	}()
+				logf("DEBUG: Final log URL: %s", logURL)
+				uploadComplete <- true
+
+				fyne.Do(func() {
+					logf("DEBUG: Showing success dialog")
+					// Extract filename from the URL for display
+					filename := randomID + ".log"
+					if matches := regexp.MustCompile(`https://i\.dylan\.lol/logs/([^\.]+\.log)`).FindStringSubmatch(logURL); len(matches) > 1 {
+						filename = matches[1]
+					}
+
+					// Create a more informative and visually appealing success dialog
+					successTitle := widget.NewLabelWithStyle("✓ Log Successfully Uploaded!", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+					successTitle.Importance = widget.HighImportance
+
+					// Main message with clipboard information
+					messageLabel := widget.NewLabel("The log has been uploaded and the URL has been copied to your clipboard.")
+					messageLabel.Wrapping = fyne.TextWrapWord
+
+					// File information
+					fileInfoLabel := widget.NewLabelWithStyle(fmt.Sprintf("File: %s", filename), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+
+					// Parse URL for hyperlink
+					parsedURL, err := url.Parse(logURL)
+					var successContent fyne.CanvasObject
+
+					if err != nil {
+						// If URL parsing fails, just show the text
+						urlLabel := widget.NewLabelWithStyle(fmt.Sprintf("URL: %s", logURL), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+						urlLabel.Wrapping = fyne.TextWrapWord
+
+						successContent = container.NewVBox(
+							successTitle,
+							widget.NewSeparator(),
+							messageLabel,
+							widget.NewSeparator(),
+							fileInfoLabel,
+							urlLabel,
+						)
+					} else {
+						// Create a clickable link to the uploaded log
+						linkLabel := widget.NewLabelWithStyle("Click the link below to view your uploaded log:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+						hyperlink := widget.NewHyperlink("View Uploaded Log", parsedURL)
+
+						successContent = container.NewVBox(
+							successTitle,
+							widget.NewSeparator(),
+							messageLabel,
+							widget.NewSeparator(),
+							fileInfoLabel,
+							linkLabel,
+							hyperlink,
+						)
+					}
+
+					// Create buttons for the dialog
+					okButton := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
+					copyButton := widget.NewButtonWithIcon("Copy URL Again", theme.ContentCopyIcon(), func() {
+						g.window.Clipboard().SetContent(logURL)
+						g.updateStatus("URL copied to clipboard")
+					})
+
+					// Button container
+					buttonContainer := container.NewHBox(
+						layout.NewSpacer(),
+						copyButton,
+						okButton,
+					)
+
+					// Complete dialog with buttons
+					dialogContent := container.NewVBox(
+						successContent,
+						widget.NewSeparator(),
+						buttonContainer,
+					)
+
+					// Create the custom dialog with only our defined buttons
+					customDialog := dialog.NewCustom("Upload Successful", "OK", dialogContent, g.window)
+
+					// Set the OK button to close the dialog
+					okButton.OnTapped = func() {
+						customDialog.Hide()
+					}
+
+					// Show the dialog with error handling
+					if customDialog != nil {
+						customDialog.Show()
+					} else {
+						// Fallback to simple information dialog if custom dialog creation fails
+						dialog.ShowInformation("Upload Successful", "The log has been uploaded successfully and the URL has been copied to your clipboard.", g.window)
+					}
+
+					// Auto-copy to clipboard (existing functionality)
+					g.window.Clipboard().SetContent(logURL)
+				})
+			} else {
+				logf("DEBUG: Upload failed with status: %s", resp.Status)
+				uploadComplete <- false
+				// Upload failed
+				fyne.Do(func() {
+					logf("DEBUG: Showing error dialog")
+					dialog.ShowError(fmt.Errorf("Upload failed with status: %s\nResponse: %s", resp.Status, string(body)[:min(200, len(body))]), g.window)
+				})
+			}
+		}()
+
+		// Wait for the upload to complete
+		go func() {
+			wg.Wait()
+			logf("DEBUG: Upload goroutine completed")
+			close(uploadComplete)
+		}()
+	})
 }
 
 // extractFileIDFromHTML extracts the file ID from MicroBin's HTML response

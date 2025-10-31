@@ -14,14 +14,18 @@ import (
 
 // getJavaVersionForMinecraft fetches compatible Java versions from PrismLauncher meta-launcher GitHub
 func getJavaVersionForMinecraft(mcVersion string) string {
+	logf("DEBUG: Determining Java version for Minecraft %s", mcVersion)
 	// Clean version string for GitHub path
 	cleanVersion := strings.TrimSpace(mcVersion)
 	if cleanVersion == "" {
+		logf("DEBUG: Empty Minecraft version provided, using default Java 17")
 		return "17" // default fallback
 	}
 
+	logf("DEBUG: Cleaned Minecraft version: %s", cleanVersion)
 	// Construct GitHub URL for PrismLauncher meta-launcher data
 	url := fmt.Sprintf("https://raw.githubusercontent.com/PrismLauncher/meta-launcher/refs/heads/master/net.minecraft/%s.json", cleanVersion)
+	logf("DEBUG: Fetching Java compatibility data from: %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -38,6 +42,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 	}
 	defer resp.Body.Close()
 
+	logf("DEBUG: Java compatibility API response: HTTP %d for Minecraft %s", resp.StatusCode, cleanVersion)
 	if resp.StatusCode != 200 {
 		logf("%s", warnLine(fmt.Sprintf("Java compatibility data not found for Minecraft %s (HTTP %d)", cleanVersion, resp.StatusCode)))
 		return "17" // default fallback
@@ -55,6 +60,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 
 	// If we have compatible Java versions, select the best one
 	if len(data.CompatibleJavaMajors) > 0 {
+		logf("DEBUG: Found compatible Java versions for Minecraft %s: %v", cleanVersion, data.CompatibleJavaMajors)
 		// Choose the newest compatible Java version (prefer higher versions)
 		bestJava := data.CompatibleJavaMajors[0]
 		for _, javaVersion := range data.CompatibleJavaMajors {
@@ -64,6 +70,7 @@ func getJavaVersionForMinecraft(mcVersion string) string {
 		}
 
 		logf("%s", successLine(fmt.Sprintf("Found Java %d compatible with Minecraft %s from PrismLauncher meta", bestJava, cleanVersion)))
+		logf("DEBUG: Selected Java version %d as the best compatible version", bestJava)
 		return strconv.Itoa(bestJava)
 	}
 
@@ -167,21 +174,27 @@ func getPlatformJavaParams() (osName, arch string) {
 // Prefer Adoptium API (stable), fall back to GitHub release asset.
 // We want: OS=windows, arch=x64, image_type=jre (or jdk for Java 16), vm=hotspot, latest for specified version.
 func fetchJREURL(javaVersion string) (string, error) {
+	logf("DEBUG: Fetching JRE URL for Java version %s", javaVersion)
 	// Java 16 only has JDK builds available, not JRE
 	imageType := "jre"
 	if javaVersion == "16" {
 		imageType = "jdk"
+		logf("DEBUG: Using JDK image type for Java 16")
 	}
 
 	// 1) Primary: Adoptium API (v3) - most reliable method
 	osName, arch := getPlatformJavaParams()
+	logf("DEBUG: Platform parameters: OS=%s, arch=%s, image_type=%s", osName, arch, imageType)
 	adoptium := fmt.Sprintf("https://api.adoptium.net/v3/assets/latest/%s/hotspot?architecture=%s&image_type=%s&os=%s", javaVersion, arch, imageType, osName)
+	logf("DEBUG: Adoptium API URL: %s", adoptium)
+
 	req, _ := http.NewRequest("GET", adoptium, nil)
 	req.Header.Set("User-Agent", getUserAgent("Adoptium"))
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Pragma", "no-cache")
 	resp, err := http.DefaultClient.Do(req)
 	if err == nil && resp.StatusCode == 200 {
+		logf("DEBUG: Adoptium API response: HTTP %d", resp.StatusCode)
 		defer resp.Body.Close()
 		var payload []struct {
 			Binary struct {
@@ -192,14 +205,20 @@ func fetchJREURL(javaVersion string) (string, error) {
 			} `json:"binary"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil {
+			logf("DEBUG: Found %d Java packages from Adoptium API", len(payload))
 			for _, v := range payload {
+				logf("DEBUG: Java package: %s", v.Binary.Package.Name)
 				// Prefer zip files (packages) over installers
 				if v.Binary.Package.Link != "" && strings.HasSuffix(strings.ToLower(v.Binary.Package.Link), ".zip") {
+					logf("DEBUG: Selected Java package: %s", v.Binary.Package.Name)
 					return v.Binary.Package.Link, nil
 				}
 			}
+		} else {
+			logf("DEBUG: Failed to decode Adoptium API response: %v", err)
 		}
 	} else if resp != nil {
+		logf("DEBUG: Adoptium API failed: HTTP %d, error: %v", resp.StatusCode, err)
 		resp.Body.Close()
 	}
 

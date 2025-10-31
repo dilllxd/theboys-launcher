@@ -49,8 +49,6 @@ func ensurePrism(dir string) (bool, error) {
 			return false, err
 		}
 
-		// Debug: Show what was actually extracted
-		logf("DEBUG: Contents of extracted archive:")
 		filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -73,7 +71,6 @@ func ensurePrism(dir string) (bool, error) {
 		for _, path := range possiblePaths {
 			if exists(path) {
 				tempAppPath = path
-				logf("DEBUG: Found Prism at: %s", path)
 				break
 			}
 		}
