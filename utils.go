@@ -93,6 +93,11 @@ func slugifyID(s string) string {
 func versionFileNameFor(mp Modpack) string { return "." + slugifyID(mp.ID) + "-version" }
 func backupPrefixFor(mp Modpack) string    { return slugifyID(mp.ID) + "-backup-" }
 
+// roundToNearestGB rounds megabytes to the nearest gigabyte
+func roundToNearestGB(mb int) int {
+	return (mb + 512) / 1024
+}
+
 // getLauncherHome is now implemented in platform-specific files
 // This function is handled by platform_windows.go and platform_darwin.go
 
