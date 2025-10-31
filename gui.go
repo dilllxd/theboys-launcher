@@ -1517,27 +1517,75 @@ func (g *GUI) uploadLog() {
 					filename = matches[1]
 				}
 
+				// Create a more informative and visually appealing success dialog
+				successTitle := widget.NewLabelWithStyle("✓ Log Successfully Uploaded!", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+				successTitle.Importance = widget.HighImportance
+
+				// Main message with clipboard information
+				messageLabel := widget.NewLabel("The log has been uploaded and the URL has been copied to your clipboard.")
+				messageLabel.Wrapping = fyne.TextWrapWord
+
+				// File information
+				fileInfoLabel := widget.NewLabelWithStyle(fmt.Sprintf("File: %s", filename), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+
 				// Parse URL for hyperlink
 				parsedURL, err := url.Parse(logURL)
+				var successContent fyne.CanvasObject
+
 				if err != nil {
 					// If URL parsing fails, just show the text
-					successContent := container.NewVBox(
-						widget.NewLabel("Log uploaded successfully!"),
-						widget.NewLabel(fmt.Sprintf("Uploaded as: %s", filename)),
-						widget.NewLabel(fmt.Sprintf("URL: %s", logURL)),
+					urlLabel := widget.NewLabelWithStyle(fmt.Sprintf("URL: %s", logURL), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+					urlLabel.Wrapping = fyne.TextWrapWord
+
+					successContent = container.NewVBox(
+						successTitle,
+						widget.NewSeparator(),
+						messageLabel,
+						widget.NewSeparator(),
+						fileInfoLabel,
+						urlLabel,
 					)
-					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
 				} else {
-					// Success dialog with copy functionality
-					successContent := container.NewVBox(
-						widget.NewLabel("Log uploaded successfully!"),
-						widget.NewLabel(fmt.Sprintf("Uploaded as: %s", filename)),
-						widget.NewHyperlink("View Log", parsedURL),
+					// Create a clickable link to the uploaded log
+					linkLabel := widget.NewLabelWithStyle("Click the link below to view your uploaded log:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+					hyperlink := widget.NewHyperlink("View Uploaded Log", parsedURL)
+
+					successContent = container.NewVBox(
+						successTitle,
+						widget.NewSeparator(),
+						messageLabel,
+						widget.NewSeparator(),
+						fileInfoLabel,
+						linkLabel,
+						hyperlink,
 					)
-					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
 				}
 
-				// Auto-copy to clipboard
+				// Create buttons for the dialog
+				okButton := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
+				copyButton := widget.NewButtonWithIcon("Copy URL Again", theme.ContentCopyIcon(), func() {
+					g.window.Clipboard().SetContent(logURL)
+					g.updateStatus("URL copied to clipboard")
+				})
+
+				// Button container
+				buttonContainer := container.NewHBox(
+					layout.NewSpacer(),
+					copyButton,
+					okButton,
+				)
+
+				// Complete dialog with buttons
+				dialogContent := container.NewVBox(
+					successContent,
+					widget.NewSeparator(),
+					buttonContainer,
+				)
+
+				// Show the custom dialog
+				dialog.ShowCustom("Upload Successful", "", dialogContent, g.window)
+
+				// Auto-copy to clipboard (existing functionality)
 				g.window.Clipboard().SetContent(logURL)
 			})
 		} else {
