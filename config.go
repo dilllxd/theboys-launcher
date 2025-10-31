@@ -172,47 +172,38 @@ func clampMemoryMB(mb int) int {
 	return mb
 }
 
-// DefaultAutoMemoryMB returns the baseline auto RAM target (half available RAM capped 2-16GB)
+// DefaultAutoMemoryMB returns the baseline auto RAM target (half total RAM capped 2-16GB)
 func DefaultAutoMemoryMB() int {
-	available := getAvailableMemoryMB()
 	total := totalRAMMB()
 	
-	// If available memory detection fails, fall back to total memory
-	if available <= 0 {
-		if total <= 0 {
-			total = 65536 // fallback 64GB
-		}
-		available = total
+	// If total memory detection fails, fall back to 32GB
+	if total <= 0 {
+		total = 32768 // fallback 32GB
 	}
 	
-	auto := clampMemoryMB(available / 2)
-	if auto > total {
-		auto = clampMemoryMB(total)
-	}
+	// Calculate half of total memory and clamp to 2-16GB range
+	auto := clampMemoryMB(total / 2)
 	return auto
 }
 
 func computeAutoRAMForModpack(modpack Modpack) int {
 	auto := DefaultAutoMemoryMB()
 	total := totalRAMMB()
-	available := getAvailableMemoryMB()
 	
 	// Ensure we don't allocate more than total memory
 	if total > 0 && auto > total {
 		auto = clampMemoryMB(total)
 	}
 
+	// If modpack has a recommended RAM value, use the minimum of auto and recommended
 	if modpack.RecommendedRam > 0 && modpack.RecommendedRam <= 16384 {
-		desired := clampMemoryMB(modpack.RecommendedRam)
-		// Ensure recommended RAM doesn't exceed available memory
-		if available > 0 && desired > available {
-			desired = clampMemoryMB(available)
+		recommended := clampMemoryMB(modpack.RecommendedRam)
+		// Ensure recommended RAM doesn't exceed total memory
+		if total > 0 && recommended > total {
+			recommended = clampMemoryMB(total)
 		}
-		// Also ensure it doesn't exceed total memory as a safety check
-		if total > 0 && desired > total {
-			desired = clampMemoryMB(total)
-		}
-		return desired
+		// Return the minimum of auto-calculated RAM and recommended RAM
+		return min(auto, recommended)
 	}
 	return auto
 }
