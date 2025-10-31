@@ -72,7 +72,7 @@ func main() {
 	logf("%s", dividerLine())
 	logf("%s", infoLine(fmt.Sprintf("Version %s • Started at %s", version, time.Now().Format("3:04 PM"))))
 	logf("%s", infoLine(fmt.Sprintf("Detected system RAM: %d GB",
-		(totalRAMMB()+512)/1024)))
+		roundToNearestGB(totalRAMMB()))))
 	logf("%s", infoLine(fmt.Sprintf("Memory allocation: %d GB", settings.MemoryMB/1024)))
 	logf("%s", dividerLine())
 
