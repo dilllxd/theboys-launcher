@@ -26,10 +26,16 @@ func ensurePrism(dir string) (bool, error) {
 	if runtime.GOOS == "darwin" {
 		// macOS: download universal ZIP to Applications folder
 		applicationsDir := "/Applications"
-		prismAppPath := filepath.Join(applicationsDir, "PrismLauncher.app")
+		
+		// Check both naming conventions for existing installation
+		prismAppPathWithoutSpace := filepath.Join(applicationsDir, "PrismLauncher.app")
+		prismAppPathWithSpace := filepath.Join(applicationsDir, "Prism Launcher.app")
 
-		// Check if Prism is already installed in Applications
-		if exists(prismAppPath) {
+		// Check if Prism is already installed in Applications (try both naming conventions)
+		if exists(prismAppPathWithoutSpace) {
+			logf("%s", successLine("Prism Launcher found in Applications folder"))
+			return false, nil
+		} else if exists(prismAppPathWithSpace) {
 			logf("%s", successLine("Prism Launcher found in Applications folder"))
 			return false, nil
 		}
@@ -79,8 +85,16 @@ func ensurePrism(dir string) (bool, error) {
 			return false, fmt.Errorf("PrismLauncher.app not found in downloaded archive")
 		}
 
+		// Use the naming convention that matches the downloaded archive
+		var targetAppPath string
+		if strings.Contains(tempAppPath, "PrismLauncher.app") {
+			targetAppPath = prismAppPathWithoutSpace
+		} else {
+			targetAppPath = prismAppPathWithSpace
+		}
+
 		// Try to copy to Applications folder
-		if err := copyDir(tempAppPath, prismAppPath); err != nil {
+		if err := copyDir(tempAppPath, targetAppPath); err != nil {
 			return false, fmt.Errorf("failed to copy PrismLauncher to Applications folder: %w", err)
 		}
 
