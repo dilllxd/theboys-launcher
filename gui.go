@@ -1464,14 +1464,14 @@ func (g *GUI) uploadLog() {
 			// Parse HTML response to extract the file ID
 			fileID := g.extractFileIDFromHTML(string(body))
 			if fileID != "" {
-				// Construct the direct URL
-				directURL := fmt.Sprintf("https://logs.dylan.lol/%s", fileID)
+				// Construct the direct URL using /p/ path for direct access
+				directURL := fmt.Sprintf("https://logs.dylan.lol/p/%s", fileID)
 
 				fyne.Do(func() {
 					// Success dialog with copy functionality
 					successContent := container.NewVBox(
 						widget.NewLabel("Log uploaded successfully!"),
-						widget.NewHyperlink("View Log", &url.URL{Scheme: "https", Host: "logs.dylan.lol", Path: "/file/" + fileID}),
+						widget.NewHyperlink("View Log", &url.URL{Scheme: "https", Host: "logs.dylan.lol", Path: "/p/" + fileID}),
 					)
 
 					dialog.ShowCustom("Upload Successful", "OK", successContent, g.window)
@@ -1531,27 +1531,50 @@ func (g *GUI) uploadLog() {
 // extractFileIDFromHTML extracts the file ID from MicroBin's HTML response
 func (g *GUI) extractFileIDFromHTML(html string) string {
 	// Look for the pattern in the HTML that contains the file ID
-	// The file ID appears in URLs like /upload/mouse-tiger-fly or /file/mouse-tiger-fly
+	// The file ID appears in URLs like https://logs.dylan.lol/upload/mouse-tiger-fly or https://logs.dylan.lol/file/mouse-tiger-fly
 
-	// First try to find the upload URL pattern
-	uploadPattern := `href="/upload/([^"]+)"`
+	// First try to find the upload URL pattern (absolute URLs)
+	uploadPattern := `href="https://logs\.dylan\.lol/upload/([^"]+)"`
 	re := regexp.MustCompile(uploadPattern)
 	matches := re.FindStringSubmatch(html)
 	if len(matches) > 1 {
 		return matches[1]
 	}
 
-	// If that fails, try the file URL pattern
-	filePattern := `href="/file/([^"]+)"`
+	// If that fails, try the file URL pattern (absolute URLs)
+	filePattern := `href="https://logs\.dylan\.lol/file/([^"]+)"`
 	re = regexp.MustCompile(filePattern)
 	matches = re.FindStringSubmatch(html)
 	if len(matches) > 1 {
 		return matches[1]
 	}
 
-	// If that fails, try the copy URL button pattern
-	copyPattern := `const url = \(.*logs\.dylan\.lol.*\)/([^"]+)`
-	re = regexp.MustCompile(copyPattern)
+	// If that fails, try the edit URL pattern (absolute URLs)
+	editPattern := `href="https://logs\.dylan\.lol/edit/([^"]+)"`
+	re = regexp.MustCompile(editPattern)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// If that fails, try the JavaScript URL pattern
+	jsPattern := `const url = .*https://logs\.dylan\.lol/upload/([^"]+)`
+	re = regexp.MustCompile(jsPattern)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Fallback: try relative patterns (in case the format changes)
+	relativeUploadPattern := `href="/upload/([^"]+)"`
+	re = regexp.MustCompile(relativeUploadPattern)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	relativeFilePattern := `href="/file/([^"]+)"`
+	re = regexp.MustCompile(relativeFilePattern)
 	matches = re.FindStringSubmatch(html)
 	if len(matches) > 1 {
 		return matches[1]
