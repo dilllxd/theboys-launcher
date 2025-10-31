@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ func ensurePrism(dir string) (bool, error) {
 	if runtime.GOOS == "darwin" {
 		// macOS: download universal ZIP to Applications folder
 		applicationsDir := "/Applications"
-		
+
 		// Check both naming conventions for existing installation
 		prismAppPathWithoutSpace := filepath.Join(applicationsDir, "PrismLauncher.app")
 		prismAppPathWithSpace := filepath.Join(applicationsDir, "Prism Launcher.app")
@@ -108,8 +109,7 @@ func ensurePrism(dir string) (bool, error) {
 		}
 
 		// Also fix permissions for other executables in the app bundle
-		macOSDir := filepath.Join(targetAppPath, "Contents", "MacOS")
-		if err := fixMacOSExecutablePermissions(macOSDir); err != nil {
+		if err := fixMacOSExecutablePermissions(targetAppPath); err != nil {
 			logf("%s", warnLine(fmt.Sprintf("Failed to fix all executable permissions: %v", err)))
 			// Don't fail the entire operation, but warn the user
 		}
@@ -321,14 +321,80 @@ func fetchLatestPrismPortableURL() (string, error) {
 	return "", errors.New("no suitable Prism portable asset found in latest release")
 }
 
+// getCFBundleExecutable reads the Info.plist file and returns the CFBundleExecutable value
+// It parses the XML plist format and extracts the CFBundleExecutable key's value
+func getCFBundleExecutable(appBundlePath string) (string, error) {
+	infoPlistPath := filepath.Join(appBundlePath, "Contents", "Info.plist")
+
+	data, err := os.ReadFile(infoPlistPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read Info.plist: %w", err)
+	}
+
+	// Parse as generic XML to handle the plist structure
+	// Plist files have alternating <key> and value elements (string, integer, etc.)
+	decoder := xml.NewDecoder(strings.NewReader(string(data)))
+
+	var inDict bool
+	var lastKey string
+
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to parse Info.plist: %w", err)
+		}
+
+		switch elem := token.(type) {
+		case xml.StartElement:
+			if elem.Name.Local == "dict" {
+				inDict = true
+			} else if inDict && elem.Name.Local == "key" {
+				// Read the key text content
+				var keyText string
+				if err := decoder.DecodeElement(&keyText, &elem); err != nil {
+					return "", fmt.Errorf("failed to decode key: %w", err)
+				}
+				lastKey = keyText
+			} else if inDict && lastKey == "CFBundleExecutable" {
+				// We found the CFBundleExecutable key, now get its value
+				if elem.Name.Local == "string" {
+					var value string
+					if err := decoder.DecodeElement(&value, &elem); err != nil {
+						return "", fmt.Errorf("failed to decode CFBundleExecutable value: %w", err)
+					}
+					return value, nil
+				}
+			}
+		case xml.EndElement:
+			if elem.Name.Local == "dict" {
+				inDict = false
+			}
+		}
+	}
+
+	return "", errors.New("CFBundleExecutable not found in Info.plist")
+}
+
 // fixMacOSExecutablePermissions fixes permissions for all executable files in a macOS app bundle
-func fixMacOSExecutablePermissions(macOSDir string) error {
+func fixMacOSExecutablePermissions(appBundlePath string) error {
 	if runtime.GOOS != "darwin" {
 		return nil // Only apply on macOS
 	}
 
+	macOSDir := filepath.Join(appBundlePath, "Contents", "MacOS")
 	if !exists(macOSDir) {
 		return fmt.Errorf("macOS directory not found: %s", macOSDir)
+	}
+
+	// Get the main executable name from Info.plist
+	mainExecutable, err := getCFBundleExecutable(appBundlePath)
+	if err != nil {
+		// If we can't read Info.plist, log a warning but continue with fallback behavior
+		logf("Warning: Could not read CFBundleExecutable from Info.plist: %v", err)
+		mainExecutable = "prismlauncher" // fallback to known name
 	}
 
 	// Walk through all files in the MacOS directory and fix executable permissions
@@ -344,15 +410,18 @@ func fixMacOSExecutablePermissions(macOSDir string) error {
 
 		// Check if file is executable (has execute bit already or is a known executable type)
 		isExecutable := (info.Mode().Perm() & 0111) != 0 // Has any execute bit
-		isKnownExecutable := strings.HasSuffix(info.Name(), "Updater") ||
-			strings.HasSuffix(info.Name(), "Autoupdate") ||
-			info.Name() == "prismlauncher"
+
+		// Use Info.plist CFBundleExecutable to identify the main executable
+		// Also include known helper executables like Updater and Autoupdate
+		isKnownExecutable := info.Name() == mainExecutable ||
+			strings.HasSuffix(info.Name(), "Updater") ||
+			strings.HasSuffix(info.Name(), "Autoupdate")
 
 		if isExecutable || isKnownExecutable {
 			// Set executable permissions (755)
 			newMode := info.Mode() | 0111 // Add execute bit for owner
-			newMode = newMode | 0110    // Add execute bit for group
-			newMode = newMode | 0001    // Add execute bit for others
+			newMode = newMode | 0110      // Add execute bit for group
+			newMode = newMode | 0001      // Add execute bit for others
 
 			if newMode != info.Mode() {
 				if err := os.Chmod(path, newMode); err != nil {
