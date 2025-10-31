@@ -98,6 +98,22 @@ func ensurePrism(dir string) (bool, error) {
 			return false, fmt.Errorf("failed to copy PrismLauncher to Applications folder: %w", err)
 		}
 
+		// Fix executable permissions on macOS
+		prismExecutable := filepath.Join(targetAppPath, "Contents", "MacOS", "prismlauncher")
+		if err := setExecutablePermissions(prismExecutable); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to set executable permissions: %v", err)))
+			// Don't fail the entire operation, but warn the user
+		} else {
+			logf("%s", successLine("Fixed executable permissions for Prism Launcher"))
+		}
+
+		// Also fix permissions for other executables in the app bundle
+		macOSDir := filepath.Join(targetAppPath, "Contents", "MacOS")
+		if err := fixMacOSExecutablePermissions(macOSDir); err != nil {
+			logf("%s", warnLine(fmt.Sprintf("Failed to fix all executable permissions: %v", err)))
+			// Don't fail the entire operation, but warn the user
+		}
+
 		logf("%s", successLine("Prism Launcher installed in Applications folder"))
 
 		// Create local config directory for our customizations
@@ -303,4 +319,50 @@ func fetchLatestPrismPortableURL() (string, error) {
 	}
 
 	return "", errors.New("no suitable Prism portable asset found in latest release")
+}
+
+// fixMacOSExecutablePermissions fixes permissions for all executable files in a macOS app bundle
+func fixMacOSExecutablePermissions(macOSDir string) error {
+	if runtime.GOOS != "darwin" {
+		return nil // Only apply on macOS
+	}
+
+	if !exists(macOSDir) {
+		return fmt.Errorf("macOS directory not found: %s", macOSDir)
+	}
+
+	// Walk through all files in the MacOS directory and fix executable permissions
+	return filepath.Walk(macOSDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if file is executable (has execute bit already or is a known executable type)
+		isExecutable := (info.Mode().Perm() & 0111) != 0 // Has any execute bit
+		isKnownExecutable := strings.HasSuffix(info.Name(), "Updater") ||
+			strings.HasSuffix(info.Name(), "Autoupdate") ||
+			info.Name() == "prismlauncher"
+
+		if isExecutable || isKnownExecutable {
+			// Set executable permissions (755)
+			newMode := info.Mode() | 0111 // Add execute bit for owner
+			newMode = newMode | 0110    // Add execute bit for group
+			newMode = newMode | 0001    // Add execute bit for others
+
+			if newMode != info.Mode() {
+				if err := os.Chmod(path, newMode); err != nil {
+					logf("Failed to set permissions for %s: %v", filepath.Base(path), err)
+					return err
+				}
+				logf("Fixed permissions for %s", filepath.Base(path))
+			}
+		}
+
+		return nil
+	})
 }
