@@ -46,12 +46,6 @@ func main() {
 		return
 	}
 
-	if opts.testProcessDetection {
-		// Run process detection test
-		testProcessDetection()
-		return
-	}
-
 	// Platform check now handled by platform abstraction
 	// Windows hard block removed for cross-platform support
 
