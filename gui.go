@@ -1953,7 +1953,6 @@ func (g *GUI) showSuccessDialog(logURL string) {
 	)
 
 	// Create buttons
-	okButton := widget.NewButtonWithIcon("OK", theme.ConfirmIcon(), func() {})
 	copyButton := widget.NewButtonWithIcon("Copy URL Again", theme.ContentCopyIcon(), func() {
 		g.window.Clipboard().SetContent(logURL)
 		g.updateStatus("URL copied to clipboard")
@@ -1963,7 +1962,6 @@ func (g *GUI) showSuccessDialog(logURL string) {
 	buttonContainer := container.NewHBox(
 		layout.NewSpacer(),
 		copyButton,
-		okButton,
 	)
 
 	// Complete dialog with buttons
@@ -1982,11 +1980,6 @@ func (g *GUI) showSuccessDialog(logURL string) {
 		dialog.ShowInformation("Upload Successful", "The log has been uploaded successfully and the URL has been copied to your clipboard.", g.window)
 		g.window.Clipboard().SetContent(logURL)
 		return
-	}
-
-	// Set the OK button to close the dialog
-	okButton.OnTapped = func() {
-		customDialog.Hide()
 	}
 
 	// Show the dialog
