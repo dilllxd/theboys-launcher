@@ -43,9 +43,10 @@ func (logTeeWriter) Write(p []byte) (int, error) {
 }
 
 type launcherOptions struct {
-	cleanupAfterUpdate bool
-	cleanupOldExe      string
-	cleanupNewExe      string
+	cleanupAfterUpdate   bool
+	cleanupOldExe        string
+	cleanupNewExe        string
+	testProcessDetection bool
 }
 
 func parseOptions() launcherOptions {
@@ -53,6 +54,7 @@ func parseOptions() launcherOptions {
 	flag.BoolVar(&opts.cleanupAfterUpdate, "cleanup-after-update", false, "internal use only")
 	flag.StringVar(&opts.cleanupOldExe, "cleanup-old-exe", "", "internal use only")
 	flag.StringVar(&opts.cleanupNewExe, "cleanup-new-exe", "", "internal use only")
+	flag.BoolVar(&opts.testProcessDetection, "test-process-detection", false, "test Windows process detection fallback mechanism")
 	flag.Parse()
 	return opts
 }

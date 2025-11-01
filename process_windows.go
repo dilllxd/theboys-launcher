@@ -133,22 +133,51 @@ func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir str
 		wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
 		output, wmicErr := wmicCmd.Output()
 		if wmicErr != nil {
-			return false, fmt.Errorf("failed to get process information (both PowerShell and wmic failed): %w", wmicErr)
-		}
+			// If wmic is not available, try tasklist as a final fallback
+			logf("wmic process query failed during validation, falling back to tasklist: %v", wmicErr)
+			tasklistCmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
+			tasklistOutput, tasklistErr := tasklistCmd.Output()
+			if tasklistErr != nil {
+				return false, fmt.Errorf("failed to get process information (PowerShell, wmic, and tasklist all failed): %w",
+					fmt.Errorf("PowerShell: %v, wmic: %v, tasklist: %v", psErr, wmicErr, tasklistErr))
+			}
 
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		if len(lines) < 2 {
-			return false, fmt.Errorf("process not found")
-		}
+			// Parse tasklist output to get executable name (not full path)
+			lines := strings.Split(strings.TrimSpace(string(tasklistOutput)), "\n")
+			if len(lines) > 0 {
+				// Tasklist CSV format: "PID","Image Name","Session Name","Session#","Mem Usage"
+				fields := strings.Split(lines[0], ",")
+				if len(fields) >= 2 {
+					// Extract just the executable name from tasklist
+					imageName := strings.Trim(fields[1], " \t\"")
+					if imageName != "" {
+						// For tasklist fallback, we only get the executable name, not the full path
+						logf("Warning: Only executable name available from tasklist fallback during validation: %s", imageName)
+						actualExecutable = imageName
+					}
+				}
+			}
 
-		// Parse CSV output (skip header line)
-		fields := strings.Split(lines[1], ",")
-		if len(fields) < 2 {
-			return false, fmt.Errorf("invalid process information format")
-		}
+			if actualExecutable == "" {
+				// If we get here, it means no process was found in tasklist output
+				// This could be because the process exited or because tasklist returned "INFO: No tasks..."
+				return false, fmt.Errorf("process not found in tasklist output (may have exited)")
+			}
+		} else {
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+			if len(lines) < 2 {
+				return false, fmt.Errorf("process not found")
+			}
 
-		// Get executable path from wmic output
-		actualExecutable = strings.Trim(fields[1], " \t\"")
+			// Parse CSV output (skip header line)
+			fields := strings.Split(lines[1], ",")
+			if len(fields) < 2 {
+				return false, fmt.Errorf("invalid process information format")
+			}
+
+			// Get executable path from wmic output
+			actualExecutable = strings.Trim(fields[1], " \t\"")
+		}
 	}
 
 	// Normalize paths for comparison
@@ -201,9 +230,36 @@ func getProcessDetails(pid int) (executable, workingDir string, err error) {
 	// Fallback to wmic if PowerShell fails (for older Windows systems)
 	logf("PowerShell process query failed, falling back to wmic: %v", psErr)
 	wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
-	output, err := wmicCmd.Output()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get process executable (both PowerShell and wmic failed): %w", err)
+	output, wmicErr := wmicCmd.Output()
+	if wmicErr != nil {
+		// If wmic is not available, try tasklist as a final fallback
+		logf("wmic process query failed, falling back to tasklist: %v", wmicErr)
+		tasklistCmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
+		tasklistOutput, tasklistErr := tasklistCmd.Output()
+		if tasklistErr != nil {
+			return "", "", fmt.Errorf("failed to get process executable (PowerShell, wmic, and tasklist all failed): %w",
+				fmt.Errorf("PowerShell: %v, wmic: %v, tasklist: %v", psErr, wmicErr, tasklistErr))
+		}
+
+		// Parse tasklist output to get executable name (not full path)
+		lines := strings.Split(strings.TrimSpace(string(tasklistOutput)), "\n")
+		if len(lines) > 0 {
+			// Tasklist CSV format: "PID","Image Name","Session Name","Session#","Mem Usage"
+			fields := strings.Split(lines[0], ",")
+			if len(fields) >= 2 {
+				// Extract just the executable name from tasklist
+				imageName := strings.Trim(fields[1], " \t\"")
+				if imageName != "" {
+					// For tasklist fallback, we only get the executable name, not the full path
+					// This is limited but better than failing completely
+					logf("Warning: Only executable name available from tasklist fallback: %s", imageName)
+					return imageName, "", nil
+				}
+			}
+		}
+		// If we get here, it means no process was found in tasklist output
+		// This could be because the process exited or because tasklist returned "INFO: No tasks..."
+		return "", "", fmt.Errorf("process not found in tasklist output (may have exited)")
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
