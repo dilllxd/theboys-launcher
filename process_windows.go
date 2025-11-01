@@ -35,7 +35,23 @@ func killProcessByPID(pid int) error {
 	cmd := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		debugf("taskkill failed for PID %d: %v, output: %s", pid, err, string(output))
+		outputStr := string(output)
+		debugf("taskkill failed for PID %d: %v, output: %s", pid, err, outputStr)
+
+		// Check if the process has already exited
+		if strings.Contains(strings.ToLower(outputStr), "not found") ||
+			strings.Contains(strings.ToLower(outputStr), "does not exist") ||
+			strings.Contains(strings.ToLower(outputStr), "cannot be found") {
+			debugf("Process PID %d has already exited", pid)
+			return nil // Not an error if process is already gone
+		}
+
+		// Check if it's an access denied error (process already terminating)
+		if strings.Contains(strings.ToLower(outputStr), "access denied") {
+			debugf("Access denied for PID %d, process may be terminating", pid)
+			return nil // Not an error if process is already terminating
+		}
+
 		return err
 	}
 	debugf("Successfully killed process tree for PID %d, output: %s", pid, string(output))
@@ -133,8 +149,15 @@ func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir str
 		wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
 		output, wmicErr := wmicCmd.Output()
 		if wmicErr != nil {
-			// If wmic is not available, try tasklist as a final fallback
-			logf("wmic process query failed during validation, falling back to tasklist: %v", wmicErr)
+			// Check if wmic executable is not found
+			if strings.Contains(wmicErr.Error(), "executable file not found") ||
+				strings.Contains(wmicErr.Error(), "not found in %PATH%") {
+				logf("wmic not available in PATH, skipping to tasklist fallback")
+			} else {
+				logf("wmic process query failed during validation, falling back to tasklist: %v", wmicErr)
+			}
+
+			// Try tasklist as a final fallback
 			tasklistCmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
 			tasklistOutput, tasklistErr := tasklistCmd.Output()
 			if tasklistErr != nil {
@@ -143,7 +166,19 @@ func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir str
 			}
 
 			// Parse tasklist output to get executable name (not full path)
-			lines := strings.Split(strings.TrimSpace(string(tasklistOutput)), "\n")
+			outputStr := strings.TrimSpace(string(tasklistOutput))
+			if outputStr == "" {
+				// Empty output likely means process doesn't exist
+				return false, fmt.Errorf("process not found (may have exited)")
+			}
+
+			// Check for "No tasks" message
+			if strings.Contains(strings.ToLower(outputStr), "no tasks") ||
+				strings.Contains(strings.ToLower(outputStr), "not found") {
+				return false, fmt.Errorf("process not found in tasklist output (may have exited)")
+			}
+
+			lines := strings.Split(outputStr, "\n")
 			if len(lines) > 0 {
 				// Tasklist CSV format: "PID","Image Name","Session Name","Session#","Mem Usage"
 				fields := strings.Split(lines[0], ",")
@@ -232,8 +267,15 @@ func getProcessDetails(pid int) (executable, workingDir string, err error) {
 	wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
 	output, wmicErr := wmicCmd.Output()
 	if wmicErr != nil {
-		// If wmic is not available, try tasklist as a final fallback
-		logf("wmic process query failed, falling back to tasklist: %v", wmicErr)
+		// Check if wmic executable is not found
+		if strings.Contains(wmicErr.Error(), "executable file not found") ||
+			strings.Contains(wmicErr.Error(), "not found in %PATH%") {
+			logf("wmic not available in PATH, skipping to tasklist fallback")
+		} else {
+			logf("wmic process query failed, falling back to tasklist: %v", wmicErr)
+		}
+
+		// Try tasklist as a final fallback
 		tasklistCmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
 		tasklistOutput, tasklistErr := tasklistCmd.Output()
 		if tasklistErr != nil {
@@ -242,7 +284,19 @@ func getProcessDetails(pid int) (executable, workingDir string, err error) {
 		}
 
 		// Parse tasklist output to get executable name (not full path)
-		lines := strings.Split(strings.TrimSpace(string(tasklistOutput)), "\n")
+		outputStr := strings.TrimSpace(string(tasklistOutput))
+		if outputStr == "" {
+			// Empty output likely means process doesn't exist
+			return "", "", fmt.Errorf("process not found (may have exited)")
+		}
+
+		// Check for "No tasks" message
+		if strings.Contains(strings.ToLower(outputStr), "no tasks") ||
+			strings.Contains(strings.ToLower(outputStr), "not found") {
+			return "", "", fmt.Errorf("process not found in tasklist output (may have exited)")
+		}
+
+		lines := strings.Split(outputStr, "\n")
 		if len(lines) > 0 {
 			// Tasklist CSV format: "PID","Image Name","Session Name","Session#","Mem Usage"
 			fields := strings.Split(lines[0], ",")
