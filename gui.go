@@ -2072,7 +2072,7 @@ func (g *GUI) showSettings() {
 	}
 
 	// Info buttons for each setting
-	autoRAMInfoBtn := createInfoButton("Auto RAM", "Automatically calculates optimal memory allocation based on your system's total RAM.\n\n• Uses 25% of available system RAM by default\n• Ensures smooth performance while leaving memory for other applications\n• Recommended for most users\n• Can be overridden with manual RAM setting if needed", g.window)
+	autoRAMInfoBtn := createInfoButton("Auto RAM", "Automatically calculates optimal memory allocation based on your system's total RAM.\n\n• Uses 50% of available system RAM by default, maxing out at 16GB\n• Ensures smooth performance while leaving memory for other applications\n• Recommended for most users\n• Can be overridden with manual RAM setting if needed", g.window)
 
 	manualRAMInfoBtn := createInfoButton("Manual RAM", "Set a fixed amount of RAM for Minecraft to use.\n\n• Use this if you experience performance issues with Auto RAM\n• Recommended values:\n  - 4-6 GB for small modpacks\n  - 6-8 GB for medium modpacks\n  - 8-12 GB for large modpacks\n  - 12-16 GB for heavyweight modpacks\n• Ensure you have enough free system RAM available", g.window)
 
@@ -2360,7 +2360,7 @@ func (g *GUI) showSettings() {
 	}
 
 	// Set a reasonable minimum size for the dialog
-	pop.Resize(fyne.NewSize(600, 500))
+	pop.Resize(fyne.NewSize(600, 575))
 	pop.Show()
 }
 
