@@ -425,8 +425,7 @@ func (g *GUI) buildUI() {
 
 func (g *GUI) buildHeader() fyne.CanvasObject {
 	title := widget.NewLabelWithStyle(launcherName, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	subtitle := widget.NewLabel(fmt.Sprintf("Version %s - %d modpacks", version, len(g.modpacks)))
-	titleBox := container.NewVBox(title, subtitle)
+	titleBox := container.NewVBox(title)
 
 	g.searchEntry = widget.NewEntry()
 	g.searchEntry.SetPlaceHolder("Search modpacks...")
@@ -502,8 +501,8 @@ func (g *GUI) buildSidebar() fyne.CanvasObject {
 }
 
 func (g *GUI) buildContent() fyne.CanvasObject {
-	g.browseGrid = container.New(layout.NewGridWrapLayout(fyne.NewSize(320, 220)))
-	g.featuredGrid = container.New(layout.NewGridWrapLayout(fyne.NewSize(320, 220)))
+	g.browseGrid = container.New(layout.NewGridWrapLayout(fyne.NewSize(340, 400)))
+	g.featuredGrid = container.New(layout.NewGridWrapLayout(fyne.NewSize(340, 400)))
 	g.populateBrowseGrid()
 	g.populateFeaturedGrid()
 
@@ -558,7 +557,7 @@ func (g *GUI) buildConsoleView() fyne.CanvasObject {
 }
 
 func (g *GUI) buildStatusBar() fyne.CanvasObject {
-	g.statusLabel = widget.NewLabel("Ready")
+	g.statusLabel = widget.NewLabel("Launcher ready")
 	g.progressBar = widget.NewProgressBar()
 	g.progressBar.Hide()
 
@@ -1475,27 +1474,7 @@ func (g *GUI) refreshModpacks() {
 		fyne.Do(func() {
 			g.modpacks = normalized
 			g.filtered = append([]Modpack(nil), normalized...)
-			g.updateStatus(fmt.Sprintf("Loaded %d modpack(s) from remote catalog", len(normalized)))
-
-			// Update header subtitle to reflect new modpack count
-			if g.tabs != nil && len(g.tabs.Items) > 0 {
-				// Rebuild header to update modpack count
-				header := g.buildHeader()
-				sidebar := g.buildSidebar()
-				content := g.buildContent()
-				status := g.buildStatusBar()
-
-				body := container.NewBorder(
-					header,
-					status,
-					sidebar,
-					nil,
-					content,
-				)
-
-				root := container.NewStack(body, g.loadingOverlay)
-				g.window.SetContent(root)
-			}
+			g.updateStatus(fmt.Sprintf("Version %s - Loaded %d modpack(s)", version, len(normalized)))
 		})
 
 		// Check for launcher updates
@@ -1541,7 +1520,8 @@ func (g *GUI) updateStatus(text string) {
 		return
 	}
 	fyne.Do(func() {
-		g.statusLabel.SetText(text)
+		// Combine version with current operation for better UX
+		g.statusLabel.SetText(fmt.Sprintf("Version %s - %s", version, text))
 	})
 }
 
