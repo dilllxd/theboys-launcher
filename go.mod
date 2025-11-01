@@ -1,6 +1,6 @@
 module theboyslauncher
 
-go 1.23
+go 1.24.0
 
 require (
 	fyne.io/fyne/v2 v2.7.0

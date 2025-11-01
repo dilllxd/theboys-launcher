@@ -106,26 +106,50 @@ func isProcessRunning(pid int) (bool, error) {
 
 // validateProcessIdentity validates that a process matches the expected executable and working directory on Windows
 func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir string) (bool, error) {
-	// Get process information using wmic
-	cmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath,WorkingSetSize", "/format:csv")
-	output, err := cmd.Output()
+	var actualExecutable string
+	var err error
+
+	// Try PowerShell first (more reliable on modern Windows)
+	psCmd := exec.Command("powershell", "-Command",
+		fmt.Sprintf("Get-Process -Id %d -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path", pid))
+	psOutput, psErr := psCmd.Output()
+
+	if psErr == nil {
+		actualExecutable = strings.TrimSpace(string(psOutput))
+		if actualExecutable != "" {
+			// PowerShell succeeded, continue with validation
+		} else {
+			// PowerShell returned empty result, try wmic fallback
+			err = fmt.Errorf("PowerShell returned empty result")
+		}
+	} else {
+		// PowerShell failed, try wmic fallback
+		err = psErr
+	}
+
+	// If PowerShell failed, try wmic fallback
 	if err != nil {
-		return false, fmt.Errorf("failed to get process information: %w", err)
-	}
+		logf("PowerShell process query failed during validation, falling back to wmic: %v", err)
+		wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
+		output, wmicErr := wmicCmd.Output()
+		if wmicErr != nil {
+			return false, fmt.Errorf("failed to get process information (both PowerShell and wmic failed): %w", wmicErr)
+		}
 
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) < 2 {
-		return false, fmt.Errorf("process not found")
-	}
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		if len(lines) < 2 {
+			return false, fmt.Errorf("process not found")
+		}
 
-	// Parse CSV output (skip header line)
-	fields := strings.Split(lines[1], ",")
-	if len(fields) < 2 {
-		return false, fmt.Errorf("invalid process information format")
-	}
+		// Parse CSV output (skip header line)
+		fields := strings.Split(lines[1], ",")
+		if len(fields) < 2 {
+			return false, fmt.Errorf("invalid process information format")
+		}
 
-	// Get executable path from wmic output
-	actualExecutable := strings.Trim(fields[1], " \t\"")
+		// Get executable path from wmic output
+		actualExecutable = strings.Trim(fields[1], " \t\"")
+	}
 
 	// Normalize paths for comparison
 	actualExecutable = strings.ToLower(actualExecutable)
@@ -141,7 +165,7 @@ func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir str
 		}
 	}
 
-	// For working directory, we can't easily get it from wmic, so we'll skip this check on Windows
+	// For working directory, we can't easily get it reliably on Windows, so we'll skip this check
 	// and rely on executable matching only
 
 	return true, nil
@@ -149,11 +173,37 @@ func validateProcessIdentity(pid int, expectedExecutable, expectedWorkingDir str
 
 // getProcessDetails retrieves detailed information about a process on Windows
 func getProcessDetails(pid int) (executable, workingDir string, err error) {
-	// Get executable path using wmic
-	cmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
-	output, err := cmd.Output()
+	// Try PowerShell first (more reliable on modern Windows)
+	psCmd := exec.Command("powershell", "-Command",
+		fmt.Sprintf("Get-Process -Id %d -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path", pid))
+	psOutput, psErr := psCmd.Output()
+
+	if psErr == nil {
+		executable = strings.TrimSpace(string(psOutput))
+		if executable != "" {
+			// Get working directory using PowerShell
+			psDirCmd := exec.Command("powershell", "-Command",
+				fmt.Sprintf("(Get-Process -Id %d | Select-Object -ExpandProperty Path).DirectoryName", pid))
+			psDirOutput, psDirErr := psDirCmd.Output()
+			if psDirErr == nil {
+				workingDir = strings.TrimSpace(string(psDirOutput))
+				if workingDir == "" {
+					workingDir = filepath.Dir(executable)
+				}
+			} else {
+				workingDir = filepath.Dir(executable)
+				logf("Warning: Could not get working directory for PID %d, using executable directory: %v", pid, psDirErr)
+			}
+			return executable, workingDir, nil
+		}
+	}
+
+	// Fallback to wmic if PowerShell fails (for older Windows systems)
+	logf("PowerShell process query failed, falling back to wmic: %v", psErr)
+	wmicCmd := exec.Command("wmic", "process", "where", "ProcessId="+strconv.Itoa(pid), "get", "ExecutablePath", "/format:csv")
+	output, err := wmicCmd.Output()
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get process executable: %w", err)
+		return "", "", fmt.Errorf("failed to get process executable (both PowerShell and wmic failed): %w", err)
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -168,21 +218,7 @@ func getProcessDetails(pid int) (executable, workingDir string, err error) {
 	}
 
 	executable = strings.Trim(fields[1], " \t\"")
-
-	// Get working directory using PowerShell (more reliable than wmic for this)
-	psCmd := exec.Command("powershell", "-Command",
-		fmt.Sprintf("(Get-Process -Id %d | Select-Object -ExpandProperty Path).DirectoryName", pid))
-	psOutput, psErr := psCmd.Output()
-	if psErr != nil {
-		// Fallback: use directory of executable
-		workingDir = filepath.Dir(executable)
-		logf("Warning: Could not get working directory for PID %d, using executable directory: %v", pid, psErr)
-	} else {
-		workingDir = strings.TrimSpace(string(psOutput))
-		if workingDir == "" {
-			workingDir = filepath.Dir(executable)
-		}
-	}
+	workingDir = filepath.Dir(executable)
 
 	return executable, workingDir, nil
 }
